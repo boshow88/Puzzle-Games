@@ -175,7 +175,7 @@
         notesMode: false,
         revealed: false,
         won: false,
-        size: 9,
+        size: 6,
         difficulty: 'medium',
 
         violations: null,         // bool[N][N], any-cell-in-any-conflict
@@ -596,21 +596,17 @@
 
     function buildKeypad() {
         const N = state.puzzle.size;
-        // Layout: [Notes] [1] [2] ... [N] [Erase] — N+2 columns wide.
-        dom.keypad.style.setProperty('--keypad-cols', String(N + 2));
+        const { boxCols } = state.puzzle;
+
+        // The digit pad mirrors the puzzle's box shape: digits 1..N are
+        // laid out in a (N/boxCols) × boxCols grid, so the position of
+        // each key matches the position of that digit inside one Sudoku
+        // box (e.g. 9×9 → familiar 3×3 phone-pad; 6×6 → 2×3). Mode
+        // controls (Notes / Erase) live in a separate row underneath.
+        dom.keypad.style.setProperty('--keypad-box-cols', String(boxCols));
         while (dom.keypad.firstChild) dom.keypad.removeChild(dom.keypad.firstChild);
 
-        const notesBtn = PC.el('button', {
-            type: 'button',
-            class: 'keypad-btn notes-toggle',
-            'aria-pressed': 'false',
-            'aria-label': 'Toggle pencil-mark notes mode',
-            title: 'Toggle pencil-mark notes (N)',
-        }, '✎');
-        notesBtn.addEventListener('click', toggleNotesMode);
-        dom.keypad.appendChild(notesBtn);
-        dom.notesBtn = notesBtn;
-
+        const digits = PC.el('div', { class: 'keypad-digits' });
         for (let d = 1; d <= N; d++) {
             const btn = PC.el('button', {
                 type: 'button',
@@ -619,17 +615,32 @@
                 'aria-label': `Digit ${d}`,
             }, String(d));
             btn.addEventListener('click', () => onKeypadDigit(d));
-            dom.keypad.appendChild(btn);
+            digits.appendChild(btn);
         }
+        dom.keypad.appendChild(digits);
+
+        const actions = PC.el('div', { class: 'keypad-actions' });
+        const notesBtn = PC.el('button', {
+            type: 'button',
+            class: 'keypad-btn notes-toggle',
+            'aria-pressed': 'false',
+            'aria-label': 'Toggle pencil-mark notes mode',
+            title: 'Toggle pencil-mark notes (N)',
+        }, '✎ Notes');
+        notesBtn.addEventListener('click', toggleNotesMode);
+        actions.appendChild(notesBtn);
+        dom.notesBtn = notesBtn;
 
         const eraseBtn = PC.el('button', {
             type: 'button',
             class: 'keypad-btn erase',
             'aria-label': 'Erase',
-            title: 'Erase (Backspace)',
-        }, '⌫');
+            title: 'Erase (Backspace / Delete / 0)',
+        }, '⌫ Erase');
         eraseBtn.addEventListener('click', eraseSelected);
-        dom.keypad.appendChild(eraseBtn);
+        actions.appendChild(eraseBtn);
+
+        dom.keypad.appendChild(actions);
 
         updateKeypadMode();
     }
