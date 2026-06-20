@@ -25,3 +25,7 @@ dist/
 
 # Logs
 *.log
+
+# Scratch (commit messages, etc.)
+*.tmp
+.commit_msg.*
