@@ -1,0 +1,95 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Puzzle Games</title>
+    <link rel="stylesheet" href="./css/common.css">
+</head>
+<body>
+    <div class="app-shell">
+        <header class="app-header">
+            <h1 class="app-title">Puzzle Games</h1>
+            <p class="app-subtitle">A collection of logic puzzles inspired by LinkedIn's daily games.</p>
+        </header>
+
+        <main class="games-grid">
+            <a class="game-card queens" href="./games/queens.html">
+                <div class="game-card-header">
+                    <span class="game-icon" aria-hidden="true">♛</span>
+                    <div>
+                        <div class="game-name">Queens</div>
+                        <div class="game-tagline">Royal regions, one queen each.</div>
+                    </div>
+                </div>
+                <p class="game-card-body">
+                    Place N queens so that every row, column, color region
+                    and 8-neighborhood contains exactly one.
+                </p>
+                <div class="game-card-footer">
+                    <span>5×5 – 12×12</span>
+                    <span class="badge badge-playable">Playable</span>
+                </div>
+            </a>
+
+            <a class="game-card tango coming-soon" href="#" aria-disabled="true">
+                <div class="game-card-header">
+                    <span class="game-icon" aria-hidden="true">☀</span>
+                    <div>
+                        <div class="game-name">Tango</div>
+                        <div class="game-tagline">Sun &amp; moon balance.</div>
+                    </div>
+                </div>
+                <p class="game-card-body">
+                    Fill the grid with suns and moons — half of each per
+                    row and column, no three in a row, respect the walls.
+                </p>
+                <div class="game-card-footer">
+                    <span>6×6 · 8×8 · 10×10</span>
+                    <span class="badge badge-soon">Coming soon</span>
+                </div>
+            </a>
+
+            <a class="game-card sudoku coming-soon" href="#" aria-disabled="true">
+                <div class="game-card-header">
+                    <span class="game-icon" aria-hidden="true">🔢</span>
+                    <div>
+                        <div class="game-name">Sudoku</div>
+                        <div class="game-tagline">Classic number logic.</div>
+                    </div>
+                </div>
+                <p class="game-card-body">
+                    Multi-size Sudoku (4×4 / 6×6 / 9×9) with notes and
+                    clean rules — every puzzle has a unique solution.
+                </p>
+                <div class="game-card-footer">
+                    <span>4×4 · 6×6 · 9×9</span>
+                    <span class="badge badge-soon">Coming soon</span>
+                </div>
+            </a>
+
+            <a class="game-card zip coming-soon" href="#" aria-disabled="true">
+                <div class="game-card-header">
+                    <span class="game-icon" aria-hidden="true">🔗</span>
+                    <div>
+                        <div class="game-name">Zip</div>
+                        <div class="game-tagline">One path, every cell.</div>
+                    </div>
+                </div>
+                <p class="game-card-body">
+                    Draw a single Hamiltonian path through the grid,
+                    visiting numbered checkpoints in order.
+                </p>
+                <div class="game-card-footer">
+                    <span>5×5 – 12×12</span>
+                    <span class="badge badge-soon">Coming soon</span>
+                </div>
+            </a>
+        </main>
+
+        <footer class="app-footer">
+            <p>Built as a static site — works offline, deployable on GitHub Pages.</p>
+        </footer>
+    </div>
+</body>
+</html>

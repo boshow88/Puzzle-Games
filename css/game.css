@@ -1,0 +1,363 @@
+/* ================================================================
+   Puzzle Games — Shared game-page UI (toolbar, board, status row)
+   Builds on css/common.css. Designed for a 480×480 board area.
+   ================================================================ */
+
+.game-shell {
+    max-width: 720px;
+    margin: 0 auto;
+    padding: var(--space-lg) var(--space-md) var(--space-2xl);
+}
+
+/* ----------------------------------------------------------------
+   Top bar (Back + title)
+   ---------------------------------------------------------------- */
+
+.game-topbar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-md);
+    margin-bottom: var(--space-lg);
+}
+
+.back-link {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: var(--space-xs) var(--space-sm);
+    color: var(--text-secondary);
+    font-size: 0.9rem;
+    border-radius: var(--radius-sm);
+    transition: background var(--transition-fast),
+        color var(--transition-fast);
+}
+
+.back-link:hover {
+    background: var(--bg-hover);
+    color: var(--text-primary);
+    text-decoration: none;
+}
+
+.game-title {
+    display: flex;
+    align-items: center;
+    gap: var(--space-sm);
+    font-size: 1.25rem;
+    font-weight: 600;
+}
+
+.game-title .game-icon {
+    width: 36px;
+    height: 36px;
+    font-size: 1.5rem;
+    border-radius: var(--radius-md);
+}
+
+/* Spacer to balance the topbar grid */
+.topbar-spacer {
+    width: 64px;
+}
+
+/* ----------------------------------------------------------------
+   Toolbar (selectors + actions)
+   ---------------------------------------------------------------- */
+
+.game-toolbar {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: var(--space-md);
+    background: var(--bg-secondary);
+    padding: var(--space-md);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-md);
+    box-shadow: var(--shadow-sm);
+    margin-bottom: var(--space-md);
+}
+
+.toolbar-group {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.toolbar-label {
+    font-size: 0.78rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--text-secondary);
+}
+
+.toolbar-control {
+    display: flex;
+    align-items: center;
+    gap: var(--space-sm);
+}
+
+.segmented {
+    display: inline-flex;
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-md);
+    overflow: hidden;
+    background: var(--bg-tertiary);
+}
+
+.segmented button {
+    appearance: none;
+    background: transparent;
+    border: 0;
+    padding: 6px 12px;
+    font-size: 0.88rem;
+    color: var(--text-secondary);
+    cursor: pointer;
+    transition: background var(--transition-fast),
+        color var(--transition-fast);
+}
+
+.segmented button + button {
+    border-left: 1px solid var(--border-color);
+}
+
+.segmented button:hover {
+    background: var(--bg-hover);
+    color: var(--text-primary);
+}
+
+.segmented button.active {
+    background: var(--game-color, var(--accent-primary));
+    color: var(--text-on-accent);
+}
+
+.size-control {
+    display: flex;
+    align-items: center;
+    gap: var(--space-sm);
+}
+
+.size-control input[type="range"] {
+    flex: 1;
+    accent-color: var(--game-color, var(--accent-primary));
+}
+
+.size-readout {
+    font-variant-numeric: tabular-nums;
+    font-weight: 600;
+    color: var(--text-primary);
+    min-width: 3.5em;
+    text-align: right;
+}
+
+/* Action buttons */
+.action-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-sm);
+    margin-bottom: var(--space-md);
+}
+
+.btn {
+    appearance: none;
+    border: 1px solid var(--border-strong);
+    background: var(--bg-secondary);
+    color: var(--text-primary);
+    padding: 8px 16px;
+    font-size: 0.92rem;
+    border-radius: var(--radius-md);
+    cursor: pointer;
+    transition: background var(--transition-fast),
+        border-color var(--transition-fast),
+        color var(--transition-fast),
+        transform var(--transition-fast);
+}
+
+.btn:hover {
+    background: var(--bg-hover);
+    border-color: var(--text-muted);
+}
+
+.btn:active {
+    transform: translateY(1px);
+}
+
+.btn.btn-primary {
+    background: var(--game-color, var(--accent-primary));
+    border-color: var(--game-color, var(--accent-primary));
+    color: var(--text-on-accent);
+}
+
+.btn.btn-primary:hover {
+    filter: brightness(0.95);
+}
+
+.btn.btn-ghost {
+    background: transparent;
+    border-color: transparent;
+    color: var(--text-secondary);
+}
+
+.btn.btn-ghost:hover {
+    background: var(--bg-hover);
+    color: var(--text-primary);
+}
+
+.btn.btn-icon {
+    min-width: 40px;
+    padding: 8px 10px;
+}
+
+.btn.toggle.active {
+    background: var(--game-color, var(--accent-primary));
+    border-color: var(--game-color, var(--accent-primary));
+    color: var(--text-on-accent);
+}
+
+/* ----------------------------------------------------------------
+   Status row (timer, violations, win)
+   ---------------------------------------------------------------- */
+
+.status-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-md);
+    margin-bottom: var(--space-sm);
+    min-height: 28px;
+    font-size: 0.9rem;
+    color: var(--text-secondary);
+}
+
+.status-row .status-item {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.status-row .timer {
+    font-variant-numeric: tabular-nums;
+}
+
+.status-row .violations.active {
+    color: var(--accent-danger);
+    font-weight: 600;
+}
+
+.win-message {
+    color: var(--accent-success);
+    font-weight: 700;
+}
+
+/* ----------------------------------------------------------------
+   Board area
+   ---------------------------------------------------------------- */
+
+.board-wrap {
+    background: var(--bg-secondary);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-md);
+    box-shadow: var(--shadow-sm);
+    padding: var(--space-md);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.board-svg {
+    width: 100%;
+    max-width: 480px;
+    height: auto;
+    aspect-ratio: 1 / 1;
+    display: block;
+    user-select: none;
+    touch-action: manipulation;
+}
+
+/* Cell stroke (thin internal lines) */
+.cell-bg {
+    stroke: rgba(0, 0, 0, 0.18);
+    stroke-width: 1;
+}
+
+/* Region borders: thicker, on top */
+.region-border {
+    stroke: #1f2937;
+    stroke-width: 3;
+    stroke-linecap: square;
+    pointer-events: none;
+}
+
+/* Symbols */
+.symbol {
+    pointer-events: none;
+    user-select: none;
+    font-family: var(--font-body);
+    fill: #1f2937;
+}
+
+.symbol.queen {
+    fill: #111827;
+}
+
+.symbol.queen.victory {
+    fill: #d4a017;
+}
+
+.symbol.mark {
+    fill: #6c757d;
+}
+
+/* Violation slash */
+.violation-line {
+    stroke: var(--accent-danger);
+    stroke-width: 3;
+    stroke-linecap: round;
+    pointer-events: none;
+    opacity: 0.85;
+}
+
+/* Hover highlight */
+.cell-hover {
+    fill: rgba(0, 0, 0, 0);
+    transition: fill var(--transition-fast);
+    cursor: pointer;
+}
+
+.cell-hover:hover {
+    fill: rgba(0, 0, 0, 0.06);
+}
+
+/* ----------------------------------------------------------------
+   Help / footer hints
+   ---------------------------------------------------------------- */
+
+.game-footer {
+    margin-top: var(--space-lg);
+    padding: var(--space-md);
+    background: var(--bg-secondary);
+    border: 1px solid var(--border-light);
+    border-radius: var(--radius-md);
+    color: var(--text-secondary);
+    font-size: 0.88rem;
+    line-height: 1.6;
+}
+
+.game-footer h4 {
+    color: var(--text-primary);
+    font-size: 0.95rem;
+    margin-bottom: var(--space-xs);
+}
+
+.game-footer ul {
+    margin-left: var(--space-lg);
+}
+
+/* ----------------------------------------------------------------
+   Responsive
+   ---------------------------------------------------------------- */
+
+@media (max-width: 560px) {
+    .game-toolbar {
+        grid-template-columns: 1fr;
+    }
+    .topbar-spacer { display: none; }
+}

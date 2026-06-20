@@ -1,0 +1,283 @@
+/* ================================================================
+   Puzzle Games — Common theme tokens + Launcher styles
+   LinkedIn-light feel: white surfaces, soft grays, blue accents.
+   ================================================================ */
+
+:root {
+    /* Surfaces */
+    --bg-primary: #f3f2ef;          /* LinkedIn-ish app background */
+    --bg-secondary: #ffffff;
+    --bg-tertiary: #f8f9fa;
+    --bg-hover: #f1f3f5;
+
+    /* Text */
+    --text-primary: #2c3e50;
+    --text-secondary: #6c757d;
+    --text-muted: #adb5bd;
+    --text-on-accent: #ffffff;
+
+    /* Lines */
+    --border-color: #dee2e6;
+    --border-light: #e9ecef;
+    --border-strong: #ced4da;
+
+    /* Accents */
+    --accent-primary: #0a66c2;      /* LinkedIn blue */
+    --accent-primary-hover: #004182;
+    --accent-secondary: #378fe9;
+    --accent-success: #198754;
+    --accent-warning: #fd7e14;
+    --accent-danger: #dc3545;
+
+    /* Per-game accent (overridden on .game-card.<game>) */
+    --game-color: var(--accent-primary);
+
+    /* Spacing */
+    --space-xs: 4px;
+    --space-sm: 8px;
+    --space-md: 16px;
+    --space-lg: 24px;
+    --space-xl: 32px;
+    --space-2xl: 48px;
+
+    /* Radius */
+    --radius-sm: 4px;
+    --radius-md: 8px;
+    --radius-lg: 12px;
+    --radius-pill: 999px;
+
+    /* Shadows */
+    --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.04);
+    --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.08);
+    --shadow-lg: 0 10px 30px rgba(0, 0, 0, 0.10);
+
+    /* Type */
+    --font-body: -apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans TC",
+        "Microsoft JhengHei", system-ui, sans-serif;
+    --font-mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+
+    /* Motion */
+    --transition-fast: 120ms ease;
+    --transition-normal: 220ms ease;
+}
+
+/* ----------------------------------------------------------------
+   Reset
+   ---------------------------------------------------------------- */
+
+*,
+*::before,
+*::after {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+}
+
+html {
+    font-size: 16px;
+    -webkit-text-size-adjust: 100%;
+}
+
+body {
+    font-family: var(--font-body);
+    background: var(--bg-primary);
+    color: var(--text-primary);
+    line-height: 1.5;
+    min-height: 100vh;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+}
+
+a {
+    color: var(--accent-primary);
+    text-decoration: none;
+}
+
+a:hover {
+    text-decoration: underline;
+}
+
+button {
+    font-family: inherit;
+    cursor: pointer;
+}
+
+/* ----------------------------------------------------------------
+   App shell
+   ---------------------------------------------------------------- */
+
+.app-shell {
+    max-width: 1080px;
+    margin: 0 auto;
+    padding: var(--space-2xl) var(--space-lg) var(--space-xl);
+}
+
+.app-header {
+    text-align: center;
+    margin-bottom: var(--space-2xl);
+}
+
+.app-title {
+    font-size: 2.25rem;
+    font-weight: 700;
+    letter-spacing: -0.01em;
+    color: var(--text-primary);
+}
+
+.app-subtitle {
+    font-size: 1rem;
+    color: var(--text-secondary);
+    margin-top: var(--space-sm);
+}
+
+/* ----------------------------------------------------------------
+   Game cards (launcher)
+   ---------------------------------------------------------------- */
+
+.games-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+    gap: var(--space-lg);
+}
+
+.game-card {
+    position: relative;
+    display: block;
+    background: var(--bg-secondary);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-lg);
+    padding: var(--space-lg);
+    box-shadow: var(--shadow-sm);
+    color: inherit;
+    text-decoration: none;
+    transition: transform var(--transition-fast),
+        box-shadow var(--transition-fast),
+        border-color var(--transition-fast);
+    overflow: hidden;
+}
+
+.game-card::before {
+    content: "";
+    position: absolute;
+    inset: 0 0 auto 0;
+    height: 4px;
+    background: var(--game-color);
+    opacity: 0.9;
+}
+
+.game-card:hover {
+    transform: translateY(-2px);
+    box-shadow: var(--shadow-md);
+    border-color: var(--game-color);
+    text-decoration: none;
+}
+
+.game-card.coming-soon {
+    opacity: 0.65;
+    cursor: not-allowed;
+    pointer-events: none;
+}
+
+.game-card-header {
+    display: flex;
+    align-items: center;
+    gap: var(--space-md);
+    margin-bottom: var(--space-sm);
+    margin-top: var(--space-xs);
+}
+
+.game-icon {
+    font-size: 2rem;
+    line-height: 1;
+    width: 48px;
+    height: 48px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: var(--radius-md);
+    background: color-mix(in srgb, var(--game-color) 12%, white);
+    color: var(--game-color);
+}
+
+.game-name {
+    font-size: 1.25rem;
+    font-weight: 600;
+    color: var(--text-primary);
+}
+
+.game-tagline {
+    font-size: 0.85rem;
+    color: var(--text-secondary);
+    margin-top: 2px;
+}
+
+.game-card-body {
+    color: var(--text-secondary);
+    font-size: 0.92rem;
+    margin-top: var(--space-sm);
+}
+
+.game-card-footer {
+    margin-top: var(--space-md);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    font-size: 0.85rem;
+    color: var(--text-muted);
+}
+
+.badge {
+    display: inline-block;
+    padding: 2px var(--space-sm);
+    border-radius: var(--radius-pill);
+    font-size: 0.75rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+    background: var(--bg-tertiary);
+    color: var(--text-secondary);
+    border: 1px solid var(--border-light);
+}
+
+.badge.badge-soon {
+    background: #fff7e6;
+    color: var(--accent-warning);
+    border-color: #ffe0b2;
+}
+
+.badge.badge-playable {
+    background: #e6f4ea;
+    color: var(--accent-success);
+    border-color: #c5e6cf;
+}
+
+/* Per-game accent overrides */
+.game-card.queens { --game-color: #b341d1; }
+.game-card.tango  { --game-color: #f5a623; }
+.game-card.sudoku { --game-color: #0a66c2; }
+.game-card.zip    { --game-color: #2ecc71; }
+
+/* ----------------------------------------------------------------
+   Footer
+   ---------------------------------------------------------------- */
+
+.app-footer {
+    margin-top: var(--space-2xl);
+    text-align: center;
+    font-size: 0.85rem;
+    color: var(--text-muted);
+}
+
+/* ----------------------------------------------------------------
+   Responsive
+   ---------------------------------------------------------------- */
+
+@media (max-width: 600px) {
+    .app-shell {
+        padding: var(--space-xl) var(--space-md) var(--space-lg);
+    }
+
+    .app-title {
+        font-size: 1.75rem;
+    }
+}
