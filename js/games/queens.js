@@ -201,6 +201,7 @@
         //                                              VIOLATION_DELAY_MS of
         //                                              no further clicks.
         violations: null,
+        violationGroups: [],        // [{ kind, cells }] for partial refresh
         conflictPairs: 0,
         displayedViolations: null,
         displayedPairs: 0,
@@ -217,6 +218,7 @@
         const N = state.puzzle.size;
         state.placements = Array.from({ length: N }, () => new Array(N).fill(STATES.EMPTY));
         state.violations = emptyViolationGrid(N);
+        state.violationGroups = [];
         state.conflictPairs = 0;
         state.displayedViolations = emptyViolationGrid(N);
         state.displayedPairs = 0;
@@ -244,6 +246,17 @@
     // Rules
     // -----------------------------------------------------------------
 
+    /**
+     * Recompute violations from current placements. Two views are
+     * produced: a cell-level `flagged` grid (used for the win check and
+     * the 800ms-debounced full display), and a list of `groups` where
+     * each group is a pair of queens that breaks at least one rule. The
+     * group view lets the partial-refresh logic hide only the conflicts
+     * that the latest toggle could possibly have affected.
+     *
+     * Returns the list of queen positions so callers can avoid scanning
+     * the board twice.
+     */
     function recomputeViolations() {
         const N = state.puzzle.size;
         const regions = state.puzzle.regions;
@@ -256,11 +269,10 @@
             }
         }
         const flagged = emptyViolationGrid(N);
-        let pairs = 0;
+        const groups = [];
 
-        // A "conflict pair" is two queens that violate ANY rule (a pair that
-        // breaks multiple rules still counts as one pair). This matches the
-        // intuitive "how many conflicts do I need to resolve" question.
+        // A "conflict pair" is two queens that violate ANY rule (a pair
+        // that breaks multiple rules still counts as one).
         for (let i = 0; i < queens.length; i++) {
             const [r1, c1] = queens[i];
             for (let j = i + 1; j < queens.length; j++) {
@@ -272,20 +284,59 @@
                 if (sameRow || sameCol || adj8 || sameRegion) {
                     flagged[r1][c1] = true;
                     flagged[r2][c2] = true;
-                    pairs += 1;
+                    groups.push({ kind: 'pair', cells: [[r1, c1], [r2, c2]] });
                 }
             }
         }
         state.violations = flagged;
-        state.conflictPairs = pairs;
+        state.violationGroups = groups;
+        state.conflictPairs = groups.length;
         return queens;
+    }
+
+    /**
+     * A pair-conflict between two queens is "owned by" a toggle at
+     * (r0, c0) iff (r0, c0) is one of the two queens involved. The
+     * conflict between two OTHER queens cannot change as a result of
+     * the toggle, so it stays on screen.
+     */
+    function isGroupOwnedBy(group, r0, c0) {
+        return group.cells.some(([r, c]) => r === r0 && c === c0);
     }
 
     function checkWin() {
         const N = state.puzzle.size;
-        const queens = recomputeViolations();
-        if (queens.length !== N) return false;
-        return state.conflictPairs === 0;
+        // Count queens from the flagged grid's source (state.placements)
+        // — caller must have run `recomputeViolations` already.
+        let queenCount = 0;
+        for (let r = 0; r < N; r++) {
+            for (let c = 0; c < N; c++) {
+                if (state.placements[r][c] === STATES.QUEEN) queenCount += 1;
+            }
+        }
+        return queenCount === N && state.conflictPairs === 0;
+    }
+
+    /**
+     * Refresh the displayed-violation overlay after a toggle at (r0, c0).
+     * Conflicts whose group is NOT owned by the toggle stay visible
+     * immediately. Conflicts that ARE owned are hidden for
+     * VIOLATION_DELAY_MS, after which commitViolationDisplay flushes
+     * the full set.
+     */
+    function scheduleViolationRefresh(r0, c0) {
+        cancelViolationTimer();
+        const N = state.puzzle.size;
+        const visible = emptyViolationGrid(N);
+        let count = 0;
+        for (const g of state.violationGroups || []) {
+            if (isGroupOwnedBy(g, r0, c0)) continue;
+            count += 1;
+            for (const [r, c] of g.cells) visible[r][c] = true;
+        }
+        state.displayedViolations = visible;
+        state.displayedPairs = count;
+        state.violationTimer = setTimeout(commitViolationDisplay, VIOLATION_DELAY_MS);
     }
 
     // -----------------------------------------------------------------
@@ -502,14 +553,13 @@
         const next = STATE_CYCLE[(idx + 1) % STATE_CYCLE.length];
         state.placements[r][c] = next;
 
-        // Recompute truth immediately so win detection stays snappy.
-        const won = checkWin();
+        // Recompute truth immediately so win detection stays snappy and
+        // the partial-refresh logic has a fresh group list to work with.
+        recomputeViolations();
 
-        if (won && !state.won) {
+        if (checkWin() && !state.won) {
             state.won = true;
             cancelViolationTimer();
-            // On a winning move there are by definition zero conflicts, so
-            // the displayed buffer is already empty after the next sync.
             state.displayedViolations = emptyViolationGrid(state.puzzle.size);
             state.displayedPairs = 0;
             const elapsed = state.timer ? state.timer.stop() : 0;
@@ -519,16 +569,13 @@
             return;
         }
 
-        // Not won: hide any currently-shown violation marks immediately and
-        // wait VIOLATION_DELAY_MS of no further clicks before showing the
-        // new ones. This stops the red slashes from flashing distractingly
-        // while the player is cycling through cell states.
-        cancelViolationTimer();
-        state.displayedViolations = emptyViolationGrid(state.puzzle.size);
-        state.displayedPairs = 0;
+        // Show unrelated conflicts immediately; debounce the ones owned
+        // by this toggle for VIOLATION_DELAY_MS so the red slashes don't
+        // flash distractingly while the player is still cycling through
+        // states in the same row / col / region / neighbourhood.
+        scheduleViolationRefresh(r, c);
         repaintSymbols();
         updateStatusRow();
-        state.violationTimer = setTimeout(commitViolationDisplay, VIOLATION_DELAY_MS);
     }
 
     function onBoardClick(ev) {

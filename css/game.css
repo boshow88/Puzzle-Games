@@ -433,14 +433,24 @@
     transform: translateY(1px);
 }
 
-.keypad-btn.erase {
+.keypad-btn.erase,
+.keypad-btn.notes-toggle {
     color: var(--text-secondary);
     font-weight: 500;
 }
 
-/* When Notes mode is active the digits switch to a "writing pencil
-   marks" look. */
-.keypad.notes-mode .keypad-btn:not(.erase) {
+/* Active Notes toggle: filled green so it reads like a sticky mode
+   indicator (not just another tinted key). */
+.keypad-btn.notes-toggle.active {
+    background: var(--game-color, var(--accent-primary));
+    border-color: var(--game-color, var(--accent-primary));
+    color: var(--text-on-accent);
+}
+
+/* When Notes mode is on the digit keys switch to a "writing pencil
+   marks" look. The notes-toggle itself stays filled green; the erase
+   key stays neutral. */
+.keypad.notes-mode .keypad-btn:not(.erase):not(.notes-toggle) {
     background: rgba(46, 125, 50, 0.08);
     color: #1d6b21;
     border-color: rgba(46, 125, 50, 0.4);

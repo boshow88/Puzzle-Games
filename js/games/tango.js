@@ -196,10 +196,11 @@
         placements: null,           // int[N][N] of STATES.*; for prefilled cells stays 0
         revealed: false,
         won: false,
-        size: 8,
+        size: 6,
         difficulty: 'medium',
 
-        violations: null,           // bool[N][N] truth (used for win check)
+        violations: null,           // bool[N][N] (used for win check + full-flush display)
+        violationGroups: [],        // [{ kind, key, cells }] for partial refresh
         conflictPairs: 0,
         displayedViolations: null,
         displayedPairs: 0,
@@ -216,6 +217,7 @@
         const N = state.puzzle.size;
         state.placements = Array.from({ length: N }, () => new Array(N).fill(STATES.EMPTY));
         state.violations = emptyViolationGrid(N);
+        state.violationGroups = [];
         state.conflictPairs = 0;
         state.displayedViolations = emptyViolationGrid(N);
         state.displayedPairs = 0;
@@ -253,11 +255,27 @@
     // Rules
     // -----------------------------------------------------------------
 
+    /**
+     * Recompute violations from the current placements. As well as the
+     * cell-level `flagged` grid (used for the win check + the full
+     * 800ms-debounced display), we also build a list of `groups` so the
+     * partial-refresh logic can hide only the conflicts that the latest
+     * edit could possibly have affected.
+     *
+     * Group kinds:
+     *   'row'    row count overflow at row R
+     *   'col'    col count overflow at col C
+     *   'rowRun' three-in-a-row horizontally in row R
+     *   'colRun' three-in-a-row vertically  in col C
+     *   'wall'   broken `=` / `×` wall between two cells
+     */
     function recomputeViolations() {
         const N = state.puzzle.size;
         const half = N / 2;
         const flagged = emptyViolationGrid(N);
-        let pairs = 0;
+        const groups = [];
+
+        function flag(r, c) { flagged[r][c] = true; }
 
         // Counts per row and column.
         const rowSun = new Array(N).fill(0);
@@ -272,34 +290,37 @@
             }
         }
 
-        // Row / column count overflow: more than half of either symbol.
-        // Flag every offending cell of the over-represented symbol.
+        // Row / column count overflow.
         for (let r = 0; r < N; r++) {
             if (rowSun[r] > half) {
+                const cells = [];
                 for (let c = 0; c < N; c++) {
-                    if (effective(r, c) === STATES.SUN) flagged[r][c] = true;
+                    if (effective(r, c) === STATES.SUN) { cells.push([r, c]); flag(r, c); }
                 }
-                pairs += 1;
+                groups.push({ kind: 'row', key: r, cells });
             }
             if (rowMoon[r] > half) {
+                const cells = [];
                 for (let c = 0; c < N; c++) {
-                    if (effective(r, c) === STATES.MOON) flagged[r][c] = true;
+                    if (effective(r, c) === STATES.MOON) { cells.push([r, c]); flag(r, c); }
                 }
-                pairs += 1;
+                groups.push({ kind: 'row', key: r, cells });
             }
         }
         for (let c = 0; c < N; c++) {
             if (colSun[c] > half) {
+                const cells = [];
                 for (let r = 0; r < N; r++) {
-                    if (effective(r, c) === STATES.SUN) flagged[r][c] = true;
+                    if (effective(r, c) === STATES.SUN) { cells.push([r, c]); flag(r, c); }
                 }
-                pairs += 1;
+                groups.push({ kind: 'col', key: c, cells });
             }
             if (colMoon[c] > half) {
+                const cells = [];
                 for (let r = 0; r < N; r++) {
-                    if (effective(r, c) === STATES.MOON) flagged[r][c] = true;
+                    if (effective(r, c) === STATES.MOON) { cells.push([r, c]); flag(r, c); }
                 }
-                pairs += 1;
+                groups.push({ kind: 'col', key: c, cells });
             }
         }
 
@@ -312,8 +333,9 @@
                 if (v !== runVal) {
                     const runLen = c - runStart;
                     if (runVal !== STATES.EMPTY && runLen >= 3) {
-                        for (let k = runStart; k < c; k++) flagged[r][k] = true;
-                        pairs += 1;
+                        const cells = [];
+                        for (let k = runStart; k < c; k++) { cells.push([r, k]); flag(r, k); }
+                        groups.push({ kind: 'rowRun', key: r, cells });
                     }
                     runStart = c;
                     runVal = v;
@@ -328,8 +350,9 @@
                 if (v !== runVal) {
                     const runLen = r - runStart;
                     if (runVal !== STATES.EMPTY && runLen >= 3) {
-                        for (let k = runStart; k < r; k++) flagged[k][c] = true;
-                        pairs += 1;
+                        const cells = [];
+                        for (let k = runStart; k < r; k++) { cells.push([k, c]); flag(k, c); }
+                        groups.push({ kind: 'colRun', key: c, cells });
                     }
                     runStart = r;
                     runVal = v;
@@ -345,14 +368,35 @@
             const broken = (w.kind === 'same' && a !== b)
                         || (w.kind === 'diff' && a === b);
             if (broken) {
-                flagged[w.r1][w.c1] = true;
-                flagged[w.r2][w.c2] = true;
-                pairs += 1;
+                flag(w.r1, w.c1);
+                flag(w.r2, w.c2);
+                groups.push({
+                    kind: 'wall',
+                    key: `${w.r1},${w.c1}-${w.r2},${w.c2}`,
+                    cells: [[w.r1, w.c1], [w.r2, w.c2]],
+                });
             }
         }
 
         state.violations = flagged;
-        state.conflictPairs = pairs;
+        state.violationGroups = groups;
+        state.conflictPairs = groups.length;
+    }
+
+    /**
+     * Is the given conflict group "owned" by a toggle at (r0, c0)? A
+     * group is owned when toggling that cell could possibly have
+     * changed it, which is exactly the set of constraints that include
+     * the cell: its row, its column, and (for wall groups) the cell
+     * itself.
+     */
+    function isGroupOwnedBy(group, r0, c0) {
+        if (group.kind === 'row' || group.kind === 'rowRun') return group.key === r0;
+        if (group.kind === 'col' || group.kind === 'colRun') return group.key === c0;
+        if (group.kind === 'wall') {
+            return group.cells.some(([r, c]) => r === r0 && c === c0);
+        }
+        return false;
     }
 
     function isFullyFilled() {
@@ -365,9 +409,35 @@
         return true;
     }
 
+    /**
+     * Win check assumes `recomputeViolations` has already been called for
+     * the current placements; callers handle the recompute themselves
+     * so we don't pay for it twice.
+     */
     function checkWin() {
-        recomputeViolations();
         return isFullyFilled() && state.conflictPairs === 0;
+    }
+
+    /**
+     * Recompute the displayed-violation overlay after a toggle at
+     * (r0, c0). Conflicts whose constraint group is NOT owned by the
+     * toggle stay visible immediately — they can't have changed.
+     * Conflicts owned by the toggle are hidden, and the full set is
+     * flushed via commitViolationDisplay after VIOLATION_DELAY_MS.
+     */
+    function scheduleViolationRefresh(r0, c0) {
+        cancelViolationTimer();
+        const N = state.puzzle.size;
+        const visible = emptyViolationGrid(N);
+        let count = 0;
+        for (const g of state.violationGroups || []) {
+            if (isGroupOwnedBy(g, r0, c0)) continue;
+            count += 1;
+            for (const [r, c] of g.cells) visible[r][c] = true;
+        }
+        state.displayedViolations = visible;
+        state.displayedPairs = count;
+        state.violationTimer = setTimeout(commitViolationDisplay, VIOLATION_DELAY_MS);
     }
 
     // -----------------------------------------------------------------
@@ -575,8 +645,8 @@
         const idx = STATE_CYCLE.indexOf(cur);
         state.placements[r][c] = STATE_CYCLE[(idx + 1) % STATE_CYCLE.length];
 
-        const won = checkWin();
-        if (won && !state.won) {
+        recomputeViolations();
+        if (checkWin() && !state.won) {
             state.won = true;
             cancelViolationTimer();
             state.displayedViolations = emptyViolationGrid(state.puzzle.size);
@@ -588,12 +658,9 @@
             return;
         }
 
-        cancelViolationTimer();
-        state.displayedViolations = emptyViolationGrid(state.puzzle.size);
-        state.displayedPairs = 0;
+        scheduleViolationRefresh(r, c);
         repaintSymbols();
         updateStatusRow();
-        state.violationTimer = setTimeout(commitViolationDisplay, VIOLATION_DELAY_MS);
     }
 
     function onBoardClick(ev) {

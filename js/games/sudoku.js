@@ -178,7 +178,8 @@
         size: 9,
         difficulty: 'medium',
 
-        violations: null,
+        violations: null,         // bool[N][N], any-cell-in-any-conflict
+        violationGroups: [],      // [{ kind, key, cells }] for partial refresh
         conflictPairs: 0,
         displayedViolations: null,
         displayedPairs: 0,
@@ -202,6 +203,7 @@
         state.placements = Array.from({ length: N }, () => new Array(N).fill(0));
         state.notes = emptyNotes(N);
         state.violations = emptyViolationGrid(N);
+        state.violationGroups = [];
         state.conflictPairs = 0;
         state.displayedViolations = emptyViolationGrid(N);
         state.displayedPairs = 0;
@@ -254,12 +256,20 @@
     // status text stays consistent across games.
     // -----------------------------------------------------------------
 
+    /**
+     * Recompute violations from current placements. Two views are
+     * produced: a cell-level `flagged` grid (used for the immediate
+     * win-check + as the final "all conflicts" display after the
+     * debounce), and a list of `groups` (used by the partial-refresh
+     * logic so we can hide only the conflicts the latest toggle could
+     * possibly have affected).
+     */
     function recomputeViolations() {
         const N = state.puzzle.size;
         const flagged = emptyViolationGrid(N);
-        let pairs = 0;
+        const groups = [];
 
-        // Groups: rows, cols, boxes — each as a list of [r, c] cells.
+        // Build the constraint groups once, then scan each for duplicates.
         const rows = Array.from({ length: N }, () => []);
         const cols = Array.from({ length: N }, () => []);
         const boxes = Array.from({ length: N }, () => []);
@@ -271,28 +281,45 @@
             }
         }
 
-        function check(group) {
+        function scan(kind, key, cells) {
             const buckets = new Map();
-            for (const [r, c] of group) {
+            for (const [r, c] of cells) {
                 const v = effective(r, c);
                 if (v === 0) continue;
                 if (!buckets.has(v)) buckets.set(v, []);
                 buckets.get(v).push([r, c]);
             }
-            for (const cells of buckets.values()) {
-                if (cells.length > 1) {
-                    for (const [r, c] of cells) flagged[r][c] = true;
-                    pairs += 1;
+            for (const dupCells of buckets.values()) {
+                if (dupCells.length > 1) {
+                    for (const [r, c] of dupCells) flagged[r][c] = true;
+                    groups.push({ kind, key, cells: dupCells });
                 }
             }
         }
 
-        for (const g of rows) check(g);
-        for (const g of cols) check(g);
-        for (const g of boxes) check(g);
+        for (let r = 0; r < N; r++) scan('row', r, rows[r]);
+        for (let c = 0; c < N; c++) scan('col', c, cols[c]);
+        for (let b = 0; b < N; b++) scan('box', b, boxes[b]);
 
         state.violations = flagged;
-        state.conflictPairs = pairs;
+        state.violationGroups = groups;
+        state.conflictPairs = groups.length;
+    }
+
+    /**
+     * Is the given conflict group "owned" by a toggle at (r0, c0)? A
+     * group is owned when toggling that cell could change the group:
+     * row R groups are owned by anything in row R, col C by anything
+     * in col C, box B by anything in that box. Owned groups get hidden
+     * for VIOLATION_DELAY_MS so the player isn't pestered as they edit.
+     * Unowned groups stay visible because they cannot possibly have
+     * changed.
+     */
+    function isGroupOwnedBy(group, r0, c0) {
+        if (group.kind === 'row') return group.key === r0;
+        if (group.kind === 'col') return group.key === c0;
+        if (group.kind === 'box') return group.key === boxIndexOf(r0, c0);
+        return false;
     }
 
     function isFullyFilled() {
@@ -569,8 +596,20 @@
 
     function buildKeypad() {
         const N = state.puzzle.size;
-        dom.keypad.style.setProperty('--keypad-cols', String(N + 1));
+        // Layout: [Notes] [1] [2] ... [N] [Erase] — N+2 columns wide.
+        dom.keypad.style.setProperty('--keypad-cols', String(N + 2));
         while (dom.keypad.firstChild) dom.keypad.removeChild(dom.keypad.firstChild);
+
+        const notesBtn = PC.el('button', {
+            type: 'button',
+            class: 'keypad-btn notes-toggle',
+            'aria-pressed': 'false',
+            'aria-label': 'Toggle pencil-mark notes mode',
+            title: 'Toggle pencil-mark notes (N)',
+        }, '✎');
+        notesBtn.addEventListener('click', toggleNotesMode);
+        dom.keypad.appendChild(notesBtn);
+        dom.notesBtn = notesBtn;
 
         for (let d = 1; d <= N; d++) {
             const btn = PC.el('button', {
@@ -582,6 +621,7 @@
             btn.addEventListener('click', () => onKeypadDigit(d));
             dom.keypad.appendChild(btn);
         }
+
         const eraseBtn = PC.el('button', {
             type: 'button',
             class: 'keypad-btn erase',
@@ -596,8 +636,10 @@
 
     function updateKeypadMode() {
         dom.keypad.classList.toggle('notes-mode', state.notesMode);
-        dom.notesBtn.classList.toggle('active', state.notesMode);
-        dom.notesBtn.setAttribute('aria-pressed', state.notesMode ? 'true' : 'false');
+        if (dom.notesBtn) {
+            dom.notesBtn.classList.toggle('active', state.notesMode);
+            dom.notesBtn.setAttribute('aria-pressed', state.notesMode ? 'true' : 'false');
+        }
     }
 
     // -----------------------------------------------------------------
@@ -625,15 +667,25 @@
     }
 
     /**
-     * Trigger a violation refresh: clears any displayed violations
-     * immediately and schedules a re-show after VIOLATION_DELAY_MS so the
-     * player isn't pestered while clicking through multiple cells in a
-     * row. Win checking stays instantaneous (handled by the caller).
+     * Recompute the displayed-violation overlay after a toggle at
+     * (r0, c0). Conflicts whose constraint group is NOT owned by the
+     * toggle show up immediately — they cannot have changed, so there's
+     * no reason to make the player wait. Conflicts owned by the toggle
+     * are hidden, and the full set is flushed via commitViolationDisplay
+     * after VIOLATION_DELAY_MS so the player isn't pestered mid-edit.
      */
-    function scheduleViolationRefresh() {
+    function scheduleViolationRefresh(r0, c0) {
         cancelViolationTimer();
-        state.displayedViolations = emptyViolationGrid(state.puzzle.size);
-        state.displayedPairs = 0;
+        const N = state.puzzle.size;
+        const visible = emptyViolationGrid(N);
+        let count = 0;
+        for (const g of state.violationGroups || []) {
+            if (isGroupOwnedBy(g, r0, c0)) continue;
+            count += 1;
+            for (const [r, c] of g.cells) visible[r][c] = true;
+        }
+        state.displayedViolations = visible;
+        state.displayedPairs = count;
         state.violationTimer = setTimeout(commitViolationDisplay, VIOLATION_DELAY_MS);
     }
 
@@ -650,7 +702,7 @@
             state.placements[sel.r][sel.c] = d;
             state.notes[sel.r][sel.c].clear();
         }
-        afterPlacementChange();
+        afterPlacementChange(sel.r, sel.c);
     }
 
     function toggleNote(d) {
@@ -660,15 +712,19 @@
         if (isPrefilled(sel.r, sel.c)) return;
         // Notes only show on cells without a final digit. Adding a note
         // to a digit-occupied cell would visually clobber the digit, so
-        // we drop the digit first.
-        if (state.placements[sel.r][sel.c] !== 0) {
-            state.placements[sel.r][sel.c] = 0;
-        }
+        // we drop the digit first. Dropping it can resolve a conflict,
+        // so we go through the standard recompute path.
+        const hadDigit = state.placements[sel.r][sel.c] !== 0;
+        if (hadDigit) state.placements[sel.r][sel.c] = 0;
         const set = state.notes[sel.r][sel.c];
         if (set.has(d)) set.delete(d); else set.add(d);
-        scheduleViolationRefresh();
-        repaintSymbols();
-        updateStatusRow();
+        if (hadDigit) {
+            afterPlacementChange(sel.r, sel.c);
+        } else {
+            // Notes don't participate in violation checks, so we can skip
+            // the recompute entirely and just repaint the symbol layer.
+            repaintSymbols();
+        }
     }
 
     function onKeypadDigit(d) {
@@ -683,17 +739,16 @@
         if (isPrefilled(sel.r, sel.c)) return;
         state.placements[sel.r][sel.c] = 0;
         state.notes[sel.r][sel.c].clear();
-        afterPlacementChange();
+        afterPlacementChange(sel.r, sel.c);
     }
 
     /**
      * Shared "after the player edited a cell" tail: re-check rules, then
-     * either fire the win path or refresh the violation overlay.
-     * Centralising this avoids drift between fillDigit / eraseSelected,
-     * and ensures the recompute always happens (the original
-     * eraseSelected forgot, leaving stale conflicts on screen).
+     * either fire the win path or refresh the violation overlay. The
+     * (r, c) coordinates of the edit are forwarded so the partial-refresh
+     * logic knows which conflict groups to debounce.
      */
-    function afterPlacementChange() {
+    function afterPlacementChange(r, c) {
         recomputeViolations();
         if (checkWin() && !state.won) {
             state.won = true;
@@ -707,7 +762,7 @@
             updateStatusRow();
             return;
         }
-        scheduleViolationRefresh();
+        scheduleViolationRefresh(r, c);
         repaintSelection();
         repaintSymbols();
         updateStatusRow();
@@ -828,7 +883,7 @@
         dom.newGameBtn = document.getElementById('new-game-btn');
         dom.resetBtn = document.getElementById('reset-btn');
         dom.revealBtn = document.getElementById('reveal-btn');
-        dom.notesBtn = document.getElementById('notes-btn');
+        dom.notesBtn = null; // populated by buildKeypad
         dom.timer = document.getElementById('timer');
         dom.violations = document.getElementById('violations');
         dom.violationsText = document.getElementById('violations-text');
@@ -851,7 +906,6 @@
         dom.newGameBtn.addEventListener('click', startNewGame);
         dom.resetBtn.addEventListener('click', resetPlacements);
         dom.revealBtn.addEventListener('click', toggleReveal);
-        dom.notesBtn.addEventListener('click', toggleNotesMode);
         dom.board.addEventListener('click', onBoardClick);
         // Keyboard input is captured globally; we don't require the SVG
         // to be focused because it's awkward to focus a `<svg>` reliably
