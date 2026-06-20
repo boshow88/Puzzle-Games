@@ -374,6 +374,78 @@
     fill: rgba(0, 0, 0, 0.06);
 }
 
+/* ---- Sudoku-specific ---- */
+
+/* Selection backdrop: same row / col / box gets a soft tint, the focused
+   cell gets a stronger tint, and any cell that shares the focused cell's
+   digit gets a third subtle tint. Drawn below symbols, above the cell
+   background. */
+.cell-select.peer  { fill: rgba(46, 125, 50, 0.08); }
+.cell-select.same  { fill: rgba(46, 125, 50, 0.16); }
+.cell-select.focus { fill: rgba(46, 125, 50, 0.28); }
+
+/* Main digits sit dead-centre; player vs prefilled distinguished by
+   colour only (no weight change — same convention as Tango). */
+.symbol.digit          { fill: #1d6b21; }
+.symbol.digit.prefilled { fill: #111827; }
+
+/* Pencil notes live in a sub-grid (rendered as small text nodes); the
+   grid layout itself is computed in JS based on box shape. */
+.symbol.note {
+    pointer-events: none;
+    user-select: none;
+    fill: #6c757d;
+    font-family: var(--font-body);
+}
+
+/* On-screen number pad (below the board). Keys are evenly spaced and
+   stretch to fill the row, so it scales nicely from 6 to 9 digits. */
+.keypad {
+    display: grid;
+    grid-template-columns: repeat(var(--keypad-cols, 9), minmax(0, 1fr));
+    gap: var(--space-xs);
+    margin-top: var(--space-md);
+}
+
+.keypad-btn {
+    appearance: none;
+    border: 1px solid var(--border-strong);
+    background: var(--bg-secondary);
+    color: var(--text-primary);
+    font-size: 1.05rem;
+    font-weight: 600;
+    font-variant-numeric: tabular-nums;
+    padding: 12px 0;
+    border-radius: var(--radius-md);
+    cursor: pointer;
+    transition: background var(--transition-fast),
+        border-color var(--transition-fast),
+        color var(--transition-fast),
+        transform var(--transition-fast);
+}
+
+.keypad-btn:hover {
+    background: var(--bg-hover);
+    border-color: var(--text-muted);
+}
+
+.keypad-btn:active {
+    transform: translateY(1px);
+}
+
+.keypad-btn.erase {
+    color: var(--text-secondary);
+    font-weight: 500;
+}
+
+/* When Notes mode is active the digits switch to a "writing pencil
+   marks" look. */
+.keypad.notes-mode .keypad-btn:not(.erase) {
+    background: rgba(46, 125, 50, 0.08);
+    color: #1d6b21;
+    border-color: rgba(46, 125, 50, 0.4);
+}
+
 /* ----------------------------------------------------------------
    Help / footer hints
    ---------------------------------------------------------------- */

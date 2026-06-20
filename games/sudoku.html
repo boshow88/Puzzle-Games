@@ -1,0 +1,95 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sudoku · Puzzle Games</title>
+    <link rel="icon" type="image/svg+xml" href="../favicon.svg">
+    <link rel="stylesheet" href="../css/common.css">
+    <link rel="stylesheet" href="../css/game.css">
+    <style>
+        body { --game-color: #2e7d32; }
+    </style>
+</head>
+<body>
+    <div class="game-shell">
+        <header class="game-topbar">
+            <a class="back-link" href="../index.html">← Menu</a>
+            <div class="game-title">
+                <span class="game-icon" aria-hidden="true">🔢</span>
+                <span>Sudoku</span>
+            </div>
+            <span class="topbar-spacer"></span>
+        </header>
+
+        <section class="game-toolbar" aria-label="Game settings">
+            <div class="toolbar-group">
+                <span class="toolbar-label">Difficulty</span>
+                <div class="toolbar-control">
+                    <div class="segmented" id="difficulty-seg" role="radiogroup" aria-label="Difficulty">
+                        <button type="button" data-value="easy" role="radio">Easy</button>
+                        <button type="button" data-value="medium" role="radio" class="active">Medium</button>
+                        <button type="button" data-value="hard" role="radio">Hard</button>
+                    </div>
+                </div>
+            </div>
+
+            <div class="toolbar-group">
+                <span class="toolbar-label">Board size</span>
+                <div class="toolbar-control">
+                    <div class="segmented" id="size-seg" role="radiogroup" aria-label="Board size">
+                        <button type="button" data-value="6" role="radio">6×6</button>
+                        <button type="button" data-value="9" role="radio" class="active">9×9</button>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <div class="action-row">
+            <button class="btn btn-primary" id="new-game-btn" type="button">New Game</button>
+            <button class="btn" id="reset-btn" type="button" title="Clear placements">↻ Reset</button>
+            <button class="btn toggle" id="notes-btn" type="button" aria-pressed="false" title="Toggle pencil-mark mode (N)">✎ Notes</button>
+            <button class="btn toggle" id="reveal-btn" type="button" aria-pressed="false" title="Show solution overlay">? Reveal</button>
+        </div>
+
+        <div class="status-row" aria-live="polite">
+            <span class="status-item">
+                <span class="timer" id="timer">00:00</span>
+            </span>
+            <span class="status-item violations" id="violations" hidden>
+                <span id="violations-text"></span>
+            </span>
+            <span class="status-item win-message" id="win-message" hidden>You Win! ✨</span>
+        </div>
+
+        <div class="board-wrap">
+            <svg class="board-svg"
+                 id="board"
+                 viewBox="-3 -3 486 486"
+                 xmlns="http://www.w3.org/2000/svg"
+                 role="application"
+                 aria-label="Sudoku puzzle board"
+                 tabindex="0">
+            </svg>
+        </div>
+
+        <div class="keypad" id="keypad" aria-label="Number pad">
+            <!-- Digit buttons populated by JS based on board size. -->
+        </div>
+
+        <section class="game-footer">
+            <h4>How to play</h4>
+            <ul>
+                <li>Click a cell to select it. Pre-filled (locked) cells stay grey.</li>
+                <li>Fill a digit with the on-screen keypad or your keyboard. The same key again clears that digit.</li>
+                <li>Toggle <strong>✎ Notes</strong> (or press <kbd>N</kbd>) to write small candidate marks instead of a full digit.</li>
+                <li>Each <strong>row</strong>, <strong>column</strong> and <strong>box</strong> must contain every digit exactly once.</li>
+                <li><kbd>Backspace</kbd> / <kbd>Delete</kbd> / <kbd>0</kbd> clears the cell. Arrow keys move the selection.</li>
+            </ul>
+        </section>
+    </div>
+
+    <script src="../js/common.js"></script>
+    <script src="../js/games/sudoku.js"></script>
+</body>
+</html>
