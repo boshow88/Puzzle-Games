@@ -32,9 +32,14 @@
         '#88DDDD', '#DDAA77', '#99BB99', '#CCAAFF',
     ];
 
-    const BOARD_SIZE = 480; // SVG viewBox
+    const BOARD_SIZE = 480; // logical board area; SVG viewBox adds padding for outer stroke
     const STATES = { EMPTY: 0, MARK: 1, QUEEN: 2 };
     const STATE_CYCLE = [STATES.EMPTY, STATES.MARK, STATES.QUEEN]; // click order
+
+    // Delay before red violation slashes appear after a placement change.
+    // Matches the tk backup's "don't pester the player while they're still
+    // cycling cells" behaviour.
+    const VIOLATION_DELAY_MS = 800;
 
     // -----------------------------------------------------------------
     // Dummy puzzle generator (placeholder — to be replaced)
@@ -181,21 +186,58 @@
     // -----------------------------------------------------------------
 
     const state = {
-        puzzle: null,           // current puzzle JSON
-        placements: null,       // int[N][N] of STATES.*
+        puzzle: null,                   // current puzzle JSON
+        placements: null,               // int[N][N] of STATES.*
         revealed: false,
         won: false,
         size: 8,
         difficulty: 'medium',
-        violations: null,       // bool[N][N] mirroring queens that conflict
+
+        // Two layers of violation state:
+        //   `violations` / `conflictPairs`           — recomputed instantly,
+        //                                              used to decide win.
+        //   `displayedViolations` / `displayedPairs` — what the UI shows,
+        //                                              committed only after
+        //                                              VIOLATION_DELAY_MS of
+        //                                              no further clicks.
+        violations: null,
+        conflictPairs: 0,
+        displayedViolations: null,
+        displayedPairs: 0,
+        violationTimer: null,
+
         timer: null,
     };
+
+    function emptyViolationGrid(N) {
+        return Array.from({ length: N }, () => new Array(N).fill(false));
+    }
 
     function ensurePlacementsForCurrent() {
         const N = state.puzzle.size;
         state.placements = Array.from({ length: N }, () => new Array(N).fill(STATES.EMPTY));
-        state.violations = Array.from({ length: N }, () => new Array(N).fill(false));
+        state.violations = emptyViolationGrid(N);
+        state.conflictPairs = 0;
+        state.displayedViolations = emptyViolationGrid(N);
+        state.displayedPairs = 0;
+        cancelViolationTimer();
         state.won = false;
+    }
+
+    function cancelViolationTimer() {
+        if (state.violationTimer) {
+            clearTimeout(state.violationTimer);
+            state.violationTimer = null;
+        }
+    }
+
+    function commitViolationDisplay() {
+        state.violationTimer = null;
+        if (!state.violations) return;
+        state.displayedViolations = state.violations.map((row) => row.slice());
+        state.displayedPairs = state.conflictPairs;
+        repaintSymbols();
+        updateStatusRow();
     }
 
     // -----------------------------------------------------------------
@@ -213,8 +255,12 @@
                 }
             }
         }
-        const flagged = Array.from({ length: N }, () => new Array(N).fill(false));
+        const flagged = emptyViolationGrid(N);
+        let pairs = 0;
 
+        // A "conflict pair" is two queens that violate ANY rule (a pair that
+        // breaks multiple rules still counts as one pair). This matches the
+        // intuitive "how many conflicts do I need to resolve" question.
         for (let i = 0; i < queens.length; i++) {
             const [r1, c1] = queens[i];
             for (let j = i + 1; j < queens.length; j++) {
@@ -226,10 +272,12 @@
                 if (sameRow || sameCol || adj8 || sameRegion) {
                     flagged[r1][c1] = true;
                     flagged[r2][c2] = true;
+                    pairs += 1;
                 }
             }
         }
         state.violations = flagged;
+        state.conflictPairs = pairs;
         return queens;
     }
 
@@ -237,12 +285,7 @@
         const N = state.puzzle.size;
         const queens = recomputeViolations();
         if (queens.length !== N) return false;
-        for (let r = 0; r < N; r++) {
-            for (let c = 0; c < N; c++) {
-                if (state.violations[r][c]) return false;
-            }
-        }
-        return true;
+        return state.conflictPairs === 0;
     }
 
     // -----------------------------------------------------------------
@@ -296,40 +339,27 @@
         }
         svg.appendChild(bgGroup);
 
-        // Layer: region borders (thick lines between differing regions; outer perimeter too)
+        // Layer: region borders (thick lines between differing regions and
+        // around the outer perimeter — same stroke width everywhere). The
+        // SVG viewBox has 3px of padding so the outer stroke isn't clipped.
         const borderGroup = PC.svgEl('g', { class: 'region-borders' });
+        const addBorder = (x1, y1, x2, y2) => {
+            borderGroup.appendChild(PC.svgEl('line', {
+                class: 'region-border', x1, y1, x2, y2,
+            }));
+        };
         for (let r = 0; r < N; r++) {
             for (let c = 0; c < N; c++) {
                 const rid = regions[r][c];
                 const { x, y, size } = cellRect(N, r, c);
-                // top edge
                 if (r === 0 || regions[r - 1][c] !== rid) {
-                    borderGroup.appendChild(PC.svgEl('line', {
-                        class: 'region-border',
-                        x1: x, y1: y, x2: x + size, y2: y,
-                    }));
+                    addBorder(x, y, x + size, y);
                 }
-                // left edge
                 if (c === 0 || regions[r][c - 1] !== rid) {
-                    borderGroup.appendChild(PC.svgEl('line', {
-                        class: 'region-border',
-                        x1: x, y1: y, x2: x, y2: y + size,
-                    }));
+                    addBorder(x, y, x, y + size);
                 }
-                // bottom edge (only at grid edge — internal bottoms are covered by next row's top)
-                if (r === N - 1) {
-                    borderGroup.appendChild(PC.svgEl('line', {
-                        class: 'region-border',
-                        x1: x, y1: y + size, x2: x + size, y2: y + size,
-                    }));
-                }
-                // right edge (only at grid edge)
-                if (c === N - 1) {
-                    borderGroup.appendChild(PC.svgEl('line', {
-                        class: 'region-border',
-                        x1: x + size, y1: y, x2: x + size, y2: y + size,
-                    }));
-                }
+                if (r === N - 1) addBorder(x, y + size, x + size, y + size);
+                if (c === N - 1) addBorder(x + size, y, x + size, y + size);
             }
         }
         svg.appendChild(borderGroup);
@@ -399,42 +429,44 @@
             }
         }
 
-        // Violations
-        for (let r = 0; r < N; r++) {
-            for (let c = 0; c < N; c++) {
-                if (!state.violations[r][c]) continue;
-                const inset = Math.max(4, cs * 0.18);
-                const x1 = c * cs + inset;
-                const y1 = r * cs + inset;
-                const x2 = (c + 1) * cs - inset;
-                const y2 = (r + 1) * cs - inset;
-                group.appendChild(PC.svgEl('line', {
-                    class: 'violation-line',
-                    x1, y1, x2, y2,
-                }));
-                group.appendChild(PC.svgEl('line', {
-                    class: 'violation-line',
-                    x1: x2, y1: y1, x2: x1, y2: y2,
-                }));
+        // Violations (read from the *displayed* buffer, which is debounced)
+        const vis = state.displayedViolations;
+        if (vis) {
+            for (let r = 0; r < N; r++) {
+                for (let c = 0; c < N; c++) {
+                    if (!vis[r][c]) continue;
+                    const inset = Math.max(4, cs * 0.18);
+                    const x1 = c * cs + inset;
+                    const y1 = r * cs + inset;
+                    const x2 = (c + 1) * cs - inset;
+                    const y2 = (r + 1) * cs - inset;
+                    group.appendChild(PC.svgEl('line', {
+                        class: 'violation-line',
+                        x1, y1, x2, y2,
+                    }));
+                    group.appendChild(PC.svgEl('line', {
+                        class: 'violation-line',
+                        x1: x2, y1: y1, x2: x1, y2: y2,
+                    }));
+                }
             }
         }
 
-        // Solution overlay (revealed)
+        // Solution overlay (Reveal). Always shown — even when the cell has a
+        // player mark or queen — but kept tiny in the corner so it never
+        // collides with the player's main symbol (which is centered).
         if (state.revealed && state.puzzle && state.puzzle.solution) {
             const sol = state.puzzle.solution;
-            const hintFont = Math.max(10, Math.floor(cs * 0.28));
+            const hintFont = Math.max(9, Math.floor(cs * 0.24));
             for (let r = 0; r < N; r++) {
                 const c = sol[r];
-                if (state.placements[r][c] !== STATES.EMPTY) continue;
-                const x = c * cs + cs * 0.16;
-                const y = r * cs + cs * 0.22;
                 const text = PC.svgEl('text', {
-                    class: 'symbol',
-                    x, y,
+                    class: 'symbol reveal-hint',
+                    x: c * cs + cs * 0.15,
+                    y: r * cs + cs * 0.18,
                     'text-anchor': 'middle',
                     'dominant-baseline': 'central',
                     'font-size': hintFont,
-                    fill: 'rgba(25, 135, 84, 0.85)',
                 });
                 text.textContent = '♛';
                 group.appendChild(text);
@@ -443,20 +475,12 @@
     }
 
     function updateStatusRow() {
-        // Violations count = number of queens flagged
-        let v = 0;
-        if (state.puzzle && state.violations) {
-            const N = state.puzzle.size;
-            for (let r = 0; r < N; r++) {
-                for (let c = 0; c < N; c++) {
-                    if (state.violations[r][c]) v++;
-                }
-            }
-        }
+        const v = state.displayedPairs;
         if (v > 0) {
             dom.violations.hidden = false;
             dom.violations.classList.add('active');
-            dom.violationsText.textContent = `⚠ ${v} violation${v === 1 ? '' : 's'}`;
+            dom.violationsText.textContent =
+                `⚠ ${v} conflict${v === 1 ? '' : 's'}`;
         } else {
             dom.violations.hidden = true;
             dom.violations.classList.remove('active');
@@ -475,14 +499,33 @@
         const next = STATE_CYCLE[(idx + 1) % STATE_CYCLE.length];
         state.placements[r][c] = next;
 
+        // Recompute truth immediately so win detection stays snappy.
         const won = checkWin();
+
         if (won && !state.won) {
             state.won = true;
+            cancelViolationTimer();
+            // On a winning move there are by definition zero conflicts, so
+            // the displayed buffer is already empty after the next sync.
+            state.displayedViolations = emptyViolationGrid(state.puzzle.size);
+            state.displayedPairs = 0;
             const elapsed = state.timer ? state.timer.stop() : 0;
             PC.solves.log('queens', state.puzzle.size, state.puzzle.difficulty, elapsed);
+            repaintSymbols();
+            updateStatusRow();
+            return;
         }
+
+        // Not won: hide any currently-shown violation marks immediately and
+        // wait VIOLATION_DELAY_MS of no further clicks before showing the
+        // new ones. This stops the red slashes from flashing distractingly
+        // while the player is cycling through cell states.
+        cancelViolationTimer();
+        state.displayedViolations = emptyViolationGrid(state.puzzle.size);
+        state.displayedPairs = 0;
         repaintSymbols();
         updateStatusRow();
+        state.violationTimer = setTimeout(commitViolationDisplay, VIOLATION_DELAY_MS);
     }
 
     function onBoardClick(ev) {

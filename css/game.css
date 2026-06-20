@@ -3,6 +3,14 @@
    Builds on css/common.css. Designed for a 480×480 board area.
    ================================================================ */
 
+/* The HTML `hidden` attribute is normally `display: none` via UA styles,
+   but selectors like `.status-row .status-item { display: inline-flex }`
+   have higher specificity and silently override it. This restores the
+   expected behaviour. */
+[hidden] {
+    display: none !important;
+}
+
 .game-shell {
     max-width: 720px;
     margin: 0 auto;
@@ -278,12 +286,23 @@
     stroke-width: 1;
 }
 
-/* Region borders: thicker, on top */
+/* Region borders. The same stroke width is used for the outer frame and
+   the lines between adjacent regions so the visual weight is consistent.
+   The 3px padding in the SVG viewBox prevents the outer stroke from
+   being clipped by the viewport edge. */
 .region-border {
     stroke: #1f2937;
     stroke-width: 3;
     stroke-linecap: square;
     pointer-events: none;
+}
+
+/* Small queen hint shown when Reveal is toggled on; sits in the top-left
+   corner of each cell so it never collides with the player's symbol. */
+.reveal-hint {
+    pointer-events: none;
+    fill: rgba(25, 135, 84, 0.92);
+    font-family: var(--font-body);
 }
 
 /* Symbols */
