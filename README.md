@@ -8,7 +8,7 @@ Pure static HTML/CSS/JS — deployable on GitHub Pages.
 | Game   | Status        | Notes                                          |
 | ------ | ------------- | ---------------------------------------------- |
 | Queens | Playable      | Dummy in-browser puzzle generator              |
-| Tango  | Coming soon   |                                                |
+| Tango  | Playable      | Dummy in-browser puzzle generator              |
 | Sudoku | Coming soon   |                                                |
 | Zip    | Coming soon   |                                                |
 

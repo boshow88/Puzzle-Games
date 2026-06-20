@@ -297,12 +297,41 @@
     pointer-events: none;
 }
 
-/* Small queen hint shown when Reveal is toggled on; sits in the top-left
+/* Small symbol shown when Reveal is toggled on; sits in the top-left
    corner of each cell so it never collides with the player's symbol. */
 .reveal-hint {
     pointer-events: none;
     fill: rgba(25, 135, 84, 0.92);
     font-family: var(--font-body);
+}
+
+/* ---- Tango-specific ---- */
+
+/* Sun / moon use the same text mechanism as Queens' ♛ but coloured. */
+.symbol.sun  { fill: #f5a623; }
+.symbol.moon { fill: #4a6fa5; }
+
+/* Pre-filled cells: slightly darker background so the player can tell at
+   a glance which cells are locked. The symbol itself stays the same weight
+   as the player-placed ones — background contrast alone is sufficient. */
+.cell-bg.prefilled {
+    fill: #e6e8ee;
+}
+
+/* Constraint glyph (=/×) sitting right on the cell boundary. A white
+   `paint-order: stroke fill` halo carves away the thin grid line where
+   the glyph crosses it, so the symbol reads cleanly even without a
+   background bubble. */
+.wall-glyph {
+    pointer-events: none;
+    user-select: none;
+    fill: #1f2937;
+    font-weight: 700;
+    font-family: var(--font-body);
+    paint-order: stroke fill;
+    stroke: var(--bg-secondary);
+    stroke-width: 4px;
+    stroke-linejoin: round;
 }
 
 /* Symbols */

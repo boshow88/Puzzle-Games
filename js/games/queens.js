@@ -410,7 +410,8 @@
                         class: cls,
                         x: cx, y: cy,
                         'text-anchor': 'middle',
-                        'dominant-baseline': 'central',
+                        'dominant-baseline': 'middle',
+                        dy: '0.08em',
                         'font-size': symbolFont,
                     });
                     text.textContent = '♛';
@@ -420,7 +421,8 @@
                         class: 'symbol mark',
                         x: cx, y: cy,
                         'text-anchor': 'middle',
-                        'dominant-baseline': 'central',
+                        'dominant-baseline': 'middle',
+                        dy: '0.04em',
                         'font-size': markFont,
                     });
                     text.textContent = '×';
@@ -465,7 +467,8 @@
                     x: c * cs + cs * 0.15,
                     y: r * cs + cs * 0.18,
                     'text-anchor': 'middle',
-                    'dominant-baseline': 'central',
+                    'dominant-baseline': 'middle',
+                    dy: '0.08em',
                     'font-size': hintFont,
                 });
                 text.textContent = '♛';
