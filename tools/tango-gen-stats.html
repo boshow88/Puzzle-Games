@@ -1,0 +1,106 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <title>Tango generator stats</title>
+    <style>
+        body { font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+               background: #fafafa; color: #222; padding: 24px;
+               line-height: 1.5; }
+        h1 { font-family: system-ui, sans-serif; font-size: 18px;
+             margin: 0 0 12px; }
+        p { font-family: system-ui, sans-serif; margin: 0 0 16px;
+            color: #555; }
+        table { border-collapse: collapse; }
+        th, td { padding: 6px 12px; text-align: right; border-bottom: 1px solid #eee; }
+        th:first-child, td:first-child { text-align: left; }
+        th { background: #f0f0f0; }
+        .warn { color: #c0392b; font-weight: bold; }
+        button { font: inherit; padding: 6px 14px; cursor: pointer;
+                 margin-bottom: 16px; }
+    </style>
+</head>
+<body>
+    <h1>Tango generator stats</h1>
+    <p>
+        Runs N puzzles per (size, difficulty) combination and reports the
+        average prefill count, wall count, and any L1/L3 self-check
+        failures. Open the browser console for warnings.
+    </p>
+
+    <label>Runs per combo: <input id="k" type="number" value="20" min="1" max="500"></label>
+    <button id="run">Generate</button>
+
+    <pre id="out" style="font-size: 13px;">Click "Generate".</pre>
+
+    <script src="../js/common.js"></script>
+    <script src="../js/generators/tango.js"></script>
+    <script>
+        const SIZES = [6, 8, 10];
+        const DIFFS = ['easy', 'medium', 'hard'];
+
+        function run(K) {
+            const rows = [['size', 'difficulty', 'prefill avg', 'prefill%',
+                'walls avg', 'L3 erases', 'L3 required avg',
+                'L3 required puzzles', 'attempts avg', 'time avg ms',
+                'warnings']];
+            let totalWarn = 0;
+            const origWarn = console.warn;
+            for (const N of SIZES) {
+                for (const d of DIFFS) {
+                    let pSum = 0, wSum = 0, l3Sum = 0;
+                    let l3rSum = 0, l3rCount = 0, atSum = 0, tSum = 0, warns = 0;
+                    console.warn = function () { warns += 1; origWarn.apply(console, arguments); };
+                    for (let i = 0; i < K; i++) {
+                        const seed = ((Date.now() + i * 0x9e3779b9) >>> 0);
+                        const t0 = performance.now();
+                        const p = window.PuzzleGenerators.tango(N, d, seed);
+                        const t1 = performance.now();
+                        pSum += p.stats.prefillCount;
+                        wSum += p.stats.wallCount;
+                        l3Sum += p.stats.l3Erases;
+                        l3rSum += p.stats.l3RequiredCells;
+                        if (p.stats.l3RequiredCells > 0) l3rCount += 1;
+                        atSum += p.stats.attemptsUsed || 1;
+                        tSum += (t1 - t0);
+                    }
+                    console.warn = origWarn;
+                    totalWarn += warns;
+                    const total = N * N;
+                    rows.push([
+                        `${N}x${N}`,
+                        d,
+                        (pSum / K).toFixed(1) + '/' + total,
+                        ((pSum / K / total) * 100).toFixed(0) + '%',
+                        (wSum / K).toFixed(1),
+                        (l3Sum / K).toFixed(1),
+                        (l3rSum / K).toFixed(1),
+                        l3rCount + '/' + K,
+                        (atSum / K).toFixed(1),
+                        (tSum / K).toFixed(1),
+                        warns > 0 ? `${warns} bad` : 'ok',
+                    ]);
+                }
+            }
+            // Render as a fixed-width text table.
+            const widths = rows[0].map((_, i) =>
+                Math.max(...rows.map((r) => String(r[i]).length)));
+            const lines = rows.map((r) =>
+                r.map((cell, i) => String(cell).padEnd(widths[i] + 2)).join(''));
+            // Underline header.
+            lines.splice(1, 0, widths.map((w) => '-'.repeat(w)).join('  '));
+            return lines.join('\n')
+                + (totalWarn > 0
+                    ? `\n\n${totalWarn} self-check warnings — see console.`
+                    : '\n\nNo self-check warnings.');
+        }
+
+        document.getElementById('run').addEventListener('click', () => {
+            const K = parseInt(document.getElementById('k').value, 10) || 20;
+            const out = document.getElementById('out');
+            out.textContent = 'Running…';
+            setTimeout(() => { out.textContent = run(K); }, 0);
+        });
+    </script>
+</body>
+</html>
