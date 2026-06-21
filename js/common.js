@@ -196,6 +196,250 @@
     }
 
     // -----------------------------------------------------------------
+    // Game shell
+    //
+    // Every game page shares the same chrome: a difficulty segmented
+    // control, a size selector (slider or segmented), New / Reset /
+    // Reveal buttons, a timer, and a win badge. `createShell` owns that
+    // wiring so each game only writes its own rules + rendering.
+    //
+    // The shell handles:
+    //   - Reading / writing prefs (game id namespaced).
+    //   - Wiring difficulty buttons; difficulty values are read from
+    //     `data-value` on the segmented control's buttons.
+    //   - Wiring the size control. Two kinds:
+    //       { kind: 'slider', min, max, default }
+    //       { kind: 'segmented', default }   (values from data-value)
+    //     The shell expects the matching DOM ids in the page.
+    //   - Wiring New / Reset / Reveal buttons.
+    //   - Owning `shell.revealed` and keeping the button's
+    //     `active` class + `aria-pressed` in sync. Whenever a new game
+    //     starts the shell resets `revealed` to false automatically.
+    //   - Creating a Timer bound to `#timer`.
+    //   - `setWin(bool)` toggling `#win-message` visibility.
+    //   - `setViolationCount(n)` for the three games that share the
+    //     "⚠ N conflict(s)" pill format. Zip ignores this and writes
+    //     into its own pill element directly.
+    //
+    // The game supplies callbacks:
+    //   onNewGame()         — start a fresh puzzle (timer is auto-started
+    //                         by the shell *after* onNewGame returns)
+    //   onReset()           — clear placements but keep the same puzzle
+    //                         (also followed by an auto timer restart)
+    //   onReveal(revealed)  — repaint to reflect the new reveal state
+    //
+    // Returned shell object exposes:
+    //   shell.dom.board    — the SVG board element
+    //   shell.timer        — PC.timer instance (already wired to #timer)
+    //   shell.difficulty   — current difficulty string
+    //   shell.size         — current size number
+    //   shell.revealed     — current reveal flag (read-only from games)
+    //   shell.setWin(b)
+    //   shell.setViolationCount(n)
+    //   shell.markSolved() — convenience: stops timer + logs solve +
+    //                        sets win. Returns elapsed ms.
+    //   shell.start()      — fire the first game. Caller is responsible
+    //                        for invoking this after attaching their
+    //                        own board listeners.
+    // -----------------------------------------------------------------
+
+    const DIFFICULTY_VALUES = ['easy', 'medium', 'hard'];
+
+    function createShell(opts) {
+        const gameId = opts.gameId;
+        const sizeCfg = opts.size;
+        const diffCfg = opts.difficulty || { default: 'medium' };
+        const onNewGame = opts.onNewGame || (() => {});
+        const onReset = opts.onReset || (() => {});
+        const onReveal = opts.onReveal || (() => {});
+
+        const dom = {
+            board: document.getElementById('board'),
+            difficultySeg: document.getElementById('difficulty-seg'),
+            sizeSeg: document.getElementById('size-seg'),
+            sizeSlider: document.getElementById('size-slider'),
+            sizeReadout: document.getElementById('size-readout'),
+            newGameBtn: document.getElementById('new-game-btn'),
+            resetBtn: document.getElementById('reset-btn'),
+            revealBtn: document.getElementById('reveal-btn'),
+            timer: document.getElementById('timer'),
+            violations: document.getElementById('violations'),
+            violationsText: document.getElementById('violations-text'),
+            winMessage: document.getElementById('win-message'),
+        };
+
+        const prefs = getPrefs(gameId);
+
+        // For segmented size we read the legal values from the page so we
+        // can both validate stored prefs and reject bogus button clicks.
+        let segmentedSizes = null;
+        if (sizeCfg.kind === 'segmented' && dom.sizeSeg) {
+            segmentedSizes = Array.from(dom.sizeSeg.querySelectorAll('button'))
+                .map((b) => parseInt(b.dataset.value, 10))
+                .filter((n) => !Number.isNaN(n));
+        }
+
+        let difficulty = (DIFFICULTY_VALUES.includes(prefs.difficulty)
+            ? prefs.difficulty : diffCfg.default);
+        let size;
+        if (sizeCfg.kind === 'slider') {
+            const fallback = sizeCfg.default;
+            size = clamp(prefs.size || fallback, sizeCfg.min, sizeCfg.max);
+        } else {
+            size = (typeof prefs.size === 'number'
+                && segmentedSizes && segmentedSizes.includes(prefs.size))
+                ? prefs.size : sizeCfg.default;
+        }
+        let revealed = false;
+
+        const timer = createTimer(dom.timer);
+
+        const shell = {
+            dom,
+            timer,
+            get difficulty() { return difficulty; },
+            get size() { return size; },
+            get revealed() { return revealed; },
+            setWin(b) {
+                if (dom.winMessage) dom.winMessage.hidden = !b;
+            },
+            setViolationCount(n) {
+                if (!dom.violations || !dom.violationsText) return;
+                if (n > 0) {
+                    dom.violations.hidden = false;
+                    dom.violations.classList.add('active');
+                    dom.violationsText.textContent =
+                        `⚠ ${n} conflict${n === 1 ? '' : 's'}`;
+                } else {
+                    dom.violations.hidden = true;
+                    dom.violations.classList.remove('active');
+                }
+            },
+            markSolved() {
+                const elapsed = timer.stop();
+                logSolve(gameId, size, difficulty, elapsed);
+                shell.setWin(true);
+                return elapsed;
+            },
+        };
+
+        function syncRevealButton() {
+            if (!dom.revealBtn) return;
+            dom.revealBtn.classList.toggle('active', revealed);
+            dom.revealBtn.setAttribute(
+                'aria-pressed', revealed ? 'true' : 'false');
+        }
+
+        function syncDifficultyButtons() {
+            if (!dom.difficultySeg) return;
+            dom.difficultySeg.querySelectorAll('button').forEach((btn) => {
+                btn.classList.toggle('active', btn.dataset.value === difficulty);
+            });
+        }
+
+        function syncSizeButtons() {
+            if (sizeCfg.kind === 'segmented' && dom.sizeSeg) {
+                dom.sizeSeg.querySelectorAll('button').forEach((btn) => {
+                    btn.classList.toggle('active',
+                        parseInt(btn.dataset.value, 10) === size);
+                });
+            } else if (sizeCfg.kind === 'slider' && dom.sizeSlider) {
+                dom.sizeSlider.value = String(size);
+                if (dom.sizeReadout) {
+                    dom.sizeReadout.textContent = `${size}×${size}`;
+                }
+            }
+        }
+
+        function startFreshGame() {
+            revealed = false;
+            syncRevealButton();
+            shell.setWin(false);
+            onNewGame();
+            timer.start();
+        }
+
+        function applyReset() {
+            shell.setWin(false);
+            onReset();
+            timer.start();
+        }
+
+        function setDifficulty(value) {
+            if (!DIFFICULTY_VALUES.includes(value)) return;
+            if (value === difficulty) return;
+            difficulty = value;
+            syncDifficultyButtons();
+            setPrefs(gameId, { difficulty });
+            startFreshGame();
+        }
+
+        function setSize(rawValue) {
+            let n;
+            if (sizeCfg.kind === 'slider') {
+                n = clamp(parseInt(rawValue, 10) || sizeCfg.default,
+                    sizeCfg.min, sizeCfg.max);
+            } else {
+                n = parseInt(rawValue, 10);
+                if (!segmentedSizes || !segmentedSizes.includes(n)) return;
+            }
+            if (n === size) return;
+            size = n;
+            syncSizeButtons();
+            setPrefs(gameId, { size });
+            startFreshGame();
+        }
+
+        function toggleReveal() {
+            revealed = !revealed;
+            syncRevealButton();
+            onReveal(revealed);
+        }
+
+        // ---------- wire DOM events ----------
+
+        if (dom.difficultySeg) {
+            dom.difficultySeg.querySelectorAll('button').forEach((btn) => {
+                btn.addEventListener('click',
+                    () => setDifficulty(btn.dataset.value));
+            });
+        }
+
+        if (sizeCfg.kind === 'segmented' && dom.sizeSeg) {
+            dom.sizeSeg.querySelectorAll('button').forEach((btn) => {
+                btn.addEventListener('click',
+                    () => setSize(btn.dataset.value));
+            });
+        } else if (sizeCfg.kind === 'slider' && dom.sizeSlider) {
+            dom.sizeSlider.addEventListener('change',
+                (ev) => setSize(ev.target.value));
+        }
+
+        if (dom.newGameBtn) {
+            dom.newGameBtn.addEventListener('click', startFreshGame);
+        }
+        if (dom.resetBtn) {
+            dom.resetBtn.addEventListener('click', applyReset);
+        }
+        if (dom.revealBtn) {
+            dom.revealBtn.addEventListener('click', toggleReveal);
+        }
+
+        // ---------- initial paint ----------
+
+        syncDifficultyButtons();
+        syncSizeButtons();
+        syncRevealButton();
+        shell.setWin(false);
+
+        // The caller decides when to fire the first game (after attaching
+        // its own board listeners) by calling shell.start().
+        shell.start = startFreshGame;
+
+        return shell;
+    }
+
+    // -----------------------------------------------------------------
     // Public surface
     // -----------------------------------------------------------------
 
@@ -204,6 +448,7 @@
         prefs: { get: getPrefs, set: setPrefs },
         solves: { log: logSolve, get: getSolveStats },
         timer: createTimer,
+        shell: { create: createShell },
         rng: { make: makeRng, pickInt: pickRandomInt, shuffle: shuffleInPlace },
         clamp,
         el,

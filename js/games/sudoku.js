@@ -34,7 +34,6 @@
 
     const BOARD_SIZE = 480;
     const VIOLATION_DELAY_MS = 800;
-    const VALID_SIZES = [6, 9];
 
     /** Box dimensions per board size (rows × cols of a single box). */
     const BOX_SHAPE = {
@@ -173,10 +172,7 @@
         notes: null,        // Set<int>[N][N]; pencil marks (only on non-prefilled)
         selected: null,     // { r, c } | null
         notesMode: false,
-        revealed: false,
         won: false,
-        size: 6,
-        difficulty: 'medium',
 
         violations: null,         // bool[N][N], any-cell-in-any-conflict
         violationGroups: [],      // [{ kind, key, cells }] for partial refresh
@@ -184,9 +180,9 @@
         displayedViolations: null,
         displayedPairs: 0,
         violationTimer: null,
-
-        timer: null,
     };
+
+    let shell = null;
 
     function emptyViolationGrid(N) {
         return Array.from({ length: N }, () => new Array(N).fill(false));
@@ -346,20 +342,10 @@
     // Rendering
     // -----------------------------------------------------------------
 
-    const dom = {
-        board: null,
-        difficultySeg: null,
-        sizeSeg: null,
-        newGameBtn: null,
-        resetBtn: null,
-        revealBtn: null,
-        notesBtn: null,
-        timer: null,
-        violations: null,
-        violationsText: null,
-        winMessage: null,
-        keypad: null,
-    };
+    // Sudoku-specific DOM. The shell owns the toolbar / status row.
+    let board = null;
+    let keypad = null;
+    let notesBtn = null; // populated by buildKeypad
 
     function cellRect(N, r, c) {
         const cs = BOARD_SIZE / N;
@@ -368,7 +354,7 @@
 
     function renderBoard() {
         const N = state.puzzle.size;
-        const svg = dom.board;
+        const svg = board;
         while (svg.firstChild) svg.removeChild(svg.firstChild);
 
         const cs = BOARD_SIZE / N;
@@ -450,7 +436,7 @@
     function repaintSelection() {
         const N = state.puzzle.size;
         const cs = BOARD_SIZE / N;
-        const group = dom.board.querySelector('#select');
+        const group = board.querySelector('#select');
         if (!group) return;
         while (group.firstChild) group.removeChild(group.firstChild);
 
@@ -482,7 +468,7 @@
         const N = state.puzzle.size;
         const cs = BOARD_SIZE / N;
         const { boxRows, boxCols } = state.puzzle;
-        const group = dom.board.querySelector('#symbols');
+        const group = board.querySelector('#symbols');
         while (group.firstChild) group.removeChild(group.firstChild);
 
         const digitFont = Math.max(20, Math.floor(cs * 0.62));
@@ -558,7 +544,7 @@
 
         // Reveal: tiny solution digit in the top-left corner of every
         // player-editable cell (prefilled cells already show the answer).
-        if (state.revealed && state.puzzle && state.puzzle.solution) {
+        if (shell.revealed && state.puzzle && state.puzzle.solution) {
             const sol = state.puzzle.solution;
             const hintFont = Math.max(9, Math.floor(cs * 0.22));
             for (let r = 0; r < N; r++) {
@@ -581,17 +567,8 @@
     }
 
     function updateStatusRow() {
-        const v = state.displayedPairs;
-        if (v > 0) {
-            dom.violations.hidden = false;
-            dom.violations.classList.add('active');
-            dom.violationsText.textContent =
-                `⚠ ${v} conflict${v === 1 ? '' : 's'}`;
-        } else {
-            dom.violations.hidden = true;
-            dom.violations.classList.remove('active');
-        }
-        dom.winMessage.hidden = !state.won;
+        shell.setViolationCount(state.displayedPairs);
+        shell.setWin(state.won);
     }
 
     // -----------------------------------------------------------------
@@ -607,8 +584,8 @@
         // each key matches the position of that digit inside one Sudoku
         // box (e.g. 9×9 → familiar 3×3 phone-pad; 6×6 → 2×3). Mode
         // controls (Notes / Erase) live in a separate row underneath.
-        dom.keypad.style.setProperty('--keypad-box-cols', String(boxCols));
-        while (dom.keypad.firstChild) dom.keypad.removeChild(dom.keypad.firstChild);
+        keypad.style.setProperty('--keypad-box-cols', String(boxCols));
+        while (keypad.firstChild) keypad.removeChild(keypad.firstChild);
 
         const digits = PC.el('div', { class: 'keypad-digits' });
         for (let d = 1; d <= N; d++) {
@@ -621,10 +598,10 @@
             btn.addEventListener('click', () => onKeypadDigit(d));
             digits.appendChild(btn);
         }
-        dom.keypad.appendChild(digits);
+        keypad.appendChild(digits);
 
         const actions = PC.el('div', { class: 'keypad-actions' });
-        const notesBtn = PC.el('button', {
+        notesBtn = PC.el('button', {
             type: 'button',
             class: 'keypad-btn notes-toggle',
             'aria-pressed': 'false',
@@ -633,7 +610,6 @@
         }, '✎ Notes');
         notesBtn.addEventListener('click', toggleNotesMode);
         actions.appendChild(notesBtn);
-        dom.notesBtn = notesBtn;
 
         const eraseBtn = PC.el('button', {
             type: 'button',
@@ -644,16 +620,16 @@
         eraseBtn.addEventListener('click', eraseSelected);
         actions.appendChild(eraseBtn);
 
-        dom.keypad.appendChild(actions);
+        keypad.appendChild(actions);
 
         updateKeypadMode();
     }
 
     function updateKeypadMode() {
-        dom.keypad.classList.toggle('notes-mode', state.notesMode);
-        if (dom.notesBtn) {
-            dom.notesBtn.classList.toggle('active', state.notesMode);
-            dom.notesBtn.setAttribute('aria-pressed', state.notesMode ? 'true' : 'false');
+        keypad.classList.toggle('notes-mode', state.notesMode);
+        if (notesBtn) {
+            notesBtn.classList.toggle('active', state.notesMode);
+            notesBtn.setAttribute('aria-pressed', state.notesMode ? 'true' : 'false');
         }
     }
 
@@ -770,8 +746,7 @@
             cancelViolationTimer();
             state.displayedViolations = emptyViolationGrid(state.puzzle.size);
             state.displayedPairs = 0;
-            const elapsed = state.timer ? state.timer.stop() : 0;
-            PC.solves.log('sudoku', state.puzzle.size, state.puzzle.difficulty, elapsed);
+            shell.markSolved();
             repaintSelection();
             repaintSymbols();
             updateStatusRow();
@@ -838,15 +813,11 @@
 
     function startNewGame() {
         const seed = (Date.now() ^ Math.floor(Math.random() * 0xffffffff)) >>> 0;
-        state.puzzle = generatePuzzle(state.size, state.difficulty, seed);
+        state.puzzle = generatePuzzle(shell.size, shell.difficulty, seed);
         ensurePlacementsForCurrent();
-        state.revealed = false;
-        dom.revealBtn.classList.remove('active');
-        dom.revealBtn.setAttribute('aria-pressed', 'false');
         renderBoard();
         buildKeypad();
         updateStatusRow();
-        if (state.timer) state.timer.start();
     }
 
     function resetPlacements() {
@@ -856,35 +827,6 @@
         repaintSelection();
         repaintSymbols();
         updateStatusRow();
-        if (state.timer) state.timer.start();
-    }
-
-    function toggleReveal() {
-        state.revealed = !state.revealed;
-        dom.revealBtn.classList.toggle('active', state.revealed);
-        dom.revealBtn.setAttribute('aria-pressed', state.revealed ? 'true' : 'false');
-        repaintSymbols();
-    }
-
-    function setDifficulty(value) {
-        if (!['easy', 'medium', 'hard'].includes(value)) return;
-        state.difficulty = value;
-        dom.difficultySeg.querySelectorAll('button').forEach((btn) => {
-            btn.classList.toggle('active', btn.dataset.value === value);
-        });
-        PC.prefs.set('sudoku', { difficulty: value });
-        startNewGame();
-    }
-
-    function setSize(value) {
-        const n = parseInt(value, 10);
-        if (!VALID_SIZES.includes(n)) return;
-        state.size = n;
-        dom.sizeSeg.querySelectorAll('button').forEach((btn) => {
-            btn.classList.toggle('active', parseInt(btn.dataset.value, 10) === n);
-        });
-        PC.prefs.set('sudoku', { size: n });
-        startNewGame();
     }
 
     // -----------------------------------------------------------------
@@ -892,44 +834,22 @@
     // -----------------------------------------------------------------
 
     function init() {
-        dom.board = document.getElementById('board');
-        dom.difficultySeg = document.getElementById('difficulty-seg');
-        dom.sizeSeg = document.getElementById('size-seg');
-        dom.newGameBtn = document.getElementById('new-game-btn');
-        dom.resetBtn = document.getElementById('reset-btn');
-        dom.revealBtn = document.getElementById('reveal-btn');
-        dom.notesBtn = null; // populated by buildKeypad
-        dom.timer = document.getElementById('timer');
-        dom.violations = document.getElementById('violations');
-        dom.violationsText = document.getElementById('violations-text');
-        dom.winMessage = document.getElementById('win-message');
-        dom.keypad = document.getElementById('keypad');
-
-        const prefs = PC.prefs.get('sudoku');
-        if (prefs.difficulty) state.difficulty = prefs.difficulty;
-        if (prefs.size && VALID_SIZES.includes(prefs.size)) state.size = prefs.size;
-
-        dom.difficultySeg.querySelectorAll('button').forEach((btn) => {
-            btn.classList.toggle('active', btn.dataset.value === state.difficulty);
-            btn.addEventListener('click', () => setDifficulty(btn.dataset.value));
+        shell = PC.shell.create({
+            gameId: 'sudoku',
+            difficulty: { default: 'medium' },
+            size: { kind: 'segmented', default: 6 },
+            onNewGame: startNewGame,
+            onReset: resetPlacements,
+            onReveal: repaintSymbols,
         });
-        dom.sizeSeg.querySelectorAll('button').forEach((btn) => {
-            btn.classList.toggle('active', parseInt(btn.dataset.value, 10) === state.size);
-            btn.addEventListener('click', () => setSize(btn.dataset.value));
-        });
-
-        dom.newGameBtn.addEventListener('click', startNewGame);
-        dom.resetBtn.addEventListener('click', resetPlacements);
-        dom.revealBtn.addEventListener('click', toggleReveal);
-        dom.board.addEventListener('click', onBoardClick);
+        board = shell.dom.board;
+        keypad = document.getElementById('keypad');
+        board.addEventListener('click', onBoardClick);
         // Keyboard input is captured globally; we don't require the SVG
         // to be focused because it's awkward to focus a `<svg>` reliably
-        // across browsers. The board still has tabindex="0" so screen
-        // readers can announce it.
+        // across browsers.
         window.addEventListener('keydown', onKeyDown);
-
-        state.timer = PC.timer(dom.timer);
-        startNewGame();
+        shell.start();
     }
 
     if (document.readyState === 'loading') {

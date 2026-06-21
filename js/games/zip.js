@@ -209,19 +209,16 @@
         path: [],                   // Array<[r, c]>; player's current path
         dragging: null,             // { pointerId, lastCell: [r,c] } | null
 
-        revealed: false,
         won: false,
-        size: 7,
-        difficulty: 'medium',
 
         // Derived puzzle indices (rebuilt on every newPuzzle for fast lookups)
         holeSet: null,              // Set of "r,c"
         wallSet: null,              // Set of edgeKey
         checkpointMap: null,        // Map "r,c" -> number
         accessibleCount: 0,         // count of non-hole cells
-
-        timer: null,
     };
+
+    let shell = null;
 
     function rebuildPuzzleIndices() {
         const p = state.puzzle;
@@ -310,19 +307,10 @@
     // Rendering
     // -----------------------------------------------------------------
 
-    const dom = {
-        board: null,
-        difficultySeg: null,
-        sizeSlider: null,
-        sizeReadout: null,
-        newGameBtn: null,
-        resetBtn: null,
-        revealBtn: null,
-        timer: null,
-        pathProgress: null,
-        pathProgressText: null,
-        winMessage: null,
-    };
+    // Zip-specific DOM. The shell owns the toolbar / timer / win badge;
+    // the path-progress pill is game-specific so we keep a ref here.
+    let board = null;
+    let pathProgressText = null;
 
     function cellCentre(N, r, c) {
         const cs = BOARD_SIZE / N;
@@ -332,7 +320,7 @@
     function renderBoard() {
         const p = state.puzzle;
         const N = p.size;
-        const svg = dom.board;
+        const svg = board;
         while (svg.firstChild) svg.removeChild(svg.firstChild);
 
         const cs = BOARD_SIZE / N;
@@ -451,7 +439,7 @@
     function repaintCheckpoints() {
         const p = state.puzzle;
         const N = p.size;
-        const group = dom.board.querySelector('#checkpoints');
+        const group = board.querySelector('#checkpoints');
         while (group.firstChild) group.removeChild(group.firstChild);
 
         const { cs } = cellCentre(N, 0, 0);
@@ -511,7 +499,7 @@
         // tint and the per-segment line colour. Skip entirely when the
         // puzzle has already been won (no longer in progress).
         const wrongStart = state.won ? -1 : computeWrongOrderStart();
-        const wrongLayer = dom.board.querySelector('#wrong-order');
+        const wrongLayer = board.querySelector('#wrong-order');
         while (wrongLayer.firstChild) wrongLayer.removeChild(wrongLayer.firstChild);
         if (wrongStart >= 0) {
             for (let i = wrongStart; i < state.path.length; i++) {
@@ -523,13 +511,13 @@
             }
         }
 
-        const group = dom.board.querySelector('#paths');
+        const group = board.querySelector('#paths');
         while (group.firstChild) group.removeChild(group.firstChild);
 
         const stroke = Math.max(10, Math.floor(cs * 0.36));
 
         // Reveal solution path underneath the player's, drawn in green.
-        if (state.revealed && !state.won && p.solution.length >= 2) {
+        if (shell.revealed && !state.won && p.solution.length >= 2) {
             const points = p.solution
                 .map(([r, c]) => `${c * cs + cs / 2},${r * cs + cs / 2}`)
                 .join(' ');
@@ -573,7 +561,7 @@
         // that's the "endpoint here" cue when the player has crossed
         // into a numbered cell. Both pieces switch to red whenever the
         // path is currently parked inside a wrong-order tail.
-        const headGroup = dom.board.querySelector('#path-head');
+        const headGroup = board.querySelector('#path-head');
         while (headGroup.firstChild) headGroup.removeChild(headGroup.firstChild);
         if (state.path.length >= 1) {
             const [hr, hc] = state.path[state.path.length - 1];
@@ -609,7 +597,7 @@
         if (!state.puzzle) return;
         const N = state.puzzle.size;
         const cs = BOARD_SIZE / N;
-        const layer = dom.board.querySelector('#flashes');
+        const layer = board.querySelector('#flashes');
         if (!layer) return;
         const rect = PC.svgEl('rect', {
             class: 'zip-invalid-flash',
@@ -625,8 +613,8 @@
     function updateStatusRow() {
         const total = state.accessibleCount || 0;
         const have = state.path.length;
-        dom.pathProgressText.textContent = `${have} / ${total}`;
-        dom.winMessage.hidden = !state.won;
+        pathProgressText.textContent = `${have} / ${total}`;
+        shell.setWin(state.won);
     }
 
     // -----------------------------------------------------------------
@@ -636,7 +624,7 @@
     /** Map an event to a grid cell, or null if outside the board. */
     function eventToCell(ev) {
         const N = state.puzzle.size;
-        const rect = dom.board.getBoundingClientRect();
+        const rect = board.getBoundingClientRect();
         if (rect.width === 0 || rect.height === 0) return null;
         // The SVG viewBox is "-3 -3 486 486", so the playable area sits
         // at viewBox coords (0..480, 0..480) which corresponds to the
@@ -718,7 +706,7 @@
         if (!cell) return;
         if (!tryStartDragAt(cell, ev.pointerId)) return;
         ev.preventDefault();
-        try { dom.board.setPointerCapture(ev.pointerId); } catch (_) { /* ignore */ }
+        try { board.setPointerCapture(ev.pointerId); } catch (_) { /* ignore */ }
         repaintPath();
         updateStatusRow();
     }
@@ -746,15 +734,14 @@
 
         if (isWin() && !state.won) {
             state.won = true;
-            const elapsed = state.timer ? state.timer.stop() : 0;
-            PC.solves.log('zip', state.puzzle.size, state.puzzle.difficulty, elapsed);
+            shell.markSolved();
             // End the drag the instant the puzzle is solved. Without
             // this, the player can keep dragging through the same
             // gesture (e.g. accidentally pulling back over the
             // penultimate cell) and produce a partly-retracted "gold"
             // path that looks both won and unfinished.
             if (state.dragging) {
-                try { dom.board.releasePointerCapture(state.dragging.pointerId); } catch (_) { /* ignore */ }
+                try { board.releasePointerCapture(state.dragging.pointerId); } catch (_) { /* ignore */ }
                 state.dragging = null;
             }
         }
@@ -766,7 +753,7 @@
     function onPointerEnd(ev) {
         if (!state.dragging) return;
         if (ev.pointerId !== state.dragging.pointerId) return;
-        try { dom.board.releasePointerCapture(ev.pointerId); } catch (_) { /* ignore */ }
+        try { board.releasePointerCapture(ev.pointerId); } catch (_) { /* ignore */ }
         state.dragging = null;
     }
 
@@ -776,50 +763,19 @@
 
     function startNewGame() {
         const seed = (Date.now() ^ Math.floor(Math.random() * 0xffffffff)) >>> 0;
-        state.puzzle = generatePuzzle(state.size, state.difficulty, seed);
+        state.puzzle = generatePuzzle(shell.size, shell.difficulty, seed);
         rebuildPuzzleIndices();
         resetPath();
-        state.revealed = false;
-        dom.revealBtn.classList.remove('active');
-        dom.revealBtn.setAttribute('aria-pressed', 'false');
         renderBoard();
         updateStatusRow();
-        if (state.timer) state.timer.start();
     }
 
-    function resetPath_action() {
+    function resetPathAction() {
         if (!state.puzzle) return;
         resetPath();
         repaintCheckpoints();
         repaintPath();
         updateStatusRow();
-        if (state.timer) state.timer.start();
-    }
-
-    function toggleReveal() {
-        state.revealed = !state.revealed;
-        dom.revealBtn.classList.toggle('active', state.revealed);
-        dom.revealBtn.setAttribute('aria-pressed', state.revealed ? 'true' : 'false');
-        repaintPath();
-    }
-
-    function setDifficulty(value) {
-        if (!['easy', 'medium', 'hard'].includes(value)) return;
-        state.difficulty = value;
-        dom.difficultySeg.querySelectorAll('button').forEach((btn) => {
-            btn.classList.toggle('active', btn.dataset.value === value);
-        });
-        PC.prefs.set('zip', { difficulty: value });
-        startNewGame();
-    }
-
-    function setSize(value) {
-        const n = PC.clamp(parseInt(value, 10) || 7, MIN_SIZE, MAX_SIZE);
-        state.size = n;
-        dom.sizeSlider.value = String(n);
-        dom.sizeReadout.textContent = `${n}×${n}`;
-        PC.prefs.set('zip', { size: n });
-        startNewGame();
     }
 
     // -----------------------------------------------------------------
@@ -827,47 +783,29 @@
     // -----------------------------------------------------------------
 
     function init() {
-        dom.board = document.getElementById('board');
-        dom.difficultySeg = document.getElementById('difficulty-seg');
-        dom.sizeSlider = document.getElementById('size-slider');
-        dom.sizeReadout = document.getElementById('size-readout');
-        dom.newGameBtn = document.getElementById('new-game-btn');
-        dom.resetBtn = document.getElementById('reset-btn');
-        dom.revealBtn = document.getElementById('reveal-btn');
-        dom.timer = document.getElementById('timer');
-        dom.pathProgress = document.getElementById('path-progress');
-        dom.pathProgressText = document.getElementById('path-progress-text');
-        dom.winMessage = document.getElementById('win-message');
-
-        const prefs = PC.prefs.get('zip');
-        if (prefs.difficulty) state.difficulty = prefs.difficulty;
-        if (prefs.size) state.size = PC.clamp(prefs.size, MIN_SIZE, MAX_SIZE);
-
-        dom.sizeSlider.value = String(state.size);
-        dom.sizeReadout.textContent = `${state.size}×${state.size}`;
-        dom.difficultySeg.querySelectorAll('button').forEach((btn) => {
-            btn.classList.toggle('active', btn.dataset.value === state.difficulty);
-            btn.addEventListener('click', () => setDifficulty(btn.dataset.value));
+        shell = PC.shell.create({
+            gameId: 'zip',
+            difficulty: { default: 'medium' },
+            size: { kind: 'slider', min: MIN_SIZE, max: MAX_SIZE, default: 7 },
+            onNewGame: startNewGame,
+            onReset: resetPathAction,
+            onReveal: repaintPath,
         });
-        dom.sizeSlider.addEventListener('change', (ev) => setSize(ev.target.value));
+        board = shell.dom.board;
+        pathProgressText = document.getElementById('path-progress-text');
 
-        dom.newGameBtn.addEventListener('click', startNewGame);
-        dom.resetBtn.addEventListener('click', resetPath_action);
-        dom.revealBtn.addEventListener('click', toggleReveal);
-
-        dom.board.classList.add('drag-board');
-        dom.board.addEventListener('pointerdown', onPointerDown);
-        dom.board.addEventListener('pointermove', onPointerMove);
-        dom.board.addEventListener('pointerup', onPointerEnd);
-        dom.board.addEventListener('pointercancel', onPointerEnd);
+        board.classList.add('drag-board');
+        board.addEventListener('pointerdown', onPointerDown);
+        board.addEventListener('pointermove', onPointerMove);
+        board.addEventListener('pointerup', onPointerEnd);
+        board.addEventListener('pointercancel', onPointerEnd);
         // Don't let the browser kick in its own touch behaviours (scroll,
         // long-press) while the player is drawing — we already opt out of
         // panning via touch-action: manipulation on `.board-svg`, but
         // belt-and-braces this for older browsers.
-        dom.board.addEventListener('contextmenu', (ev) => ev.preventDefault());
+        board.addEventListener('contextmenu', (ev) => ev.preventDefault());
 
-        state.timer = PC.timer(dom.timer);
-        startNewGame();
+        shell.start();
     }
 
     if (document.readyState === 'loading') {

@@ -188,10 +188,7 @@
     const state = {
         puzzle: null,                   // current puzzle JSON
         placements: null,               // int[N][N] of STATES.*
-        revealed: false,
         won: false,
-        size: 8,
-        difficulty: 'medium',
 
         // Two layers of violation state:
         //   `violations` / `conflictPairs`           — recomputed instantly,
@@ -206,9 +203,10 @@
         displayedViolations: null,
         displayedPairs: 0,
         violationTimer: null,
-
-        timer: null,
     };
+
+    // The shell owns difficulty / size / revealed / timer.
+    let shell = null;
 
     function emptyViolationGrid(N) {
         return Array.from({ length: N }, () => new Array(N).fill(false));
@@ -343,19 +341,9 @@
     // Rendering
     // -----------------------------------------------------------------
 
-    const dom = {
-        board: null,
-        difficultySeg: null,
-        sizeSlider: null,
-        sizeReadout: null,
-        newGameBtn: null,
-        resetBtn: null,
-        revealBtn: null,
-        timer: null,
-        violations: null,
-        violationsText: null,
-        winMessage: null,
-    };
+    // Only the board needs a long-lived ref here — the shell owns the
+    // toolbar / status row DOM.
+    let board = null;
 
     function regionColor(idx) {
         return REGION_COLORS[idx % REGION_COLORS.length];
@@ -369,7 +357,7 @@
     function renderBoard() {
         const N = state.puzzle.size;
         const regions = state.puzzle.regions;
-        const svg = dom.board;
+        const svg = board;
         // Clear
         while (svg.firstChild) svg.removeChild(svg.firstChild);
 
@@ -442,7 +430,7 @@
     function repaintSymbols() {
         const N = state.puzzle.size;
         const cs = BOARD_SIZE / N;
-        const group = dom.board.querySelector('#symbols');
+        const group = board.querySelector('#symbols');
         while (group.firstChild) group.removeChild(group.firstChild);
 
         const symbolFont = Math.max(14, Math.floor(cs * 0.55));
@@ -508,7 +496,7 @@
         // Solution overlay (Reveal). Always shown — even when the cell has a
         // player mark or queen — but kept tiny in the corner so it never
         // collides with the player's main symbol (which is centered).
-        if (state.revealed && state.puzzle && state.puzzle.solution) {
+        if (shell.revealed && state.puzzle && state.puzzle.solution) {
             const sol = state.puzzle.solution;
             const hintFont = Math.max(9, Math.floor(cs * 0.24));
             for (let r = 0; r < N; r++) {
@@ -529,17 +517,8 @@
     }
 
     function updateStatusRow() {
-        const v = state.displayedPairs;
-        if (v > 0) {
-            dom.violations.hidden = false;
-            dom.violations.classList.add('active');
-            dom.violationsText.textContent =
-                `⚠ ${v} conflict${v === 1 ? '' : 's'}`;
-        } else {
-            dom.violations.hidden = true;
-            dom.violations.classList.remove('active');
-        }
-        dom.winMessage.hidden = !state.won;
+        shell.setViolationCount(state.displayedPairs);
+        shell.setWin(state.won);
     }
 
     // -----------------------------------------------------------------
@@ -562,8 +541,7 @@
             cancelViolationTimer();
             state.displayedViolations = emptyViolationGrid(state.puzzle.size);
             state.displayedPairs = 0;
-            const elapsed = state.timer ? state.timer.stop() : 0;
-            PC.solves.log('queens', state.puzzle.size, state.puzzle.difficulty, elapsed);
+            shell.markSolved();
             repaintSymbols();
             updateStatusRow();
             return;
@@ -588,14 +566,10 @@
 
     function startNewGame() {
         const seed = (Date.now() ^ Math.floor(Math.random() * 0xffffffff)) >>> 0;
-        state.puzzle = generatePuzzle(state.size, state.difficulty, seed);
+        state.puzzle = generatePuzzle(shell.size, shell.difficulty, seed);
         ensurePlacementsForCurrent();
-        state.revealed = false;
-        dom.revealBtn.classList.remove('active');
-        dom.revealBtn.setAttribute('aria-pressed', 'false');
         renderBoard();
         updateStatusRow();
-        if (state.timer) state.timer.start();
     }
 
     function resetPlacements() {
@@ -604,33 +578,6 @@
         state.won = false;
         repaintSymbols();
         updateStatusRow();
-        if (state.timer) state.timer.start();
-    }
-
-    function toggleReveal() {
-        state.revealed = !state.revealed;
-        dom.revealBtn.classList.toggle('active', state.revealed);
-        dom.revealBtn.setAttribute('aria-pressed', state.revealed ? 'true' : 'false');
-        repaintSymbols();
-    }
-
-    function setDifficulty(value) {
-        if (!['easy', 'medium', 'hard'].includes(value)) return;
-        state.difficulty = value;
-        dom.difficultySeg.querySelectorAll('button').forEach((btn) => {
-            btn.classList.toggle('active', btn.dataset.value === value);
-        });
-        PC.prefs.set('queens', { difficulty: value });
-        startNewGame();
-    }
-
-    function setSize(value) {
-        const n = PC.clamp(parseInt(value, 10) || 8, 5, 12);
-        state.size = n;
-        dom.sizeSlider.value = String(n);
-        dom.sizeReadout.textContent = `${n}×${n}`;
-        PC.prefs.set('queens', { size: n });
-        startNewGame();
     }
 
     // -----------------------------------------------------------------
@@ -638,38 +585,17 @@
     // -----------------------------------------------------------------
 
     function init() {
-        dom.board = document.getElementById('board');
-        dom.difficultySeg = document.getElementById('difficulty-seg');
-        dom.sizeSlider = document.getElementById('size-slider');
-        dom.sizeReadout = document.getElementById('size-readout');
-        dom.newGameBtn = document.getElementById('new-game-btn');
-        dom.resetBtn = document.getElementById('reset-btn');
-        dom.revealBtn = document.getElementById('reveal-btn');
-        dom.timer = document.getElementById('timer');
-        dom.violations = document.getElementById('violations');
-        dom.violationsText = document.getElementById('violations-text');
-        dom.winMessage = document.getElementById('win-message');
-
-        // Restore prefs
-        const prefs = PC.prefs.get('queens');
-        if (prefs.difficulty) state.difficulty = prefs.difficulty;
-        if (prefs.size) state.size = PC.clamp(prefs.size, 5, 12);
-
-        dom.sizeSlider.value = String(state.size);
-        dom.sizeReadout.textContent = `${state.size}×${state.size}`;
-        dom.difficultySeg.querySelectorAll('button').forEach((btn) => {
-            btn.classList.toggle('active', btn.dataset.value === state.difficulty);
-            btn.addEventListener('click', () => setDifficulty(btn.dataset.value));
+        shell = PC.shell.create({
+            gameId: 'queens',
+            difficulty: { default: 'medium' },
+            size: { kind: 'slider', min: 5, max: 12, default: 8 },
+            onNewGame: startNewGame,
+            onReset: resetPlacements,
+            onReveal: repaintSymbols,
         });
-        dom.sizeSlider.addEventListener('change', (ev) => setSize(ev.target.value));
-
-        dom.newGameBtn.addEventListener('click', startNewGame);
-        dom.resetBtn.addEventListener('click', resetPlacements);
-        dom.revealBtn.addEventListener('click', toggleReveal);
-        dom.board.addEventListener('click', onBoardClick);
-
-        state.timer = PC.timer(dom.timer);
-        startNewGame();
+        board = shell.dom.board;
+        board.addEventListener('click', onBoardClick);
+        shell.start();
     }
 
     if (document.readyState === 'loading') {

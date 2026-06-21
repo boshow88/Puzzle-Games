@@ -45,8 +45,6 @@
 
     const VIOLATION_DELAY_MS = 800;
 
-    const VALID_SIZES = [6, 8, 10];
-
     // Fraction of cells / wall-slots seeded by the dummy generator,
     // indexed by difficulty. Tuned by eyeballing playability — the proper
     // difficulty model will arrive with the real generator.
@@ -194,10 +192,7 @@
     const state = {
         puzzle: null,
         placements: null,           // int[N][N] of STATES.*; for prefilled cells stays 0
-        revealed: false,
         won: false,
-        size: 6,
-        difficulty: 'medium',
 
         violations: null,           // bool[N][N] (used for win check + full-flush display)
         violationGroups: [],        // [{ kind, key, cells }] for partial refresh
@@ -205,9 +200,9 @@
         displayedViolations: null,
         displayedPairs: 0,
         violationTimer: null,
-
-        timer: null,
     };
+
+    let shell = null;
 
     function emptyViolationGrid(N) {
         return Array.from({ length: N }, () => new Array(N).fill(false));
@@ -444,18 +439,7 @@
     // Rendering
     // -----------------------------------------------------------------
 
-    const dom = {
-        board: null,
-        difficultySeg: null,
-        sizeSeg: null,
-        newGameBtn: null,
-        resetBtn: null,
-        revealBtn: null,
-        timer: null,
-        violations: null,
-        violationsText: null,
-        winMessage: null,
-    };
+    let board = null;
 
     function cellRect(N, r, c) {
         const cs = BOARD_SIZE / N;
@@ -464,7 +448,7 @@
 
     function renderBoard() {
         const N = state.puzzle.size;
-        const svg = dom.board;
+        const svg = board;
         while (svg.firstChild) svg.removeChild(svg.firstChild);
 
         const cs = BOARD_SIZE / N;
@@ -545,7 +529,7 @@
     function repaintSymbols() {
         const N = state.puzzle.size;
         const cs = BOARD_SIZE / N;
-        const group = dom.board.querySelector('#symbols');
+        const group = board.querySelector('#symbols');
         while (group.firstChild) group.removeChild(group.firstChild);
 
         const symbolFont = Math.max(16, Math.floor(cs * 0.55));
@@ -598,7 +582,7 @@
         // Reveal: tiny solution symbol in the top-left corner of each
         // *player-editable* cell. Prefilled cells already display the
         // correct answer, so they don't need the hint.
-        if (state.revealed && state.puzzle && state.puzzle.solution) {
+        if (shell.revealed && state.puzzle && state.puzzle.solution) {
             const sol = state.puzzle.solution;
             const hintFont = Math.max(9, Math.floor(cs * 0.22));
             for (let r = 0; r < N; r++) {
@@ -621,17 +605,8 @@
     }
 
     function updateStatusRow() {
-        const v = state.displayedPairs;
-        if (v > 0) {
-            dom.violations.hidden = false;
-            dom.violations.classList.add('active');
-            dom.violationsText.textContent =
-                `⚠ ${v} conflict${v === 1 ? '' : 's'}`;
-        } else {
-            dom.violations.hidden = true;
-            dom.violations.classList.remove('active');
-        }
-        dom.winMessage.hidden = !state.won;
+        shell.setViolationCount(state.displayedPairs);
+        shell.setWin(state.won);
     }
 
     // -----------------------------------------------------------------
@@ -651,8 +626,7 @@
             cancelViolationTimer();
             state.displayedViolations = emptyViolationGrid(state.puzzle.size);
             state.displayedPairs = 0;
-            const elapsed = state.timer ? state.timer.stop() : 0;
-            PC.solves.log('tango', state.puzzle.size, state.puzzle.difficulty, elapsed);
+            shell.markSolved();
             repaintSymbols();
             updateStatusRow();
             return;
@@ -673,14 +647,10 @@
 
     function startNewGame() {
         const seed = (Date.now() ^ Math.floor(Math.random() * 0xffffffff)) >>> 0;
-        state.puzzle = generatePuzzle(state.size, state.difficulty, seed);
+        state.puzzle = generatePuzzle(shell.size, shell.difficulty, seed);
         ensurePlacementsForCurrent();
-        state.revealed = false;
-        dom.revealBtn.classList.remove('active');
-        dom.revealBtn.setAttribute('aria-pressed', 'false');
         renderBoard();
         updateStatusRow();
-        if (state.timer) state.timer.start();
     }
 
     function resetPlacements() {
@@ -689,35 +659,6 @@
         state.won = false;
         repaintSymbols();
         updateStatusRow();
-        if (state.timer) state.timer.start();
-    }
-
-    function toggleReveal() {
-        state.revealed = !state.revealed;
-        dom.revealBtn.classList.toggle('active', state.revealed);
-        dom.revealBtn.setAttribute('aria-pressed', state.revealed ? 'true' : 'false');
-        repaintSymbols();
-    }
-
-    function setDifficulty(value) {
-        if (!['easy', 'medium', 'hard'].includes(value)) return;
-        state.difficulty = value;
-        dom.difficultySeg.querySelectorAll('button').forEach((btn) => {
-            btn.classList.toggle('active', btn.dataset.value === value);
-        });
-        PC.prefs.set('tango', { difficulty: value });
-        startNewGame();
-    }
-
-    function setSize(value) {
-        const n = parseInt(value, 10);
-        if (!VALID_SIZES.includes(n)) return;
-        state.size = n;
-        dom.sizeSeg.querySelectorAll('button').forEach((btn) => {
-            btn.classList.toggle('active', parseInt(btn.dataset.value, 10) === n);
-        });
-        PC.prefs.set('tango', { size: n });
-        startNewGame();
     }
 
     // -----------------------------------------------------------------
@@ -725,37 +666,17 @@
     // -----------------------------------------------------------------
 
     function init() {
-        dom.board = document.getElementById('board');
-        dom.difficultySeg = document.getElementById('difficulty-seg');
-        dom.sizeSeg = document.getElementById('size-seg');
-        dom.newGameBtn = document.getElementById('new-game-btn');
-        dom.resetBtn = document.getElementById('reset-btn');
-        dom.revealBtn = document.getElementById('reveal-btn');
-        dom.timer = document.getElementById('timer');
-        dom.violations = document.getElementById('violations');
-        dom.violationsText = document.getElementById('violations-text');
-        dom.winMessage = document.getElementById('win-message');
-
-        const prefs = PC.prefs.get('tango');
-        if (prefs.difficulty) state.difficulty = prefs.difficulty;
-        if (prefs.size && VALID_SIZES.includes(prefs.size)) state.size = prefs.size;
-
-        dom.difficultySeg.querySelectorAll('button').forEach((btn) => {
-            btn.classList.toggle('active', btn.dataset.value === state.difficulty);
-            btn.addEventListener('click', () => setDifficulty(btn.dataset.value));
+        shell = PC.shell.create({
+            gameId: 'tango',
+            difficulty: { default: 'medium' },
+            size: { kind: 'segmented', default: 6 },
+            onNewGame: startNewGame,
+            onReset: resetPlacements,
+            onReveal: repaintSymbols,
         });
-        dom.sizeSeg.querySelectorAll('button').forEach((btn) => {
-            btn.classList.toggle('active', parseInt(btn.dataset.value, 10) === state.size);
-            btn.addEventListener('click', () => setSize(btn.dataset.value));
-        });
-
-        dom.newGameBtn.addEventListener('click', startNewGame);
-        dom.resetBtn.addEventListener('click', resetPlacements);
-        dom.revealBtn.addEventListener('click', toggleReveal);
-        dom.board.addEventListener('click', onBoardClick);
-
-        state.timer = PC.timer(dom.timer);
-        startNewGame();
+        board = shell.dom.board;
+        board.addEventListener('click', onBoardClick);
+        shell.start();
     }
 
     if (document.readyState === 'loading') {
