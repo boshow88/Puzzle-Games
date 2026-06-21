@@ -1,0 +1,87 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Zip · Puzzle Games</title>
+    <link rel="icon" type="image/svg+xml" href="../favicon.svg">
+    <link rel="stylesheet" href="../css/common.css">
+    <link rel="stylesheet" href="../css/game.css">
+    <style>
+        body { --game-color: #3498db; }
+    </style>
+</head>
+<body>
+    <div class="game-shell">
+        <header class="game-topbar">
+            <a class="back-link" href="../index.html">← Menu</a>
+            <div class="game-title">
+                <span class="game-icon" aria-hidden="true">🔗</span>
+                <span>Zip</span>
+            </div>
+            <span class="topbar-spacer"></span>
+        </header>
+
+        <section class="game-toolbar" aria-label="Game settings">
+            <div class="toolbar-group">
+                <span class="toolbar-label">Difficulty</span>
+                <div class="toolbar-control">
+                    <div class="segmented" id="difficulty-seg" role="radiogroup" aria-label="Difficulty">
+                        <button type="button" data-value="easy" role="radio">Easy</button>
+                        <button type="button" data-value="medium" role="radio" class="active">Medium</button>
+                        <button type="button" data-value="hard" role="radio">Hard</button>
+                    </div>
+                </div>
+            </div>
+
+            <div class="toolbar-group">
+                <span class="toolbar-label">Board size</span>
+                <div class="size-control">
+                    <input type="range" id="size-slider" min="5" max="12" step="1" value="7" aria-label="Board size">
+                    <span class="size-readout" id="size-readout">7×7</span>
+                </div>
+            </div>
+        </section>
+
+        <div class="action-row">
+            <button class="btn btn-primary" id="new-game-btn" type="button">New Game</button>
+            <button class="btn" id="reset-btn" type="button" title="Clear path">↻ Reset</button>
+            <button class="btn toggle" id="reveal-btn" type="button" aria-pressed="false" title="Show solution path">? Reveal</button>
+        </div>
+
+        <div class="status-row" aria-live="polite">
+            <span class="status-item">
+                <span class="timer" id="timer">00:00</span>
+            </span>
+            <span class="status-item path-progress" id="path-progress">
+                <span id="path-progress-text">0 / 0</span>
+            </span>
+            <span class="status-item win-message" id="win-message" hidden>You Win! ✨</span>
+        </div>
+
+        <div class="board-wrap">
+            <svg class="board-svg"
+                 id="board"
+                 viewBox="-3 -3 486 486"
+                 xmlns="http://www.w3.org/2000/svg"
+                 role="application"
+                 aria-label="Zip puzzle board">
+            </svg>
+        </div>
+
+        <section class="game-footer">
+            <h4>How to play</h4>
+            <ul>
+                <li>Drag from the cell marked <strong>1</strong> to draw a path through every white cell.</li>
+                <li>Visit the numbered checkpoints in order — <strong>1 → 2 → 3 → … → N</strong>.</li>
+                <li>The path cannot cross black <strong>walls</strong> or enter grey <strong>holes</strong>; only orthogonal moves.</li>
+                <li>You can pick up the drag from any cell already on the path — everything after that cell is dropped.</li>
+                <li>Solved when the path covers every white cell with checkpoints in the right order.</li>
+            </ul>
+        </section>
+    </div>
+
+    <script src="../js/common.js"></script>
+    <script src="../js/games/zip.js"></script>
+</body>
+</html>

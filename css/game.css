@@ -280,6 +280,15 @@
     touch-action: manipulation;
 }
 
+/* Drag-based boards (Zip) must completely opt out of browser touch
+   gestures, otherwise a touch drag is interpreted as a page scroll and
+   pointermove events stop firing once scrolling kicks in. Other games
+   are click-only and keep the `manipulation` value so finger-flicks on
+   the board can still scroll the page. */
+.board-svg.drag-board {
+    touch-action: none;
+}
+
 /* The board is `tabindex="0"` so keyboard users can Tab to it, but
    that means clicking it also gives it focus — and Chrome/Edge draws
    a wide focus ring around the whole SVG, which reads as "the outer
@@ -291,7 +300,10 @@
     outline-offset: 4px;
 }
 
-/* Cell stroke (thin internal lines) */
+/* Cell stroke (thin internal lines). No default `fill` here on purpose:
+   the per-game renderers set `fill` inline (Queens uses region colours,
+   Tango/Sudoku/Zip use white or grey). A CSS rule with specificity > 0
+   would silently override the per-game presentation attribute. */
 .cell-bg {
     stroke: rgba(0, 0, 0, 0.18);
     stroke-width: 1;
@@ -515,6 +527,124 @@
     background: rgba(46, 125, 50, 0.22);
     border-color: rgba(46, 125, 50, 0.7);
     color: #14531b;
+}
+
+/* ---- Zip-specific ---- */
+
+/* Holes are inaccessible cells the path must avoid. */
+.cell-bg.hole {
+    fill: #bdbdbd;
+}
+
+/* Black thick line drawn on a cell boundary; the path cannot cross. */
+.wall-line {
+    stroke: #1f2937;
+    stroke-linecap: round;
+    pointer-events: none;
+}
+
+/* The player's drawn path. JS renders one <line> per segment with an
+   inline `stroke` (interpolated from dark blue-grey at the start to
+   bright blue at the head) so the gradient follows arc length even
+   though SVG has no built-in along-path gradient. The stroke width is
+   set inline so it scales with cell size; line caps/joins are kept
+   here so the rendering code stays clean. */
+.zip-path {
+    fill: none;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+    pointer-events: none;
+}
+
+/* Optional reveal: the intended solution drawn as a single polyline in
+   a contrasting hue under the player's path. The stroke colour is set
+   here (not inline) because the reveal is one shape, no gradient. */
+.zip-path.reveal {
+    stroke: rgba(46, 125, 50, 0.55);
+    pointer-events: none;
+}
+
+/* Brief red tint that fades out when the player tries to drag onto a
+   wall, a hole, or another illegal target. Same red as the violations
+   in Queens/Tango/Sudoku so the visual language stays consistent. */
+@keyframes zip-flash-fade {
+    0%   { opacity: 0.55; }
+    100% { opacity: 0; }
+}
+.zip-invalid-flash {
+    fill: var(--accent-danger);
+    pointer-events: none;
+    animation: zip-flash-fade 360ms ease-out forwards;
+}
+
+/* Persistent (until the player retracts) red tint on the cells that
+   form an out-of-order tail of the path. Path segments inside the same
+   region also recolour to red — see js/games/zip.js. */
+.wrong-order-tint {
+    fill: var(--accent-danger);
+    opacity: 0.18;
+    pointer-events: none;
+}
+
+/* A small circle marking the current endpoint of the path; helps the
+   player see where the next drag will start. */
+.path-head {
+    fill: #2980b9;
+    stroke: #1a5276;
+    stroke-width: 2;
+    pointer-events: none;
+}
+
+.path-head.victory {
+    fill: #d4a017;
+    stroke: #8a6a0a;
+}
+
+/* Head turns red whenever the path's current tail is in a wrong-order
+   region. Same Bootstrap red palette as the wrong path segments. */
+.path-head.wrong {
+    fill: #b02a37;
+    stroke: #842029;
+}
+
+/* Halo ring drawn around a checkpoint when the path's current endpoint
+   sits on that checkpoint. Sits below the checkpoint fill but at a
+   radius larger than the checkpoint, so only the band outside the
+   checkpoint outline is visible — that band IS the endpoint cue. */
+.path-head-ring {
+    stroke: #2980b9;
+    fill: none;
+    pointer-events: none;
+}
+
+.path-head-ring.victory {
+    stroke: #d4a017;
+}
+
+.path-head-ring.wrong {
+    stroke: #b02a37;
+}
+
+/* Numbered checkpoint marker — dark filled circle with a bright digit
+   on top. The text is positioned by the renderer using the same
+   text-anchor + dominant-baseline + dy nudge as the other games. */
+.checkpoint-circle {
+    fill: #2c3e50;
+    stroke: #1a242f;
+    stroke-width: 2;
+}
+
+.checkpoint-circle.victory {
+    fill: #d4a017;
+    stroke: #8a6a0a;
+}
+
+.checkpoint-text {
+    fill: #ecf0f1;
+    font-family: var(--font-body);
+    font-weight: 700;
+    pointer-events: none;
+    user-select: none;
 }
 
 /* ----------------------------------------------------------------

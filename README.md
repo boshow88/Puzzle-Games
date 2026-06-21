@@ -10,7 +10,7 @@ Pure static HTML/CSS/JS — deployable on GitHub Pages.
 | Queens | Playable      | Dummy in-browser puzzle generator              |
 | Tango  | Playable      | Dummy in-browser puzzle generator              |
 | Sudoku | Playable      | 6×6 + 9×9, pencil notes, keypad + keyboard     |
-| Zip    | Coming soon   |                                                |
+| Zip    | Playable      | Drag-to-draw path, walls + holes, 5×5 – 12×12   |
 
 ## Layout
 
