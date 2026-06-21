@@ -289,17 +289,6 @@
     touch-action: none;
 }
 
-/* The board is `tabindex="0"` so keyboard users can Tab to it, but
-   that means clicking it also gives it focus — and Chrome/Edge draws
-   a wide focus ring around the whole SVG, which reads as "the outer
-   border got thick" on click. Hide the ring on mouse-focus but keep
-   it for keyboard-focus (focus-visible). */
-.board-svg:focus { outline: none; }
-.board-svg:focus-visible {
-    outline: 2px solid var(--game-color, var(--accent-primary));
-    outline-offset: 4px;
-}
-
 /* Cell stroke (thin internal lines). No default `fill` here on purpose:
    the per-game renderers set `fill` inline (Queens uses region colours,
    Tango/Sudoku/Zip use white or grey). A CSS rule with specificity > 0

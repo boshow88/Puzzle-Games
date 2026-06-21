@@ -564,7 +564,7 @@
                     x: cx, y: cy,
                     'text-anchor': 'middle',
                     'dominant-baseline': 'middle',
-                    dy: '0.08em',
+                    dy: '0.12em',
                     'font-size': symbolFont,
                 });
                 text.textContent = SYMBOL[v];
@@ -610,7 +610,7 @@
                         y: r * cs + cs * 0.18,
                         'text-anchor': 'middle',
                         'dominant-baseline': 'middle',
-                        dy: '0.08em',
+                        dy: '0.12em',
                         'font-size': hintFont,
                     });
                     text.textContent = SYMBOL[sol[r][c]];

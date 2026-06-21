@@ -471,7 +471,10 @@
                 x: cx, y: cy,
                 'text-anchor': 'middle',
                 'dominant-baseline': 'middle',
-                dy: '0.08em',
+                // Digits sit visually lower than the dominant-baseline
+                // mid; use the same dy as Sudoku digits, not the smaller
+                // dy used for the top-heavy ♛ / ☀ / ☾ glyphs.
+                dy: '0.12em',
                 'font-size': font,
             });
             text.textContent = String(cp.n);

@@ -462,7 +462,7 @@
                         x: cx, y: cy,
                         'text-anchor': 'middle',
                         'dominant-baseline': 'middle',
-                        dy: '0.08em',
+                        dy: '0.10em',
                         'font-size': symbolFont,
                     });
                     text.textContent = '♛';
@@ -519,7 +519,7 @@
                     y: r * cs + cs * 0.18,
                     'text-anchor': 'middle',
                     'dominant-baseline': 'middle',
-                    dy: '0.08em',
+                    dy: '0.10em',
                     'font-size': hintFont,
                 });
                 text.textContent = '♛';

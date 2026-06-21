@@ -221,7 +221,7 @@ button {
     margin-top: var(--space-md);
     display: flex;
     align-items: center;
-    justify-content: space-between;
+    justify-content: flex-end;
     font-size: 0.85rem;
     color: var(--text-muted);
 }
@@ -251,11 +251,12 @@ button {
     border-color: #c5e6cf;
 }
 
-/* Per-game accent overrides */
+/* Per-game accent overrides — must match the `--game-color` declared
+   in each per-game HTML so the launcher card and game page agree. */
 .game-card.queens { --game-color: #b341d1; }
 .game-card.tango  { --game-color: #f5a623; }
-.game-card.sudoku { --game-color: #0a66c2; }
-.game-card.zip    { --game-color: #2ecc71; }
+.game-card.sudoku { --game-color: #2e7d32; }
+.game-card.zip    { --game-color: #3498db; }
 
 /* ----------------------------------------------------------------
    Footer

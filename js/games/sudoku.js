@@ -499,7 +499,11 @@
                         y: r * cs + cs / 2,
                         'text-anchor': 'middle',
                         'dominant-baseline': 'middle',
-                        dy: '0.08em',
+                        // Digits 0-9 are visually centred lower than the
+                        // dominant-baseline=middle mark in most fonts;
+                        // they need a larger dy than the top-heavy
+                        // glyphs (♛, ☀, ☾) used by Queens/Tango.
+                        dy: '0.12em',
                         'font-size': digitFont,
                     });
                     text.textContent = String(v);
@@ -519,7 +523,7 @@
                             x: nx, y: ny,
                             'text-anchor': 'middle',
                             'dominant-baseline': 'middle',
-                            dy: '0.08em',
+                            dy: '0.12em',
                             'font-size': noteFont,
                         });
                         text.textContent = String(d);
@@ -566,7 +570,7 @@
                         y: r * cs + cs * 0.18,
                         'text-anchor': 'middle',
                         'dominant-baseline': 'middle',
-                        dy: '0.08em',
+                        dy: '0.12em',
                         'font-size': hintFont,
                     });
                     text.textContent = String(sol[r][c]);
