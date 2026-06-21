@@ -1,12 +1,10 @@
 /**
- * Tango — gameplay, dummy puzzle generation, and SVG rendering.
+ * Tango — gameplay + SVG rendering.
  *
- * Same architectural shape as queens.js (deliberately, so we can refactor
- * the shared parts after both games are settled). Only depends on
- * window.PuzzleCommon.
+ * Puzzle generation lives in `js/generators/tango.js` and is exposed via
+ * `window.PuzzleGenerators.tango(size, difficulty, seed)`. The shape of
+ * the puzzle object returned by the generator is:
  *
- * Puzzle JSON contract (so the dummy generator can later be swapped for
- * a real one without touching the UI):
  *   {
  *     id:         string,
  *     game:       'tango',
@@ -18,12 +16,6 @@
  *     ],                             // (r1,c1) lex-< (r2,c2), 4-adjacent
  *     solution:   int[N][N],         // 1 sun, 2 moon (always full)
  *   }
- *
- * The current generator is intentionally simple: it produces a random
- * legal solution, then sprinkles prefilled cells and wall constraints
- * matching that solution. It does NOT guarantee a unique solution and
- * has no real difficulty calibration; difficulty only affects how many
- * clues are kept.
  */
 (function () {
     'use strict';
@@ -45,144 +37,8 @@
 
     const VIOLATION_DELAY_MS = 800;
 
-    // Fraction of cells / wall-slots seeded by the dummy generator,
-    // indexed by difficulty. Tuned by eyeballing playability — the proper
-    // difficulty model will arrive with the real generator.
-    const CLUE_DENSITY = {
-        easy:   { prefill: 0.45, wall: 0.30 },
-        medium: { prefill: 0.30, wall: 0.20 },
-        hard:   { prefill: 0.18, wall: 0.12 },
-    };
-
-    // -----------------------------------------------------------------
-    // Dummy puzzle generator
-    // -----------------------------------------------------------------
-
-    /**
-     * Build a random valid Tango solution grid by randomised backtracking.
-     * Returns int[N][N] of 1/2, or null if it failed within the search.
-     */
-    function placeValidGrid(N, rng) {
-        const half = N / 2;
-        const grid = Array.from({ length: N }, () => new Array(N).fill(0));
-        const rowSun = new Array(N).fill(0);
-        const rowMoon = new Array(N).fill(0);
-        const colSun = new Array(N).fill(0);
-        const colMoon = new Array(N).fill(0);
-
-        function fits(r, c, v) {
-            if (v === STATES.SUN) {
-                if (rowSun[r] >= half) return false;
-                if (colSun[c] >= half) return false;
-            } else {
-                if (rowMoon[r] >= half) return false;
-                if (colMoon[c] >= half) return false;
-            }
-            // No three in a row horizontally
-            if (c >= 2 && grid[r][c - 1] === v && grid[r][c - 2] === v) return false;
-            // No three in a row vertically
-            if (r >= 2 && grid[r - 1][c] === v && grid[r - 2][c] === v) return false;
-            return true;
-        }
-
-        function set(r, c, v) {
-            grid[r][c] = v;
-            if (v === STATES.SUN) { rowSun[r]++; colSun[c]++; }
-            else { rowMoon[r]++; colMoon[c]++; }
-        }
-        function unset(r, c, v) {
-            grid[r][c] = 0;
-            if (v === STATES.SUN) { rowSun[r]--; colSun[c]--; }
-            else { rowMoon[r]--; colMoon[c]--; }
-        }
-
-        function solve(idx) {
-            if (idx === N * N) return true;
-            const r = Math.floor(idx / N);
-            const c = idx % N;
-            const choices = [STATES.SUN, STATES.MOON];
-            PC.rng.shuffle(choices, rng);
-            for (const v of choices) {
-                if (!fits(r, c, v)) continue;
-                set(r, c, v);
-                if (solve(idx + 1)) return true;
-                unset(r, c, v);
-            }
-            return false;
-        }
-
-        return solve(0) ? grid : null;
-    }
-
-    /**
-     * Sprinkle prefilled clues by copying ~fraction of cells from the
-     * solution. Returns int[N][N] (0 / 1 / 2).
-     */
-    function chooseClues(N, solution, fraction, rng) {
-        const out = Array.from({ length: N }, () => new Array(N).fill(0));
-        const all = [];
-        for (let r = 0; r < N; r++) {
-            for (let c = 0; c < N; c++) all.push([r, c]);
-        }
-        PC.rng.shuffle(all, rng);
-        const take = Math.round(all.length * fraction);
-        for (let i = 0; i < take; i++) {
-            const [r, c] = all[i];
-            out[r][c] = solution[r][c];
-        }
-        return out;
-    }
-
-    /**
-     * Pick a subset of adjacent-cell pairs to carry `=` / `×` wall
-     * constraints. The kind always matches the solution, so the puzzle
-     * remains solvable from the clues.
-     */
-    function chooseWalls(N, solution, fraction, rng) {
-        const slots = [];
-        for (let r = 0; r < N; r++) {
-            for (let c = 0; c < N; c++) {
-                if (c + 1 < N) slots.push([r, c, r, c + 1]);
-                if (r + 1 < N) slots.push([r, c, r + 1, c]);
-            }
-        }
-        PC.rng.shuffle(slots, rng);
-        const take = Math.round(slots.length * fraction);
-        const out = [];
-        for (let i = 0; i < take; i++) {
-            const [r1, c1, r2, c2] = slots[i];
-            const kind = solution[r1][c1] === solution[r2][c2] ? 'same' : 'diff';
-            out.push({ r1, c1, r2, c2, kind });
-        }
-        return out;
-    }
-
     function generatePuzzle(size, difficulty, seed) {
-        const rng = PC.rng.make(seed);
-        let solution = null;
-        for (let i = 0; i < 8 && !solution; i++) {
-            solution = placeValidGrid(size, rng);
-        }
-        if (!solution) {
-            // Should be vanishingly rare; fall back to a known striped grid.
-            solution = Array.from({ length: size }, (_, r) =>
-                Array.from({ length: size }, (_, c) =>
-                    ((r + c) % 2 === 0 ? STATES.SUN : STATES.MOON)
-                )
-            );
-        }
-        const density = CLUE_DENSITY[difficulty] || CLUE_DENSITY.medium;
-        const prefilled = chooseClues(size, solution, density.prefill, rng);
-        const walls = chooseWalls(size, solution, density.wall, rng);
-        return {
-            id: `tango-${size}x${size}-${difficulty}-${seed.toString(36)}`,
-            game: 'tango',
-            size,
-            difficulty,
-            prefilled,
-            walls,
-            solution,
-        };
+        return window.PuzzleGenerators.tango(size, difficulty, seed);
     }
 
     // -----------------------------------------------------------------
