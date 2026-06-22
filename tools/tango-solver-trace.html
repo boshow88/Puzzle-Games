@@ -1,0 +1,383 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+    <meta charset="utf-8">
+    <title>Tango solver trace</title>
+    <style>
+        :root {
+            --sun: #f5a623;
+            --moon: #4a90e2;
+            --bg: #fafafa;
+            --grid: #444;
+            --highlight: #ffeb3b;
+            --highlight-soft: #fff59d;
+            --L1: #2e7d32;
+            --L2: #ef6c00;
+            --L3: #c62828;
+            --L4: #6a1b9a;
+        }
+        body { font-family: system-ui, sans-serif; background: var(--bg);
+               color: #222; padding: 20px; margin: 0;
+               display: grid; grid-template-columns: minmax(380px, 1fr) 1fr;
+               gap: 24px; max-width: 1200px; }
+        h1 { font-size: 18px; margin: 0 0 12px; grid-column: 1 / -1; }
+        .controls { display: flex; flex-wrap: wrap; gap: 8px;
+                    align-items: center; margin-bottom: 12px; }
+        button { font: inherit; padding: 6px 12px; cursor: pointer; }
+        button:disabled { opacity: 0.4; cursor: default; }
+        select { font: inherit; padding: 4px 8px; }
+        .board-wrap { background: white; padding: 12px;
+                      border: 1px solid #ddd; border-radius: 6px; }
+        svg { display: block; }
+        .log { background: white; border: 1px solid #ddd; border-radius: 6px;
+               padding: 12px; max-height: 600px; overflow-y: auto;
+               font-size: 13px; line-height: 1.5; }
+        .step { padding: 8px; margin-bottom: 6px; border-left: 3px solid;
+                background: #fafafa; }
+        .step.tier-L1 { border-color: var(--L1); }
+        .step.tier-L2 { border-color: var(--L2); }
+        .step.tier-L3 { border-color: var(--L3); }
+        .step.tier-L4 { border-color: var(--L4); }
+        .step .head { font-weight: bold; margin-bottom: 4px;
+                      display: flex; gap: 8px; align-items: baseline; }
+        .step .tier-badge { font-size: 11px; padding: 1px 6px;
+                            border-radius: 3px; color: white; }
+        .step.tier-L1 .tier-badge { background: var(--L1); }
+        .step.tier-L2 .tier-badge { background: var(--L2); }
+        .step.tier-L3 .tier-badge { background: var(--L3); }
+        .step.tier-L4 .tier-badge { background: var(--L4); }
+        .step .cell { font-family: ui-monospace, Menlo, monospace; }
+        .step .chain { margin-top: 6px; padding-left: 12px;
+                       font-size: 12px; color: #555; border-left: 2px dotted #ccc; }
+        .step .chain-step { margin: 2px 0; }
+        .meta { font-size: 12px; color: #666; }
+        .empty-log { color: #999; font-style: italic; padding: 20px;
+                     text-align: center; }
+    </style>
+</head>
+<body>
+    <h1>Tango solver trace — 一步一步看 solver 怎麼推</h1>
+
+    <div>
+        <div class="controls">
+            <label>Size:
+                <select id="size">
+                    <option value="6">6×6</option>
+                    <option value="8">8×8</option>
+                    <option value="10">10×10</option>
+                </select>
+            </label>
+            <label>Difficulty:
+                <select id="difficulty">
+                    <option value="easy">Easy</option>
+                    <option value="medium">Medium</option>
+                    <option value="hard" selected>Hard</option>
+                </select>
+            </label>
+            <button id="new">New puzzle</button>
+        </div>
+        <div class="controls">
+            <button id="step">Step</button>
+            <button id="run">Run to end</button>
+            <button id="reset">Reset</button>
+            <span class="meta" id="meta"></span>
+        </div>
+        <div class="board-wrap">
+            <svg id="board" width="360" height="360"></svg>
+        </div>
+    </div>
+
+    <div class="log" id="log">
+        <div class="empty-log">點 Step / Run to end 開始</div>
+    </div>
+
+    <script src="../js/common.js"></script>
+    <script src="../js/generators/tango.js"></script>
+    <script>
+        const SUN = 1, MOON = 2;
+        const symFor = (v) => v === SUN ? '☀' : v === MOON ? '☾' : '·';
+        const colourFor = (v) => v === SUN ? 'var(--sun)' : v === MOON ? 'var(--moon)' : '#999';
+
+        let puzzle = null;
+        let filled = null;     // mutable working board
+        let prefilled = null;  // immutable snapshot of starting state
+        let steps = [];        // history of applied steps
+
+        function renderBoard(highlightCell = null, highlightChain = []) {
+            const N = puzzle.size;
+            const cell = Math.min(360 / N, 50);
+            const size = cell * N;
+            const svg = document.getElementById('board');
+            svg.setAttribute('width', size);
+            svg.setAttribute('height', size);
+            svg.innerHTML = '';
+
+            // Cells
+            for (let r = 0; r < N; r++) {
+                for (let c = 0; c < N; c++) {
+                    const x = c * cell, y = r * cell;
+                    const rect = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+                    rect.setAttribute('x', x);
+                    rect.setAttribute('y', y);
+                    rect.setAttribute('width', cell);
+                    rect.setAttribute('height', cell);
+                    const isPrefill = prefilled[r][c] !== 0;
+                    const isHighlight = highlightCell && highlightCell[0] === r && highlightCell[1] === c;
+                    const isChain = highlightChain.some(([cr, cc]) => cr === r && cc === c);
+                    rect.setAttribute('fill', isHighlight ? 'var(--highlight)'
+                        : isChain ? 'var(--highlight-soft)'
+                            : isPrefill ? '#eef3fa' : 'white');
+                    rect.setAttribute('stroke', 'var(--grid)');
+                    rect.setAttribute('stroke-width', 1);
+                    svg.appendChild(rect);
+
+                    const v = filled[r][c];
+                    if (v !== 0) {
+                        const text = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+                        text.setAttribute('x', x + cell / 2);
+                        text.setAttribute('y', y + cell / 2);
+                        text.setAttribute('text-anchor', 'middle');
+                        text.setAttribute('dominant-baseline', 'middle');
+                        text.setAttribute('dy', '0.12em');
+                        text.setAttribute('font-size', cell * 0.55);
+                        text.setAttribute('fill', colourFor(v));
+                        text.setAttribute('font-weight', isPrefill ? '700' : '400');
+                        text.textContent = symFor(v);
+                        svg.appendChild(text);
+                    }
+                }
+            }
+
+            // Walls
+            for (const w of puzzle.walls) {
+                const horiz = w.r1 === w.r2;
+                const x1 = w.c1 * cell + (horiz ? cell : cell / 2);
+                const y1 = w.r1 * cell + (horiz ? cell / 2 : cell);
+                const tx = horiz ? x1 : x1;
+                const ty = horiz ? y1 : y1;
+                const text = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+                text.setAttribute('x', tx);
+                text.setAttribute('y', ty);
+                text.setAttribute('text-anchor', 'middle');
+                text.setAttribute('dominant-baseline', 'middle');
+                text.setAttribute('dy', '0.04em');
+                text.setAttribute('font-size', cell * 0.3);
+                text.setAttribute('fill', '#333');
+                text.setAttribute('font-weight', '700');
+                text.textContent = w.kind === 'same' ? '=' : '×';
+                svg.appendChild(text);
+            }
+        }
+
+        function describeReason(reason, value) {
+            const v = (x) => x === SUN ? '☀' : '☾';
+            const cellStr = ([r, c]) => `(${r}, ${c})`;
+            if (reason.kind === 'T-count') {
+                const orient = reason.orientation === 'row' ? '列' : '行';
+                return `第 ${reason.line} ${orient}已經有 N/2 個 ${v(reason.fullValue)}，剩下的格子必須是 ${v(reason.value)}`;
+            }
+            if (reason.kind === 'T-three') {
+                const orient = reason.orientation === 'row' ? '同列' : '同行';
+                const src = reason.sources.map(cellStr).join(' 與 ');
+                return `${orient}的 ${src} 都是 ${v(reason.sourceValue)}，這格若再放 ${v(reason.sourceValue)} 會出現三連，所以是 ${v(reason.value)}`;
+            }
+            if (reason.kind === 'T-wall') {
+                const wall = reason.wallKind === 'same' ? '=' : '×';
+                return `相鄰格 ${cellStr(reason.neighbor)} 是 ${v(reason.neighborValue)}，跟這格有 ${wall} 牆，所以這格是 ${v(reason.value)}`;
+            }
+            const lineLabel = (reason) => {
+                if (reason.orientation === 'row') return `第 ${reason.hypothesis.cell[0]} 列`;
+                if (reason.orientation === 'col') return `第 ${reason.hypothesis.cell[1]} 行`;
+                return '同行/列';
+            };
+            if (reason.kind === 'L2') {
+                const hyp = reason.hypothesis;
+                const contradictStr = describeContradiction(reason.contradiction);
+                return `假設這格 = ${v(hyp.value)}，只在${lineLabel(reason)}推 1 步 L1 就出現矛盾：${contradictStr}。所以這格只能是 ${v(reason.value)}`;
+            }
+            if (reason.kind === 'L3') {
+                const hyp = reason.hypothesis;
+                const contradictStr = describeContradiction(reason.contradiction);
+                return `假設這格 = ${v(hyp.value)}，只在${lineLabel(reason)}推 ${reason.propagation.length} 步 L1 後出現矛盾：${contradictStr}。所以這格只能是 ${v(reason.value)}`;
+            }
+            if (reason.kind === 'L4') {
+                const hyp = reason.hypothesis;
+                const contradictStr = describeContradiction(reason.contradiction);
+                const perpLabel = reason.perpOrientation === 'row'
+                    ? `第 ${reason.perpIndex} 列`
+                    : `第 ${reason.perpIndex} 行`;
+                const primarySteps = reason.primaryPropagation.length;
+                const perpSteps = reason.perpPropagation.length;
+                return `假設這格 = ${v(hyp.value)}，以${lineLabel(reason)}為主線推 ${primarySteps} 步 L1，再單獨在${perpLabel}上推 ${perpSteps} 步 L1 後出現矛盾：${contradictStr}。所以這格只能是 ${v(reason.value)}`;
+            }
+            return JSON.stringify(reason);
+        }
+
+        function describeContradiction(c) {
+            const v = (x) => x === SUN ? '☀' : '☾';
+            const cellStr = ([r, c]) => `(${r}, ${c})`;
+            if (c.kind === 'count-overflow') {
+                const orient = c.orientation === 'row' ? '列' : '行';
+                return `第 ${c.line} ${orient}已經有 ${c.count} 個 ${v(c.value)}（超過 N/2）`;
+            }
+            if (c.kind === 'three-in-row') {
+                const orient = c.orientation === 'row' ? '同列' : '同行';
+                const cells = c.cells.map(cellStr).join('、');
+                return `${orient}的 ${cells} 連續三格都是 ${v(c.value)}`;
+            }
+            if (c.kind === 'wall') {
+                const wall = c.wallKind === 'same' ? '=' : '×';
+                return `${cellStr(c.cells[0])} 與 ${cellStr(c.cells[1])} 之間是 ${wall} 牆，但兩格值不相容`;
+            }
+            return JSON.stringify(c);
+        }
+
+        function chainCells(reason) {
+            // Return cells to highlight as "context" for this step.
+            if (reason.kind === 'T-three') return reason.sources;
+            if (reason.kind === 'T-wall') return [reason.neighbor];
+            if (reason.kind === 'L2' || reason.kind === 'L3' || reason.kind === 'L4') {
+                return reason.contradiction.cells || [];
+            }
+            return [];
+        }
+
+        function newPuzzle() {
+            const N = +document.getElementById('size').value;
+            const d = document.getElementById('difficulty').value;
+            const seed = (Date.now() & 0xffffffff) >>> 0;
+            puzzle = window.PuzzleGenerators.tango(N, d, seed);
+            prefilled = puzzle.prefilled.map((row) => row.slice());
+            filled = puzzle.prefilled.map((row) => row.slice());
+            steps = [];
+            document.getElementById('log').innerHTML = '<div class="empty-log">點 Step / Run to end 開始</div>';
+            updateMeta();
+            renderBoard();
+        }
+
+        function reset() {
+            if (!puzzle) return;
+            filled = prefilled.map((row) => row.slice());
+            steps = [];
+            document.getElementById('log').innerHTML = '<div class="empty-log">點 Step / Run to end 開始</div>';
+            renderBoard();
+        }
+
+        function updateMeta() {
+            if (!puzzle) return;
+            const s = puzzle.stats;
+            document.getElementById('meta').textContent =
+                `seed=${puzzle.id.split('-').pop()} · prefill=${s.prefillCount} · walls=${s.wallCount} ` +
+                `· ≥L2 req=${s.l2OrAboveRequiredCells} · ≥L3 req=${s.l3OrAboveRequiredCells} ` +
+                `· L4 req=${s.l4RequiredCells} · tries=${s.attemptsUsed || 1}`;
+        }
+
+        function appendStep(step) {
+            const log = document.getElementById('log');
+            if (log.querySelector('.empty-log')) log.innerHTML = '';
+            const div = document.createElement('div');
+            div.className = `step tier-${step.tier}`;
+            const [r, c] = step.cell;
+            const desc = describeReason(step.reason, step.value);
+            const head = document.createElement('div');
+            head.className = 'head';
+            head.innerHTML = `<span class="tier-badge">${step.tier}</span>` +
+                `<span class="cell">(${r}, ${c}) ← ${step.value === SUN ? '☀' : '☾'}</span>` +
+                `<span class="meta">#${steps.length}</span>`;
+            div.appendChild(head);
+            const text = document.createElement('div');
+            text.textContent = desc;
+            div.appendChild(text);
+            const renderChainSteps = (parent, propagation) => {
+                for (const p of propagation) {
+                    const cs = document.createElement('div');
+                    cs.className = 'chain-step';
+                    cs.textContent = `· (${p.cell[0]}, ${p.cell[1]}) = ${p.value === SUN ? '☀' : '☾'} — ${describeReason(p.reason, p.value)}`;
+                    parent.appendChild(cs);
+                }
+            };
+            if (step.reason.kind === 'L2' || step.reason.kind === 'L3') {
+                if (step.reason.propagation.length > 0) {
+                    const chain = document.createElement('div');
+                    chain.className = 'chain';
+                    chain.innerHTML = '推論鏈：<br>';
+                    renderChainSteps(chain, step.reason.propagation);
+                    div.appendChild(chain);
+                }
+            } else if (step.reason.kind === 'L4') {
+                const chain = document.createElement('div');
+                chain.className = 'chain';
+                const primary = step.reason.primaryPropagation || [];
+                const perp = step.reason.perpPropagation || [];
+                if (primary.length > 0) {
+                    chain.innerHTML = '主線推論：<br>';
+                    renderChainSteps(chain, primary);
+                } else {
+                    chain.innerHTML = '主線推論：（無 L1 placement，僅靠 hypothesis 自身）<br>';
+                }
+                const perpLabel = step.reason.perpOrientation === 'row'
+                    ? `第 ${step.reason.perpIndex} 列`
+                    : `第 ${step.reason.perpIndex} 行`;
+                const sep = document.createElement('div');
+                sep.className = 'chain-step';
+                sep.style.marginTop = '4px';
+                sep.style.fontStyle = 'italic';
+                sep.style.color = '#888';
+                sep.textContent = `── 切換到${perpLabel}（獨立檢查，不會回頭影響主線） ──`;
+                chain.appendChild(sep);
+                if (perp.length > 0) {
+                    renderChainSteps(chain, perp);
+                } else {
+                    const cs = document.createElement('div');
+                    cs.className = 'chain-step';
+                    cs.textContent = '（perp 線無需 L1 placement，主線完成後即已矛盾）';
+                    chain.appendChild(cs);
+                }
+                div.appendChild(chain);
+            }
+            log.appendChild(div);
+            log.scrollTop = log.scrollHeight;
+        }
+
+        function step() {
+            if (!puzzle) return false;
+            const next = window.PuzzleSolvers.tango.nextDeduction(
+                filled, puzzle.walls, puzzle.size,
+                ['L1', 'L2', 'L3', 'L4']);
+            if (!next) {
+                renderBoard();
+                appendDone();
+                return false;
+            }
+            const [r, c] = next.cell;
+            filled[r][c] = next.value;
+            steps.push(next);
+            renderBoard(next.cell, chainCells(next.reason));
+            appendStep(next);
+            return true;
+        }
+
+        function appendDone() {
+            const log = document.getElementById('log');
+            const div = document.createElement('div');
+            div.className = 'step';
+            div.style.borderColor = '#666';
+            div.style.background = '#f0f0f0';
+            div.textContent = '解完了，或者沒有更多可推論的格子。';
+            log.appendChild(div);
+        }
+
+        function runAll() {
+            let safety = 1000;
+            while (safety-- > 0 && step()) { /* keep stepping */ }
+        }
+
+        document.getElementById('new').addEventListener('click', newPuzzle);
+        document.getElementById('step').addEventListener('click', step);
+        document.getElementById('run').addEventListener('click', runAll);
+        document.getElementById('reset').addEventListener('click', reset);
+
+        newPuzzle();
+    </script>
+</body>
+</html>

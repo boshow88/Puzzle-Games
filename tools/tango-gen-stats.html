@@ -23,9 +23,15 @@
 <body>
     <h1>Tango generator stats</h1>
     <p>
-        Runs N puzzles per (size, difficulty) combination and reports the
-        average prefill count, wall count, and any L1/L3 self-check
-        failures. Open the browser console for warnings.
+        Runs N puzzles per (size, difficulty) combination and reports
+        average prefill count, wall count, tier-tagged erasures, and
+        how many cells each tier leaves unsolved. Tier definitions:
+        L1 = direct rules; L2 = hypothesise + 1 in-line L1 step; L3 =
+        hypothesise + 2+ in-line L1 steps; L4 = L3 with one
+        perpendicular layer unlocked (each cell placed on the primary
+        line opens its perpendicular line for further L1 propagation).
+        Difficulty: Easy = L1+L2, Medium = +L3, Hard = +L4. Open the
+        browser console for self-check warnings.
     </p>
 
     <label>Runs per combo: <input id="k" type="number" value="20" min="1" max="500"></label>
@@ -40,16 +46,20 @@
         const DIFFS = ['easy', 'medium', 'hard'];
 
         function run(K) {
-            const rows = [['size', 'difficulty', 'prefill avg', 'prefill%',
-                'walls avg', 'L3 erases', 'L3 required avg',
-                'L3 required puzzles', 'attempts avg', 'time avg ms',
-                'warnings']];
+            const rows = [['size', 'diff', 'prefill', 'walls',
+                'L2 era', 'L3 era', 'L4 era',
+                '≥L2 req avg', '≥L3 req avg',
+                'L4 req avg', 'L4 req K',
+                'attempts', 'time ms', 'warn']];
             let totalWarn = 0;
             const origWarn = console.warn;
             for (const N of SIZES) {
                 for (const d of DIFFS) {
-                    let pSum = 0, wSum = 0, l3Sum = 0;
-                    let l3rSum = 0, l3rCount = 0, atSum = 0, tSum = 0, warns = 0;
+                    let pSum = 0, wSum = 0;
+                    let l2Sum = 0, l3Sum = 0, l4Sum = 0;
+                    let l2reqSum = 0, l3reqSum = 0;
+                    let l4reqSum = 0, l4reqCount = 0;
+                    let atSum = 0, tSum = 0, warns = 0;
                     console.warn = function () { warns += 1; origWarn.apply(console, arguments); };
                     for (let i = 0; i < K; i++) {
                         const seed = ((Date.now() + i * 0x9e3779b9) >>> 0);
@@ -58,9 +68,13 @@
                         const t1 = performance.now();
                         pSum += p.stats.prefillCount;
                         wSum += p.stats.wallCount;
-                        l3Sum += p.stats.l3Erases;
-                        l3rSum += p.stats.l3RequiredCells;
-                        if (p.stats.l3RequiredCells > 0) l3rCount += 1;
+                        l2Sum += p.stats.l2Erases || 0;
+                        l3Sum += p.stats.l3Erases || 0;
+                        l4Sum += p.stats.l4Erases || 0;
+                        l2reqSum += p.stats.l2OrAboveRequiredCells || 0;
+                        l3reqSum += p.stats.l3OrAboveRequiredCells || 0;
+                        l4reqSum += p.stats.l4RequiredCells || 0;
+                        if ((p.stats.l4RequiredCells || 0) > 0) l4reqCount += 1;
                         atSum += p.stats.attemptsUsed || 1;
                         tSum += (t1 - t0);
                     }
@@ -71,14 +85,17 @@
                         `${N}x${N}`,
                         d,
                         (pSum / K).toFixed(1) + '/' + total,
-                        ((pSum / K / total) * 100).toFixed(0) + '%',
                         (wSum / K).toFixed(1),
+                        (l2Sum / K).toFixed(1),
                         (l3Sum / K).toFixed(1),
-                        (l3rSum / K).toFixed(1),
-                        l3rCount + '/' + K,
+                        (l4Sum / K).toFixed(1),
+                        (l2reqSum / K).toFixed(1),
+                        (l3reqSum / K).toFixed(1),
+                        (l4reqSum / K).toFixed(1),
+                        l4reqCount + '/' + K,
                         (atSum / K).toFixed(1),
                         (tSum / K).toFixed(1),
-                        warns > 0 ? `${warns} bad` : 'ok',
+                        warns > 0 ? `${warns}` : 'ok',
                     ]);
                 }
             }
