@@ -75,6 +75,7 @@
                 </select>
             </label>
             <button id="new">New puzzle</button>
+            <button id="findDisc" title="不斷產生關卡，直到出現至少一個套用 wall-chain 折扣的 L4 推論">Find L4 w/ wall discount</button>
         </div>
         <div class="controls">
             <button id="step">Step</button>
@@ -198,17 +199,17 @@
             if (reason.kind === 'L3') {
                 const hyp = reason.hypothesis;
                 const contradictStr = describeContradiction(reason.contradiction);
-                return `假設這格 = ${v(hyp.value)}，只在${lineLabel(reason)}推 ${reason.propagation.length} 步 L1 後出現矛盾：${contradictStr}。所以這格只能是 ${v(reason.value)}`;
+                return `假設這格 = ${v(hyp.value)}，在${lineLabel(reason)}內最少推 ${reason.chainLength} 步 L1 後出現矛盾：${contradictStr}。所以這格只能是 ${v(reason.value)}`;
             }
             if (reason.kind === 'L4') {
                 const hyp = reason.hypothesis;
                 const contradictStr = describeContradiction(reason.contradiction);
-                const perpLabel = reason.perpOrientation === 'row'
-                    ? `第 ${reason.perpIndex} 列`
-                    : `第 ${reason.perpIndex} 行`;
-                const primarySteps = reason.primaryPropagation.length;
-                const perpSteps = reason.perpPropagation.length;
-                return `假設這格 = ${v(hyp.value)}，以${lineLabel(reason)}為主線推 ${primarySteps} 步 L1，再單獨在${perpLabel}上推 ${perpSteps} 步 L1 後出現矛盾：${contradictStr}。所以這格只能是 ${v(reason.value)}`;
+                const raw = reason.rawChainLength;
+                const compressed = reason.chainLength;
+                const note = raw && raw !== compressed
+                    ? `${raw} 個 placement 折算為 ${compressed} 步（連續牆鏈 ceil(K/3)）`
+                    : `${compressed} 步`;
+                return `假設這格 = ${v(hyp.value)}，在盤面上任意推 L1，${note}（上限 ${reason.budget}）後出現矛盾：${contradictStr}。所以這格只能是 ${v(reason.value)}`;
             }
             return JSON.stringify(reason);
         }
@@ -288,49 +289,22 @@
             const text = document.createElement('div');
             text.textContent = desc;
             div.appendChild(text);
-            const renderChainSteps = (parent, propagation) => {
-                for (const p of propagation) {
+            const hasChain = (step.reason.kind === 'L2' || step.reason.kind === 'L3'
+                || step.reason.kind === 'L4');
+            if (hasChain && step.reason.propagation.length > 0) {
+                const chain = document.createElement('div');
+                chain.className = 'chain';
+                const isL4 = step.reason.kind === 'L4';
+                const raw = step.reason.rawChainLength;
+                const compressed = step.reason.chainLength;
+                const headerLabel = isL4 && raw && raw !== compressed
+                    ? `推論鏈（${raw} 個 placement，連續牆鏈折扣後 ${compressed} 步）`
+                    : `推論鏈（最少 ${compressed} 步）`;
+                chain.innerHTML = `${headerLabel}：<br>`;
+                for (const p of step.reason.propagation) {
                     const cs = document.createElement('div');
                     cs.className = 'chain-step';
                     cs.textContent = `· (${p.cell[0]}, ${p.cell[1]}) = ${p.value === SUN ? '☀' : '☾'} — ${describeReason(p.reason, p.value)}`;
-                    parent.appendChild(cs);
-                }
-            };
-            if (step.reason.kind === 'L2' || step.reason.kind === 'L3') {
-                if (step.reason.propagation.length > 0) {
-                    const chain = document.createElement('div');
-                    chain.className = 'chain';
-                    chain.innerHTML = '推論鏈：<br>';
-                    renderChainSteps(chain, step.reason.propagation);
-                    div.appendChild(chain);
-                }
-            } else if (step.reason.kind === 'L4') {
-                const chain = document.createElement('div');
-                chain.className = 'chain';
-                const primary = step.reason.primaryPropagation || [];
-                const perp = step.reason.perpPropagation || [];
-                if (primary.length > 0) {
-                    chain.innerHTML = '主線推論：<br>';
-                    renderChainSteps(chain, primary);
-                } else {
-                    chain.innerHTML = '主線推論：（無 L1 placement，僅靠 hypothesis 自身）<br>';
-                }
-                const perpLabel = step.reason.perpOrientation === 'row'
-                    ? `第 ${step.reason.perpIndex} 列`
-                    : `第 ${step.reason.perpIndex} 行`;
-                const sep = document.createElement('div');
-                sep.className = 'chain-step';
-                sep.style.marginTop = '4px';
-                sep.style.fontStyle = 'italic';
-                sep.style.color = '#888';
-                sep.textContent = `── 切換到${perpLabel}（獨立檢查，不會回頭影響主線） ──`;
-                chain.appendChild(sep);
-                if (perp.length > 0) {
-                    renderChainSteps(chain, perp);
-                } else {
-                    const cs = document.createElement('div');
-                    cs.className = 'chain-step';
-                    cs.textContent = '（perp 線無需 L1 placement，主線完成後即已矛盾）';
                     chain.appendChild(cs);
                 }
                 div.appendChild(chain);
@@ -372,7 +346,95 @@
             while (safety-- > 0 && step()) { /* keep stepping */ }
         }
 
+        // Probe a candidate puzzle by simulating the full deduction
+        // trace (without mutating UI state) and return the first L4
+        // step whose wall-chain discount fires, or null.
+        function probeDiscountedL4(candidate) {
+            const f = candidate.prefilled.map((row) => row.slice());
+            let safety = candidate.size * candidate.size + 10;
+            let stepIdx = 0;
+            while (safety-- > 0) {
+                const next = window.PuzzleSolvers.tango.nextDeduction(
+                    f, candidate.walls, candidate.size,
+                    ['L1', 'L2', 'L3', 'L4']);
+                if (!next) return null;
+                stepIdx += 1;
+                if (next.reason.kind === 'L4'
+                    && (next.reason.rawChainLength || 0)
+                        > (next.reason.chainLength || 0)) {
+                    return {
+                        stepIdx,
+                        cell: next.cell,
+                        raw: next.reason.rawChainLength,
+                        compressed: next.reason.chainLength,
+                    };
+                }
+                f[next.cell[0]][next.cell[1]] = next.value;
+            }
+            return null;
+        }
+
+        function findDiscountedL4() {
+            const diffSelect = document.getElementById('difficulty');
+            if (diffSelect.value !== 'hard') {
+                if (!confirm('Wall-chain 折扣只會在 Hard (L4) 出現，要切到 Hard 嗎？')) return;
+                diffSelect.value = 'hard';
+            }
+            const N = +document.getElementById('size').value;
+            const MAX = 500;
+            const btn = document.getElementById('findDisc');
+            const origLabel = btn.textContent;
+            btn.disabled = true;
+            btn.textContent = 'Searching…';
+            // Yield to the browser between batches so the button label
+            // gets a chance to repaint on slow boxes.
+            const batch = 25;
+            let attempts = 0;
+            const tick = () => {
+                const start = attempts;
+                for (; attempts < Math.min(start + batch, MAX); attempts++) {
+                    const seed = ((Date.now() + attempts * 0x9e3779b9) >>> 0);
+                    const candidate = window.PuzzleGenerators.tango(N, 'hard', seed);
+                    const hit = probeDiscountedL4(candidate);
+                    if (hit) {
+                        puzzle = candidate;
+                        prefilled = candidate.prefilled.map((row) => row.slice());
+                        filled = candidate.prefilled.map((row) => row.slice());
+                        steps = [];
+                        const log = document.getElementById('log');
+                        log.innerHTML = '';
+                        const banner = document.createElement('div');
+                        banner.className = 'step';
+                        banner.style.borderColor = 'var(--L4)';
+                        banner.style.background = '#f3e5f5';
+                        banner.innerHTML =
+                            `第 ${attempts + 1} 次嘗試命中。第 ${hit.stepIdx} 步 ` +
+                            `會在 (${hit.cell[0]}, ${hit.cell[1]}) 觸發 wall-chain 折扣：` +
+                            `${hit.raw} 個 placement → ${hit.compressed} 步。<br>` +
+                            `點 <b>Run to end</b> 看完整推論。`;
+                        log.appendChild(banner);
+                        updateMeta();
+                        renderBoard();
+                        btn.disabled = false;
+                        btn.textContent = origLabel;
+                        return;
+                    }
+                }
+                if (attempts >= MAX) {
+                    btn.disabled = false;
+                    btn.textContent = origLabel;
+                    alert(`找了 ${MAX} 個關卡都沒看到 wall-chain 折扣的 L4。` +
+                        '可能是 ceil(K/3) 在這個尺寸不太會觸發 K ≥ 2 的牆鏈。');
+                    return;
+                }
+                btn.textContent = `Searching… ${attempts}/${MAX}`;
+                setTimeout(tick, 0);
+            };
+            setTimeout(tick, 0);
+        }
+
         document.getElementById('new').addEventListener('click', newPuzzle);
+        document.getElementById('findDisc').addEventListener('click', findDiscountedL4);
         document.getElementById('step').addEventListener('click', step);
         document.getElementById('run').addEventListener('click', runAll);
         document.getElementById('reset').addEventListener('click', reset);

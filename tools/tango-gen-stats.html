@@ -25,13 +25,26 @@
     <p>
         Runs N puzzles per (size, difficulty) combination and reports
         average prefill count, wall count, tier-tagged erasures, and
-        how many cells each tier leaves unsolved. Tier definitions:
-        L1 = direct rules; L2 = hypothesise + 1 in-line L1 step; L3 =
-        hypothesise + 2+ in-line L1 steps; L4 = L3 with one
-        perpendicular layer unlocked (each cell placed on the primary
-        line opens its perpendicular line for further L1 propagation).
-        Difficulty: Easy = L1+L2, Medium = +L3, Hard = +L4. Open the
-        browser console for self-check warnings.
+        how many cells each tier leaves unsolved. Tier definitions
+        (chain length measured by backward closure — only the L1
+        placements actually needed for the contradiction count):
+        L1 = direct rules; L2 = single-line hypothesis, chain = 1;
+        L3 = single-line hypothesis, chain ≥ 2; L4 = anywhere-on-board
+        hypothesis, chain ≤ 5 (with a wall-chain discount: any maximal
+        connected run of T-wall placements of size K inside the chain
+        is counted as ceil(K/3), since consecutive walls are visually
+        mechanical). Difficulty: Easy = L1+L2, Medium = +L3, Hard = +L4.
+        For Hard only, we also walk the solve trace and report how
+        many L4 deductions actually used the wall-chain discount
+        (rawChainLength &gt; chainLength): <b>L4 disc avg</b> = avg
+        discounted L4 steps per puzzle, <b>disc K</b> = puzzles with
+        ≥1 such step, <b>max save</b> = largest single-step savings.
+        <b>unverified</b> shows how many puzzles in the sample
+        ultimately ended up unverified (generator's erase-time checks
+        passed but the final state can't actually be solved by the
+        allowed tactics; `generate` already retries best-of-N to
+        avoid returning these). Open the browser console for
+        self-check warnings.
     </p>
 
     <label>Runs per combo: <input id="k" type="number" value="20" min="1" max="500"></label>
@@ -45,12 +58,39 @@
         const SIZES = [6, 8, 10];
         const DIFFS = ['easy', 'medium', 'hard'];
 
+        // For a generated puzzle, simulate the full deduction trace
+        // (using `nextDeduction`) and report how many L4 steps fired
+        // the wall-chain discount (rawChainLength > chainLength).
+        function traceL4DiscountStats(p) {
+            const f = p.prefilled.map((row) => row.slice());
+            const tiers = ['L1', 'L2', 'L3', 'L4'];
+            let l4Steps = 0, l4Discounted = 0, maxSavings = 0;
+            let safety = p.size * p.size + 10;
+            while (safety-- > 0) {
+                const next = window.PuzzleSolvers.tango.nextDeduction(
+                    f, p.walls, p.size, tiers);
+                if (!next) break;
+                if (next.reason.kind === 'L4') {
+                    l4Steps += 1;
+                    const raw = next.reason.rawChainLength || 0;
+                    const compressed = next.reason.chainLength || 0;
+                    if (raw > compressed) {
+                        l4Discounted += 1;
+                        maxSavings = Math.max(maxSavings, raw - compressed);
+                    }
+                }
+                f[next.cell[0]][next.cell[1]] = next.value;
+            }
+            return { l4Steps, l4Discounted, maxSavings };
+        }
+
         function run(K) {
             const rows = [['size', 'diff', 'prefill', 'walls',
                 'L2 era', 'L3 era', 'L4 era',
                 '≥L2 req avg', '≥L3 req avg',
                 'L4 req avg', 'L4 req K',
-                'attempts', 'time ms', 'warn']];
+                'L4 disc avg', 'disc K', 'max save',
+                'unverified', 'attempts', 'time ms', 'warn']];
             let totalWarn = 0;
             const origWarn = console.warn;
             for (const N of SIZES) {
@@ -59,7 +99,9 @@
                     let l2Sum = 0, l3Sum = 0, l4Sum = 0;
                     let l2reqSum = 0, l3reqSum = 0;
                     let l4reqSum = 0, l4reqCount = 0;
+                    let l4discSum = 0, l4discCount = 0, maxSave = 0;
                     let atSum = 0, tSum = 0, warns = 0;
+                    let unverified = 0;
                     console.warn = function () { warns += 1; origWarn.apply(console, arguments); };
                     for (let i = 0; i < K; i++) {
                         const seed = ((Date.now() + i * 0x9e3779b9) >>> 0);
@@ -77,6 +119,16 @@
                         if ((p.stats.l4RequiredCells || 0) > 0) l4reqCount += 1;
                         atSum += p.stats.attemptsUsed || 1;
                         tSum += (t1 - t0);
+                        if (p.stats.verified === false) unverified += 1;
+                        // Only walk the solve trace for difficulties that
+                        // allow L4 — saves a noticeable chunk of time on
+                        // easy/medium runs.
+                        if (d === 'hard') {
+                            const td = traceL4DiscountStats(p);
+                            l4discSum += td.l4Discounted;
+                            if (td.l4Discounted > 0) l4discCount += 1;
+                            if (td.maxSavings > maxSave) maxSave = td.maxSavings;
+                        }
                     }
                     console.warn = origWarn;
                     totalWarn += warns;
@@ -93,6 +145,10 @@
                         (l3reqSum / K).toFixed(1),
                         (l4reqSum / K).toFixed(1),
                         l4reqCount + '/' + K,
+                        d === 'hard' ? (l4discSum / K).toFixed(2) : '—',
+                        d === 'hard' ? `${l4discCount}/${K}` : '—',
+                        d === 'hard' ? (maxSave > 0 ? `${maxSave}` : '0') : '—',
+                        `${unverified}/${K}`,
                         (atSum / K).toFixed(1),
                         (tSum / K).toFixed(1),
                         warns > 0 ? `${warns}` : 'ok',

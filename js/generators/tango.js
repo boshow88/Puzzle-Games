@@ -153,7 +153,8 @@
     //
     //   T-count : the line already has N/2 of one symbol.
     //             { kind: 'T-count', orientation: 'row'|'col',
-    //               line: index, fullValue: SUN|MOON, value: opposite }
+    //               line: index, fullValue: SUN|MOON, value: opposite,
+    //               sources: [[r1, c1], ...] }   // the N/2 same-color cells
     //
     //   T-three : two adjacent (or one-over) cells along the line are
     //             the same symbol, so this cell must be the opposite.
@@ -165,7 +166,11 @@
     //   T-wall  : a `=` / `×` wall pins this cell to a filled neighbour.
     //             { kind: 'T-wall', wallKind: 'same'|'diff',
     //               neighbor: [r', c'], neighborValue: SUN|MOON,
-    //               value: derived }
+    //               value: derived, sources: [[r', c']] }
+    //
+    // Every reason now carries `sources`, the list of cells whose
+    // current values the rule depends on. Backward-closure code uses
+    // this to compute minimum chain lengths.
     //
     // Precondition: filled[r][c] === 0.
     // -----------------------------------------------------------------
@@ -175,32 +180,34 @@
 
         // T-count along the row.
         let rs = 0, rm = 0;
+        const rsCells = [], rmCells = [];
         for (let j = 0; j < N; j++) {
-            if (filled[r][j] === SUN) rs++;
-            else if (filled[r][j] === MOON) rm++;
+            if (filled[r][j] === SUN) { rs++; rsCells.push([r, j]); }
+            else if (filled[r][j] === MOON) { rm++; rmCells.push([r, j]); }
         }
         if (rs >= half) {
             return { value: MOON, reason: { kind: 'T-count', orientation: 'row',
-                line: r, fullValue: SUN, value: MOON } };
+                line: r, fullValue: SUN, value: MOON, sources: rsCells } };
         }
         if (rm >= half) {
             return { value: SUN, reason: { kind: 'T-count', orientation: 'row',
-                line: r, fullValue: MOON, value: SUN } };
+                line: r, fullValue: MOON, value: SUN, sources: rmCells } };
         }
 
         // T-count along the column.
         let cs = 0, cm = 0;
+        const csCells = [], cmCells = [];
         for (let i = 0; i < N; i++) {
-            if (filled[i][c] === SUN) cs++;
-            else if (filled[i][c] === MOON) cm++;
+            if (filled[i][c] === SUN) { cs++; csCells.push([i, c]); }
+            else if (filled[i][c] === MOON) { cm++; cmCells.push([i, c]); }
         }
         if (cs >= half) {
             return { value: MOON, reason: { kind: 'T-count', orientation: 'col',
-                line: c, fullValue: SUN, value: MOON } };
+                line: c, fullValue: SUN, value: MOON, sources: csCells } };
         }
         if (cm >= half) {
             return { value: SUN, reason: { kind: 'T-count', orientation: 'col',
-                line: c, fullValue: MOON, value: SUN } };
+                line: c, fullValue: MOON, value: SUN, sources: cmCells } };
         }
 
         // T-three horizontally. Three patterns:
@@ -272,7 +279,8 @@
                 if (v === 0) continue;
                 const value = kind === 'same' ? v : (v === SUN ? MOON : SUN);
                 return { value, reason: { kind: 'T-wall', wallKind: kind,
-                    neighbor: [otherR, otherC], neighborValue: v, value } };
+                    neighbor: [otherR, otherC], neighborValue: v, value,
+                    sources: [[otherR, otherC]] } };
             }
         }
         return null;
@@ -355,8 +363,10 @@
     // involve cell (r, c) — cheap O(N) per call, perfect for
     // incremental checks after placing one cell.
     //
-    // Returned shape:
-    //   { kind: 'count-overflow', orientation, line, value, count }
+    // Returned shape (every kind carries `cells` — the cells whose values
+    // jointly demonstrate the violation; backward-closure walks them):
+    //   { kind: 'count-overflow', orientation, line, value, count,
+    //     cells: [[r,c], ...] }                  // all same-color cells on the line
     //   { kind: 'three-in-row',  orientation, cells: [[r,c]×3], value }
     //   { kind: 'wall',          wallKind, cells: [[r,c],[r',c']], values: [v, v'] }
     // -----------------------------------------------------------------
@@ -369,29 +379,31 @@
 
         // Count overflow in row r and col c.
         let rs = 0, rm = 0;
+        const rsCells = [], rmCells = [];
         for (let j = 0; j < N; j++) {
-            if (filled[r][j] === SUN) rs++;
-            else if (filled[r][j] === MOON) rm++;
+            if (filled[r][j] === SUN) { rs++; rsCells.push([r, j]); }
+            else if (filled[r][j] === MOON) { rm++; rmCells.push([r, j]); }
         }
         if (rs > half) {
-            const cd = { kind: 'count-overflow', orientation: 'row', line: r, value: SUN, count: rs };
+            const cd = { kind: 'count-overflow', orientation: 'row', line: r, value: SUN, count: rs, cells: rsCells };
             if (accept(cd)) return cd;
         }
         if (rm > half) {
-            const cd = { kind: 'count-overflow', orientation: 'row', line: r, value: MOON, count: rm };
+            const cd = { kind: 'count-overflow', orientation: 'row', line: r, value: MOON, count: rm, cells: rmCells };
             if (accept(cd)) return cd;
         }
         let cs = 0, cm = 0;
+        const csCells = [], cmCells = [];
         for (let i = 0; i < N; i++) {
-            if (filled[i][c] === SUN) cs++;
-            else if (filled[i][c] === MOON) cm++;
+            if (filled[i][c] === SUN) { cs++; csCells.push([i, c]); }
+            else if (filled[i][c] === MOON) { cm++; cmCells.push([i, c]); }
         }
         if (cs > half) {
-            const cd = { kind: 'count-overflow', orientation: 'col', line: c, value: SUN, count: cs };
+            const cd = { kind: 'count-overflow', orientation: 'col', line: c, value: SUN, count: cs, cells: csCells };
             if (accept(cd)) return cd;
         }
         if (cm > half) {
-            const cd = { kind: 'count-overflow', orientation: 'col', line: c, value: MOON, count: cm };
+            const cd = { kind: 'count-overflow', orientation: 'col', line: c, value: MOON, count: cm, cells: cmCells };
             if (accept(cd)) return cd;
         }
 
@@ -433,101 +445,276 @@
     }
 
     // -----------------------------------------------------------------
-    // L2 / L3 / L4 deductions — hypothesize + L1 fixpoint, with three
-    // distinct difficulty bands. The cost graph is:
+    // L2 / L3 / L4 deductions — hypothesize + L1 fixpoint, scored by
+    // *minimum* chain length via backward closure.
     //
-    //   L2 (line, 1 step)
-    //     Hypothesise X = v at (r, c). Propagate L1 only within row r
-    //     ∪ col c. If the VERY FIRST L1 placement triggers an in-line
-    //     contradiction, X is forced. Cognitively about as cheap as L1:
-    //     "if I try this here, the cell next to it would have to be the
-    //     same thing and that breaks a wall / three-in-a-row".
+    // Pipeline for every cell (r, c):
+    //   1. Hypothesise X = v at (r, c). (If L1 already refutes v at
+    //      (r, c), that's an L1 cell — skip.)
+    //   2. Propagate L1 to fixpoint within the tier's scope.
+    //      - L2 / L3 : single line (row r OR col c, picked separately
+    //                  per attempt).
+    //      - L4      : anywhere on the board.
+    //   3. Enumerate ALL in-scope contradictions in the post-fixpoint
+    //      board.
+    //   4. For each contradiction, walk backward through every placed
+    //      cell's `reason.sources` to compute the MINIMUM set of L1
+    //      placements actually required to derive that contradiction.
+    //      The chain length is that minimum, not the trace length.
+    //   5. Across all contradictions found, take the contradiction
+    //      with the smallest chain length.
     //
-    //   L3 (line, ≥2 steps)
-    //     Same line-bounded propagation, but the contradiction only
-    //     appears after a chain of 2+ L1 placements. The player has to
-    //     hold a sequence in their head while staring at one row/column.
+    // Tier classification by minimum chain length:
+    //   L2 = single-line, min chain == 1
+    //   L3 = single-line, min chain >= 2
+    //   L4 = anywhere,   1 <= min chain <= L4_BUDGET
     //
-    //   L4 (line + 1 perpendicular layer)
-    //     Hypothesise on (r, c). Run line-bounded propagation on row r
-    //     ∪ col c just like L3 — but every time we place a cell on the
-    //     primary line, we ALSO unlock its perpendicular line for
-    //     propagation. Placements on those unlocked perpendiculars
-    //     don't chain further. Contradictions must live in the
-    //     unlocked scope. Player experience: "this row fills out and
-    //     now I can see one of its columns has a problem".
+    // L4 is a superset of L2/L3 in raw coverage, so the disjoint-set
+    // wrappers (findL{K}ErasableCells / nextDeduction) classify each
+    // cell at the LOWEST applicable tier.
     //
-    // L2 ⊆ L3 ⊆ L4 in *coverage* (L2 cases would also fire under L3 or
-    // L4 logic). We classify cells by the SMALLEST tier that forces
-    // them so the difficulty buckets stay disjoint.
-    //
-    // The two scopes (line-bounded / anywhere) share
-    // runHypothesisPropagation; the `inScope` / `contradictionInScope`
-    // predicates control what counts.
-    //
-    // Reason shape:
+    // Reason shape (every L>=2 reason):
     //   { kind: 'L2'|'L3'|'L4',
     //     hypothesis: { cell: [r, c], value: triedValue },
     //     propagation: [{ cell, value, reason: <L1 reason> }, ...],
+    //         // ^ the minimal chain, in original propagation order
     //     contradiction: <see findContradictionAt>,
+    //     chainLength: int,            // == propagation.length
+    //     orientation: 'row'|'col',    // L2/L3 only — which line carried the chain
+    //     budget: int,                 // L4 only — the K cap
     //     value }
     // -----------------------------------------------------------------
 
+    const L4_BUDGET = 5;
+
     /**
-     * Hypothesise X = v at (r, c), propagate L1 through the cells the
-     * `inScope(rr, cc)` predicate accepts, and report any contradiction
-     * also accepted by `contradictionInScope(contradict)`.
+     * Enumerate every contradiction visible in the current filled state.
+     * Used after running L1 to fixpoint inside a hypothesis attempt.
      *
-     * Returns { triedValue, propagation, contradiction } on success, or
-     * null when no value leads to an in-scope contradiction.
+     * The optional `predicate` filters contradictions before they're
+     * returned (e.g. L2/L3 keep only those in their single line).
      */
-    function runHypothesisPropagation(r, c, filled, wallIndex, N, inScope, contradictionInScope) {
-        for (const tryV of [SUN, MOON]) {
-            const f = filled.map((row) => row.slice());
-            f[r][c] = tryV;
+    function findAllContradictions(filled, wallIndex, N, predicate) {
+        const accept = predicate || (() => true);
+        const half = N / 2;
+        const out = [];
 
-            // Immediate contradiction at the hypothesised cell — that's
-            // really an L1 refutation; leave it to L1.
-            const direct = findContradictionAt(r, c, f, wallIndex, N);
-            if (direct) continue;
-
-            const trace = [];
-            let contradict = null;
-            let progressed = true;
-            while (progressed && !contradict) {
-                progressed = false;
-                for (let rr = 0; rr < N && !contradict; rr++) {
-                    for (let cc = 0; cc < N && !contradict; cc++) {
-                        if (f[rr][cc] !== 0) continue;
-                        if (!inScope(rr, cc)) continue;
-                        const e = l1Explain(rr, cc, f, wallIndex, N);
-                        if (!e) continue;
-                        f[rr][cc] = e.value;
-                        trace.push({ cell: [rr, cc], value: e.value, reason: e.reason });
-                        progressed = true;
-                        const c2 = findContradictionAt(rr, cc, f, wallIndex, N, contradictionInScope);
-                        if (c2) contradict = c2;
-                    }
-                }
+        // Count overflow per row.
+        for (let r = 0; r < N; r++) {
+            let rs = 0, rm = 0;
+            const rsCells = [], rmCells = [];
+            for (let j = 0; j < N; j++) {
+                if (filled[r][j] === SUN) { rs++; rsCells.push([r, j]); }
+                else if (filled[r][j] === MOON) { rm++; rmCells.push([r, j]); }
             }
-
-            if (contradict) {
-                return { triedValue: tryV, propagation: trace, contradiction: contradict };
+            if (rs > half) {
+                const cd = { kind: 'count-overflow', orientation: 'row',
+                    line: r, value: SUN, count: rs, cells: rsCells };
+                if (accept(cd)) out.push(cd);
+            }
+            if (rm > half) {
+                const cd = { kind: 'count-overflow', orientation: 'row',
+                    line: r, value: MOON, count: rm, cells: rmCells };
+                if (accept(cd)) out.push(cd);
             }
         }
-        return null;
+        // Count overflow per column.
+        for (let c = 0; c < N; c++) {
+            let cs = 0, cm = 0;
+            const csCells = [], cmCells = [];
+            for (let i = 0; i < N; i++) {
+                if (filled[i][c] === SUN) { cs++; csCells.push([i, c]); }
+                else if (filled[i][c] === MOON) { cm++; cmCells.push([i, c]); }
+            }
+            if (cs > half) {
+                const cd = { kind: 'count-overflow', orientation: 'col',
+                    line: c, value: SUN, count: cs, cells: csCells };
+                if (accept(cd)) out.push(cd);
+            }
+            if (cm > half) {
+                const cd = { kind: 'count-overflow', orientation: 'col',
+                    line: c, value: MOON, count: cm, cells: cmCells };
+                if (accept(cd)) out.push(cd);
+            }
+        }
+
+        // Three-in-row, every horizontal window.
+        for (let r = 0; r < N; r++) {
+            for (let c = 0; c + 2 < N; c++) {
+                const v = filled[r][c];
+                if (v !== 0 && filled[r][c + 1] === v && filled[r][c + 2] === v) {
+                    const cd = { kind: 'three-in-row', orientation: 'row',
+                        cells: [[r, c], [r, c + 1], [r, c + 2]], value: v };
+                    if (accept(cd)) out.push(cd);
+                }
+            }
+        }
+        // Three-in-row, every vertical window.
+        for (let c = 0; c < N; c++) {
+            for (let r = 0; r + 2 < N; r++) {
+                const v = filled[r][c];
+                if (v !== 0 && filled[r + 1][c] === v && filled[r + 2][c] === v) {
+                    const cd = { kind: 'three-in-row', orientation: 'col',
+                        cells: [[r, c], [r + 1, c], [r + 2, c]], value: v };
+                    if (accept(cd)) out.push(cd);
+                }
+            }
+        }
+
+        // Walls — iterate byCell and dedupe pairs.
+        const seenPair = new Set();
+        for (const [k1, neighbors] of wallIndex.byCell) {
+            const r1 = Math.floor(k1 / 100), c1 = k1 % 100;
+            for (const { kind, otherR: r2, otherC: c2 } of neighbors) {
+                const k2 = cellKey(r2, c2);
+                const pairKey = k1 < k2 ? `${k1}|${k2}` : `${k2}|${k1}`;
+                if (seenPair.has(pairKey)) continue;
+                seenPair.add(pairKey);
+                const v1 = filled[r1][c1], v2 = filled[r2][c2];
+                if (v1 === 0 || v2 === 0) continue;
+                if (kind === 'same' && v1 !== v2) {
+                    const cd = { kind: 'wall', wallKind: 'same',
+                        cells: [[r1, c1], [r2, c2]], values: [v1, v2] };
+                    if (accept(cd)) out.push(cd);
+                }
+                if (kind === 'diff' && v1 === v2) {
+                    const cd = { kind: 'wall', wallKind: 'diff',
+                        cells: [[r1, c1], [r2, c2]], values: [v1, v2] };
+                    if (accept(cd)) out.push(cd);
+                }
+            }
+        }
+        return out;
     }
 
     /**
-     * Run *single-line* hypothesis propagation along one orientation
-     * ('row' uses row r as the only line; 'col' uses col c).
-     * Placements and contradictions are both clamped to that single
-     * line. Returns null if the orientation doesn't refute either
-     * value of (r, c).
+     * Backward dependency closure.
      *
-     * Player model: focus on EITHER the row OR the column the cell is
-     * on, never both at once. L2/L3 try row first, then column, and
-     * report whichever fires.
+     * Given the propagation trace of a successful refutation and ONE
+     * contradiction it produced, walk backward from the contradiction's
+     * cells: for every cell we've added to `needed`, also add any of
+     * its L1 rule's `sources` that themselves came from the trace
+     * (prefill cells and the hypothesis cell are excluded — they're
+     * "given", not chain steps).
+     *
+     * Returns:
+     *   { chainSteps: [{cell, value, reason}, ...],  // in propagation order
+     *     chainLength: int }                         // == chainSteps.length
+     *
+     * The returned chain is the smallest subset of the trace whose
+     * placements jointly justify the contradiction.
+     */
+    function backwardClose(trace, contradiction, hypothesisCell) {
+        const stepByKey = new Map();
+        for (const step of trace) {
+            stepByKey.set(cellKey(step.cell[0], step.cell[1]), step);
+        }
+        const hypKey = cellKey(hypothesisCell[0], hypothesisCell[1]);
+        const needed = new Set();
+        const queue = [];
+        const add = (rr, cc) => {
+            const key = cellKey(rr, cc);
+            if (key === hypKey) return;
+            if (!stepByKey.has(key)) return;     // prefill — given
+            if (needed.has(key)) return;
+            needed.add(key);
+            queue.push(key);
+        };
+        for (const [rr, cc] of (contradiction.cells || [])) add(rr, cc);
+        while (queue.length) {
+            const key = queue.shift();
+            const step = stepByKey.get(key);
+            for (const [sr, sc] of (step.reason.sources || [])) add(sr, sc);
+        }
+        // Preserve original propagation order.
+        const chainSteps = trace.filter(
+            (s) => needed.has(cellKey(s.cell[0], s.cell[1])));
+        return { chainSteps, chainLength: chainSteps.length };
+    }
+
+    /**
+     * Across every contradiction in `contradictions`, return the
+     * (contradiction, chainSteps, chainLength) whose chain cost is
+     * the SHORTEST. `costFn(chainSteps)` defaults to `chainSteps.length`
+     * — pass a different function (e.g. L4's wall-chain discount) to
+     * change how chain length is scored.
+     *
+     * Returns null if `contradictions` is empty.
+     */
+    function pickShortestChain(trace, contradictions, hypothesisCell, costFn) {
+        const cost = costFn || ((steps) => steps.length);
+        let best = null;
+        for (const cd of contradictions) {
+            const closed = backwardClose(trace, cd, hypothesisCell);
+            const chainLength = cost(closed.chainSteps);
+            if (!best || chainLength < best.chainLength) {
+                best = { contradiction: cd, chainSteps: closed.chainSteps, chainLength };
+            }
+        }
+        return best;
+    }
+
+    /**
+     * L4-specific chain cost: contiguous T-wall placements (whose
+     * `reason.sources[0]` is also a T-wall placement in the chain)
+     * get grouped, and each group of size K costs `ceil(K/3)` instead
+     * of K. Non-T-wall placements (T-count, T-three) and isolated
+     * T-wall placements each form a singleton group of size 1 and so
+     * still cost 1 (== ceil(1/3)).
+     *
+     * Rationale: a chain of consecutive walls is visually mechanical
+     * — the player follows the walls hand-over-hand. We treat every
+     * 3 wall hops as "one cognitive step" inside L4's budget.
+     */
+    function chainCostWithWallDiscount(chainSteps) {
+        if (chainSteps.length === 0) return 0;
+        const stepByKey = new Map();
+        for (const s of chainSteps) {
+            stepByKey.set(cellKey(s.cell[0], s.cell[1]), s);
+        }
+        const parent = new Map();
+        for (const k of stepByKey.keys()) parent.set(k, k);
+        const find = (k) => {
+            let r = k;
+            while (parent.get(r) !== r) r = parent.get(r);
+            while (parent.get(k) !== r) {
+                const next = parent.get(k);
+                parent.set(k, r);
+                k = next;
+            }
+            return r;
+        };
+        const union = (k1, k2) => {
+            const r1 = find(k1), r2 = find(k2);
+            if (r1 !== r2) parent.set(r1, r2);
+        };
+        for (const step of chainSteps) {
+            if (step.reason.kind !== 'T-wall') continue;
+            const k = cellKey(step.cell[0], step.cell[1]);
+            const [sr, sc] = step.reason.sources[0];
+            const sk = cellKey(sr, sc);
+            const srcStep = stepByKey.get(sk);
+            if (srcStep && srcStep.reason.kind === 'T-wall') {
+                union(k, sk);
+            }
+        }
+        const sizes = new Map();
+        for (const k of stepByKey.keys()) {
+            const r = find(k);
+            sizes.set(r, (sizes.get(r) || 0) + 1);
+        }
+        let cost = 0;
+        for (const size of sizes.values()) {
+            cost += Math.ceil(size / 3);
+        }
+        return cost;
+    }
+
+    /**
+     * Single-line hypothesis: hypothesise (r, c) along `orientation`,
+     * propagate L1 to fixpoint restricted to that line, scan in-line
+     * contradictions, return the shortest backward-closed chain (or
+     * null if neither value of (r, c) refutes itself in-line).
      */
     function singleLineHypothesisExplain(r, c, filled, wallIndex, N, orientation) {
         const isRow = orientation === 'row';
@@ -541,288 +728,167 @@
         const contradictionInScope = (cd) => {
             if (cd.kind === 'count-overflow') return lineMatch(cd);
             if (cd.kind === 'three-in-row') {
-                // All three cells live on the same line; check the line index.
                 if (cd.orientation === 'row') return isRow && cd.cells[0][0] === r;
                 return !isRow && cd.cells[0][1] === c;
             }
-            // wall: both ends must be on the chosen line.
             return cd.cells.every(([rr, cc]) => inScope(rr, cc));
         };
-        const result = runHypothesisPropagation(r, c, filled, wallIndex, N,
-            inScope, contradictionInScope);
-        if (!result) return null;
-        const value = result.triedValue === SUN ? MOON : SUN;
-        return {
-            value,
-            triedValue: result.triedValue,
-            chainLength: result.propagation.length,
-            propagation: result.propagation,
-            contradiction: result.contradiction,
-            orientation,
-        };
-    }
-
-    function l2Explain(r, c, filled, wallIndex, N) {
-        // L2 = single-line propagation, EXACTLY 1 L1 placement before
-        // an in-line contradiction. Try row first, then column.
-        for (const orient of ['row', 'col']) {
-            const e = singleLineHypothesisExplain(r, c, filled, wallIndex, N, orient);
-            if (e && e.chainLength === 1) {
-                return {
-                    value: e.value,
-                    reason: {
-                        kind: 'L2',
-                        hypothesis: { cell: [r, c], value: e.triedValue },
-                        propagation: e.propagation,
-                        contradiction: e.contradiction,
-                        orientation: e.orientation,
-                        value: e.value,
-                    },
-                };
-            }
-        }
-        return null;
-    }
-
-    function l3Explain(r, c, filled, wallIndex, N) {
-        // L3 = single-line propagation, chain of ≥2 L1 placements
-        // before the in-line contradiction. Try row first, then column.
-        for (const orient of ['row', 'col']) {
-            const e = singleLineHypothesisExplain(r, c, filled, wallIndex, N, orient);
-            if (e && e.chainLength >= 2) {
-                return {
-                    value: e.value,
-                    reason: {
-                        kind: 'L3',
-                        hypothesis: { cell: [r, c], value: e.triedValue },
-                        propagation: e.propagation,
-                        contradiction: e.contradiction,
-                        orientation: e.orientation,
-                        value: e.value,
-                    },
-                };
-            }
-        }
-        return null;
-    }
-
-    /**
-     * L4 = "single primary line + ONE independent perp line".
-     *
-     * Pick row r OR col c as primary. Propagate L1 along that single
-     * primary line to completion (no contradiction needed there — if
-     * the primary line itself contradicts, that's L3, not L4).
-     *
-     * Then, for each perpendicular line opened by a primary-line
-     * placement (including the hypothesis cell's own perpendicular):
-     *   - snapshot the post-primary board state,
-     *   - propagate L1 *only* along that single perpendicular line,
-     *   - if a contradiction inside (primary ∪ perp) shows up, L4 fires.
-     *
-     * Each perpendicular line is checked INDEPENDENTLY of the others:
-     * L1 placements in one perpendicular never feed into another
-     * perpendicular's deduction. That keeps the player's mental model
-     * honest — they only ever chase one perp at a time.
-     *
-     * L4 = (row variant fires) OR (col variant fires).
-     */
-    function l4Explain(r, c, filled, wallIndex, N) {
-        for (const orient of ['row', 'col']) {
-            const out = singleLineWithPerpExtension(r, c, filled, wallIndex, N, orient);
-            if (out) return out;
-        }
-        return null;
-    }
-
-    function singleLineWithPerpExtension(r, c, filled, wallIndex, N, orientation) {
-        const isRow = orientation === 'row';
 
         for (const tryV of [SUN, MOON]) {
             const f = filled.map((row) => row.slice());
             f[r][c] = tryV;
-            if (findContradictionAt(r, c, f, wallIndex, N)) continue;  // L1 territory
+            if (findContradictionAt(r, c, f, wallIndex, N)) continue;  // L1
 
-            // ----- Primary phase: propagate L1 along the single primary line. -----
-            const primary = runPrimaryLinePropagation(r, c, f, wallIndex, N, orientation);
-            // f is now mutated with the primary-line placements.
-            if (primary.contradiction) {
-                // Primary alone contradicts ⇒ this is L3 territory, not L4.
-                continue;
+            const trace = [];
+            let progressed = true;
+            while (progressed) {
+                progressed = false;
+                if (isRow) {
+                    for (let cc = 0; cc < N; cc++) {
+                        if (f[r][cc] !== 0) continue;
+                        const e = l1Explain(r, cc, f, wallIndex, N);
+                        if (!e) continue;
+                        f[r][cc] = e.value;
+                        trace.push({ cell: [r, cc], value: e.value, reason: e.reason });
+                        progressed = true;
+                    }
+                } else {
+                    for (let rr = 0; rr < N; rr++) {
+                        if (f[rr][c] !== 0) continue;
+                        const e = l1Explain(rr, c, f, wallIndex, N);
+                        if (!e) continue;
+                        f[rr][c] = e.value;
+                        trace.push({ cell: [rr, c], value: e.value, reason: e.reason });
+                        progressed = true;
+                    }
+                }
             }
 
-            // ----- Collect candidate perp indices. -----
-            //   Hypothesis itself counts as a primary-line placement, so its
-            //   perpendicular line is open from the start.
-            const perpIndices = new Set();
-            if (isRow) {
-                perpIndices.add(c);
-                for (const p of primary.trace) perpIndices.add(p.cell[1]);
-            } else {
-                perpIndices.add(r);
-                for (const p of primary.trace) perpIndices.add(p.cell[0]);
-            }
+            const allCd = findAllContradictions(f, wallIndex, N, contradictionInScope);
+            if (allCd.length === 0) continue;
+            const shortest = pickShortestChain(trace, allCd, [r, c]);
+            if (!shortest) continue;
 
-            // ----- Perp phase: check each perp INDEPENDENTLY. -----
-            for (const perpIdx of Array.from(perpIndices).sort((a, b) => a - b)) {
-                const perp = runPerpLineCheck(r, c, f, wallIndex, N, orientation, perpIdx);
-                if (!perp.contradiction) continue;
-                const value = tryV === SUN ? MOON : SUN;
-                return {
-                    value,
-                    reason: {
-                        kind: 'L4',
-                        hypothesis: { cell: [r, c], value: tryV },
-                        orientation,
-                        primaryPropagation: primary.trace,
-                        perpOrientation: isRow ? 'col' : 'row',
-                        perpIndex: perpIdx,
-                        perpPropagation: perp.trace,
-                        contradiction: perp.contradiction,
-                        // Convenience: combined propagation for any caller that
-                        // only wants a flat list (e.g. step counters, board
-                        // highlights).
-                        propagation: primary.trace.concat(perp.trace),
-                        value,
-                    },
-                };
-            }
+            const value = tryV === SUN ? MOON : SUN;
+            return {
+                value,
+                triedValue: tryV,
+                chainLength: shortest.chainLength,
+                propagation: shortest.chainSteps,
+                contradiction: shortest.contradiction,
+                orientation,
+            };
         }
         return null;
     }
 
     /**
-     * Propagate L1 along a single primary line (row r if isRow else col c).
-     * Mutates `f` in place. Returns { trace, contradiction } where the
-     * contradiction (if any) is restricted to the primary line's own
-     * cells/constraints — out-of-line side effects are left for the perp
-     * phase to discover.
+     * Run single-line propagation in BOTH orientations (row r and
+     * col c) and return whichever yields the shorter backward-closed
+     * chain. Returns null if neither orientation refutes.
      */
-    function runPrimaryLinePropagation(r, c, f, wallIndex, N, orientation) {
-        const isRow = orientation === 'row';
-        const inScope = isRow
-            ? (rr) => rr === r
-            : (_, cc) => cc === c;
-        const lineMatch = (cd) =>
-            isRow
-                ? cd.orientation === 'row' && cd.line === r
-                : cd.orientation === 'col' && cd.line === c;
-        const contradictionInScope = (cd) => {
-            if (cd.kind === 'count-overflow') return lineMatch(cd);
-            if (cd.kind === 'three-in-row') {
-                if (cd.orientation === 'row') return isRow && cd.cells[0][0] === r;
-                return !isRow && cd.cells[0][1] === c;
-            }
-            return cd.cells.every(([rr, cc]) => inScope(rr, cc));
-        };
-        const trace = [];
-        let contradict = null;
-        let progressed = true;
-        while (progressed && !contradict) {
-            progressed = false;
-            if (isRow) {
-                for (let cc = 0; cc < N && !contradict; cc++) {
-                    if (f[r][cc] !== 0) continue;
-                    const e = l1Explain(r, cc, f, wallIndex, N);
-                    if (!e) continue;
-                    f[r][cc] = e.value;
-                    trace.push({ cell: [r, cc], value: e.value, reason: e.reason });
-                    progressed = true;
-                    const c2 = findContradictionAt(r, cc, f, wallIndex, N, contradictionInScope);
-                    if (c2) contradict = c2;
-                }
-            } else {
-                for (let rr = 0; rr < N && !contradict; rr++) {
-                    if (f[rr][c] !== 0) continue;
-                    const e = l1Explain(rr, c, f, wallIndex, N);
-                    if (!e) continue;
-                    f[rr][c] = e.value;
-                    trace.push({ cell: [rr, c], value: e.value, reason: e.reason });
-                    progressed = true;
-                    const c2 = findContradictionAt(rr, c, f, wallIndex, N, contradictionInScope);
-                    if (c2) contradict = c2;
-                }
-            }
+    function bestSingleLineHypothesis(r, c, filled, wallIndex, N) {
+        let best = null;
+        for (const orient of ['row', 'col']) {
+            const e = singleLineHypothesisExplain(r, c, filled, wallIndex, N, orient);
+            if (!e) continue;
+            if (!best || e.chainLength < best.chainLength) best = e;
         }
-        return { trace, contradiction: contradict };
+        return best;
+    }
+
+    function l2Explain(r, c, filled, wallIndex, N) {
+        const e = bestSingleLineHypothesis(r, c, filled, wallIndex, N);
+        if (!e || e.chainLength !== 1) return null;
+        return {
+            value: e.value,
+            reason: {
+                kind: 'L2',
+                hypothesis: { cell: [r, c], value: e.triedValue },
+                propagation: e.propagation,
+                contradiction: e.contradiction,
+                chainLength: e.chainLength,
+                orientation: e.orientation,
+                value: e.value,
+            },
+        };
+    }
+
+    function l3Explain(r, c, filled, wallIndex, N) {
+        const e = bestSingleLineHypothesis(r, c, filled, wallIndex, N);
+        if (!e || e.chainLength < 2) return null;
+        return {
+            value: e.value,
+            reason: {
+                kind: 'L3',
+                hypothesis: { cell: [r, c], value: e.triedValue },
+                propagation: e.propagation,
+                contradiction: e.contradiction,
+                chainLength: e.chainLength,
+                orientation: e.orientation,
+                value: e.value,
+            },
+        };
     }
 
     /**
-     * Independently check one perpendicular line: snapshot the post-primary
-     * board, propagate L1 ONLY along that perp line, and accept any
-     * contradiction whose cells all live in (primary ∪ perp). The caller's
-     * board state is NOT mutated.
+     * L4 = anywhere-on-board L1 propagation, capped at `L4_BUDGET`
+     * essential placements (i.e. backward-closed chain length, scored
+     * with the wall-chain discount).
+     *
+     * Hypothesise (r, c) = v, propagate L1 anywhere to fixpoint, scan
+     * all contradictions, take the chain whose `chainCostWithWallDiscount`
+     * is shortest. If that cost fits the budget, the cell is L4.
+     *
+     * `chainLength` in the returned reason is the discounted cost;
+     * `rawChainLength` is the literal placement count (useful for
+     * display and debug).
      */
-    function runPerpLineCheck(r, c, baseF, wallIndex, N, primaryOrientation, perpIdx) {
-        const isRow = primaryOrientation === 'row';
-        const f = baseF.map((row) => row.slice());
+    function l4Explain(r, c, filled, wallIndex, N) {
+        for (const tryV of [SUN, MOON]) {
+            const f = filled.map((row) => row.slice());
+            f[r][c] = tryV;
+            if (findContradictionAt(r, c, f, wallIndex, N)) continue;  // L1
 
-        // primary ∪ perp scope predicate.
-        const inScope = (rr, cc) =>
-            isRow
-                ? (rr === r || cc === perpIdx)
-                : (cc === c || rr === perpIdx);
-        const contradictionInScope = (cd) => {
-            if (cd.kind === 'count-overflow') {
-                if (isRow) {
-                    return (cd.orientation === 'row' && cd.line === r)
-                        || (cd.orientation === 'col' && cd.line === perpIdx);
+            const trace = [];
+            let progressed = true;
+            while (progressed) {
+                progressed = false;
+                for (let rr = 0; rr < N; rr++) {
+                    for (let cc = 0; cc < N; cc++) {
+                        if (f[rr][cc] !== 0) continue;
+                        const e = l1Explain(rr, cc, f, wallIndex, N);
+                        if (!e) continue;
+                        f[rr][cc] = e.value;
+                        trace.push({ cell: [rr, cc], value: e.value, reason: e.reason });
+                        progressed = true;
+                    }
                 }
-                return (cd.orientation === 'col' && cd.line === c)
-                    || (cd.orientation === 'row' && cd.line === perpIdx);
             }
-            return cd.cells.every(([rr, cc]) => inScope(rr, cc));
-        };
 
-        const trace = [];
-        let contradict = null;
+            const allCd = findAllContradictions(f, wallIndex, N);
+            if (allCd.length === 0) continue;
+            const shortest = pickShortestChain(trace, allCd, [r, c],
+                chainCostWithWallDiscount);
+            if (!shortest) continue;
+            if (shortest.chainLength > L4_BUDGET) continue;
 
-        // Initial sweep: primary placements may already have created
-        // contradictions that touch the perp line (e.g. a wall whose other
-        // end sits on the perp line). Catch those before doing any new L1.
-        if (isRow) {
-            for (let rr = 0; rr < N && !contradict; rr++) {
-                if (f[rr][perpIdx] === 0) continue;
-                const c2 = findContradictionAt(rr, perpIdx, f, wallIndex, N, contradictionInScope);
-                if (c2) contradict = c2;
-            }
-        } else {
-            for (let cc = 0; cc < N && !contradict; cc++) {
-                if (f[perpIdx][cc] === 0) continue;
-                const c2 = findContradictionAt(perpIdx, cc, f, wallIndex, N, contradictionInScope);
-                if (c2) contradict = c2;
-            }
+            const value = tryV === SUN ? MOON : SUN;
+            return {
+                value,
+                reason: {
+                    kind: 'L4',
+                    hypothesis: { cell: [r, c], value: tryV },
+                    propagation: shortest.chainSteps,
+                    contradiction: shortest.contradiction,
+                    chainLength: shortest.chainLength,
+                    rawChainLength: shortest.chainSteps.length,
+                    budget: L4_BUDGET,
+                    value,
+                },
+            };
         }
-
-        // L1 propagation restricted to the perp line.
-        let progressed = true;
-        while (progressed && !contradict) {
-            progressed = false;
-            if (isRow) {
-                for (let rr = 0; rr < N && !contradict; rr++) {
-                    if (f[rr][perpIdx] !== 0) continue;
-                    const e = l1Explain(rr, perpIdx, f, wallIndex, N);
-                    if (!e) continue;
-                    f[rr][perpIdx] = e.value;
-                    trace.push({ cell: [rr, perpIdx], value: e.value, reason: e.reason });
-                    progressed = true;
-                    const c2 = findContradictionAt(rr, perpIdx, f, wallIndex, N, contradictionInScope);
-                    if (c2) contradict = c2;
-                }
-            } else {
-                for (let cc = 0; cc < N && !contradict; cc++) {
-                    if (f[perpIdx][cc] !== 0) continue;
-                    const e = l1Explain(perpIdx, cc, f, wallIndex, N);
-                    if (!e) continue;
-                    f[perpIdx][cc] = e.value;
-                    trace.push({ cell: [perpIdx, cc], value: e.value, reason: e.reason });
-                    progressed = true;
-                    const c2 = findContradictionAt(perpIdx, cc, f, wallIndex, N, contradictionInScope);
-                    if (c2) contradict = c2;
-                }
-            }
-        }
-
-        return { trace, contradiction: contradict };
+        return null;
     }
 
     function l2ForcedAt(r, c, filled, wallIndex, N) {
@@ -1035,19 +1101,37 @@
                 : (_) => 0;
         const wantsRetry = difficulty !== 'easy';
         const target = wantsRetry ? 1 : 0;
+        // Hard candidates fail verifySolvable occasionally because the
+        // erase-time L_K checks are local — a cell that's L4-solvable
+        // mid-erasure may not be once *every* other erasable cell is
+        // gone. We treat those as throwaways and keep sampling; if we
+        // run out, we fall back to the best unverified candidate so
+        // the UI always gets something to show.
         const maxAttempts = wantsRetry ? 30 : 1;
 
-        let best = null;
+        let best = null;            // best verified
+        let bestUnverified = null;  // fallback if no verified found
         let attemptsUsed = 0;
         for (let a = 0; a < maxAttempts; a++) {
             attemptsUsed = a + 1;
             const attemptSeed = (seed + a * 0x9e3779b9) >>> 0;
             const cand = generateOnce(size, difficulty, attemptSeed);
-            if (!best || scoreOf(cand) > scoreOf(best)) best = cand;
-            if (scoreOf(best) >= target) break;
+            if (cand.stats.verified) {
+                if (!best || scoreOf(cand) > scoreOf(best)) best = cand;
+            } else if (!bestUnverified
+                || scoreOf(cand) > scoreOf(bestUnverified)) {
+                bestUnverified = cand;
+            }
+            if (best && scoreOf(best) >= target) break;
         }
-        best.stats.attemptsUsed = attemptsUsed;
-        return best;
+        const result = best || bestUnverified;
+        result.stats.attemptsUsed = attemptsUsed;
+        if (!best) {
+            console.warn('[tango-gen] no verified candidate after',
+                attemptsUsed, 'attempts; returning unverified',
+                result.id);
+        }
+        return result;
     }
 
     function generateOnce(size, difficulty, seed) {
@@ -1187,7 +1271,9 @@
                 l4RequiredCells: l4Required,
             },
         };
-        if (!verifySolvable(filled, walls, solution, N, params.tactics)) {
+        const verified = verifySolvable(filled, walls, solution, N, params.tactics);
+        puzzle.stats.verified = verified;
+        if (!verified) {
             // Dump enough to reproduce: the seed alone is sufficient
             // since generate(N, difficulty, seed) is deterministic.
             console.warn('[tango-gen] self-check failed for', puzzle.id,
