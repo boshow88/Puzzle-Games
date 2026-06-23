@@ -118,6 +118,17 @@
     function buildWallIndex(walls) {
         const byCell = new Map();
         const seen = new Set();
+        const parent = new Map();
+        const find = (k) => {
+            let r = k;
+            while (parent.get(r) !== r) r = parent.get(r);
+            while (parent.get(k) !== r) {
+                const nxt = parent.get(k);
+                parent.set(k, r);
+                k = nxt;
+            }
+            return r;
+        };
         for (const w of walls) {
             seen.add(wallKey(w.r1, w.c1, w.r2, w.c2));
             const a = cellKey(w.r1, w.c1);
@@ -126,8 +137,19 @@
             if (!byCell.has(b)) byCell.set(b, []);
             byCell.get(a).push({ kind: w.kind, otherR: w.r2, otherC: w.c2 });
             byCell.get(b).push({ kind: w.kind, otherR: w.r1, otherC: w.c1 });
+            if (!parent.has(a)) parent.set(a, a);
+            if (!parent.has(b)) parent.set(b, b);
+            const ra = find(a), rb = find(b);
+            if (ra !== rb) parent.set(ra, rb);
         }
-        return { byCell, seen };
+        // Connected component id for cell (r,c) over the puzzle wall graph.
+        // Cells with no walls return their own cellKey (singleton component).
+        const wallComponentOf = (r, c) => {
+            const k = cellKey(r, c);
+            if (!parent.has(k)) return k;
+            return find(k);
+        };
+        return { byCell, seen, wallComponentOf };
     }
 
     function adjacentPairs(N) {
@@ -655,56 +677,40 @@
     }
 
     /**
-     * L4-specific chain cost: contiguous T-wall placements (whose
-     * `reason.sources[0]` is also a T-wall placement in the chain)
-     * get grouped, and each group of size K costs `ceil(K/3)` instead
-     * of K. Non-T-wall placements (T-count, T-three) and isolated
-     * T-wall placements each form a singleton group of size 1 and so
-     * still cost 1 (== ceil(1/3)).
+     * L4-specific chain cost: T-wall placements that sit in the same
+     * connected component of the puzzle's wall graph are grouped
+     * together, and a group of K placements costs `ceil(K/3)` instead
+     * of K. Non-T-wall placements (T-count, T-three) each cost 1.
      *
-     * Rationale: a chain of consecutive walls is visually mechanical
-     * — the player follows the walls hand-over-hand. We treat every
-     * 3 wall hops as "one cognitive step" inside L4's budget.
+     * Grouping by the puzzle's wall graph (instead of by propagation
+     * source links) is monotonic: adding cells to the base state can
+     * only shrink the set of T-wall placements in each component, never
+     * split a component into two. That avoids the case where a wall
+     * chain Y1–Y2–Y3 was scored as cost 1 in a richer state but jumped
+     * to cost 2 in a poorer state because the middle cell happened to
+     * be filled there.
+     *
+     * Rationale: a chain of walls is visually mechanical — the player
+     * follows the walls hand-over-hand, and a pre-filled cell in the
+     * middle of the chain is exactly the kind of "free stepping stone"
+     * a player would happily skip over. We treat every 3 wall hops as
+     * one cognitive step inside L4's budget regardless of whether the
+     * in-between cells came from this propagation or from the base.
      */
-    function chainCostWithWallDiscount(chainSteps) {
+    function chainCostWithWallDiscount(chainSteps, wallComponentOf) {
         if (chainSteps.length === 0) return 0;
-        const stepByKey = new Map();
+        const wallSizes = new Map();
+        let nonWallCount = 0;
         for (const s of chainSteps) {
-            stepByKey.set(cellKey(s.cell[0], s.cell[1]), s);
-        }
-        const parent = new Map();
-        for (const k of stepByKey.keys()) parent.set(k, k);
-        const find = (k) => {
-            let r = k;
-            while (parent.get(r) !== r) r = parent.get(r);
-            while (parent.get(k) !== r) {
-                const next = parent.get(k);
-                parent.set(k, r);
-                k = next;
-            }
-            return r;
-        };
-        const union = (k1, k2) => {
-            const r1 = find(k1), r2 = find(k2);
-            if (r1 !== r2) parent.set(r1, r2);
-        };
-        for (const step of chainSteps) {
-            if (step.reason.kind !== 'T-wall') continue;
-            const k = cellKey(step.cell[0], step.cell[1]);
-            const [sr, sc] = step.reason.sources[0];
-            const sk = cellKey(sr, sc);
-            const srcStep = stepByKey.get(sk);
-            if (srcStep && srcStep.reason.kind === 'T-wall') {
-                union(k, sk);
+            if (s.reason.kind === 'T-wall' && wallComponentOf) {
+                const cid = wallComponentOf(s.cell[0], s.cell[1]);
+                wallSizes.set(cid, (wallSizes.get(cid) || 0) + 1);
+            } else {
+                nonWallCount += 1;
             }
         }
-        const sizes = new Map();
-        for (const k of stepByKey.keys()) {
-            const r = find(k);
-            sizes.set(r, (sizes.get(r) || 0) + 1);
-        }
-        let cost = 0;
-        for (const size of sizes.values()) {
+        let cost = nonWallCount;
+        for (const size of wallSizes.values()) {
             cost += Math.ceil(size / 3);
         }
         return cost;
@@ -869,7 +875,7 @@
             const allCd = findAllContradictions(f, wallIndex, N);
             if (allCd.length === 0) continue;
             const shortest = pickShortestChain(trace, allCd, [r, c],
-                chainCostWithWallDiscount);
+                (steps) => chainCostWithWallDiscount(steps, wallIndex.wallComponentOf));
             if (!shortest) continue;
             if (shortest.chainLength > L4_BUDGET) continue;
 
