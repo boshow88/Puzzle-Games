@@ -268,10 +268,9 @@
             winMessage: document.getElementById('win-message'),
         };
 
-        const prefs = getPrefs(gameId);
-
-        // For segmented size we read the legal values from the page so we
-        // can both validate stored prefs and reject bogus button clicks.
+        // Size / difficulty intentionally do NOT persist across reloads —
+        // we always boot at each game's declared default. Stats (solve
+        // counts) are still tracked via the separate `solves:<game>` key.
         let segmentedSizes = null;
         if (sizeCfg.kind === 'segmented' && dom.sizeSeg) {
             segmentedSizes = Array.from(dom.sizeSeg.querySelectorAll('button'))
@@ -279,17 +278,10 @@
                 .filter((n) => !Number.isNaN(n));
         }
 
-        let difficulty = (DIFFICULTY_VALUES.includes(prefs.difficulty)
-            ? prefs.difficulty : diffCfg.default);
-        let size;
-        if (sizeCfg.kind === 'slider') {
-            const fallback = sizeCfg.default;
-            size = clamp(prefs.size || fallback, sizeCfg.min, sizeCfg.max);
-        } else {
-            size = (typeof prefs.size === 'number'
-                && segmentedSizes && segmentedSizes.includes(prefs.size))
-                ? prefs.size : sizeCfg.default;
-        }
+        let difficulty = diffCfg.default;
+        let size = sizeCfg.kind === 'slider'
+            ? clamp(sizeCfg.default, sizeCfg.min, sizeCfg.max)
+            : sizeCfg.default;
         let revealed = false;
 
         const timer = createTimer(dom.timer);
@@ -370,7 +362,6 @@
             if (value === difficulty) return;
             difficulty = value;
             syncDifficultyButtons();
-            setPrefs(gameId, { difficulty });
             startFreshGame();
         }
 
@@ -386,7 +377,6 @@
             if (n === size) return;
             size = n;
             syncSizeButtons();
-            setPrefs(gameId, { size });
             startFreshGame();
         }
 
