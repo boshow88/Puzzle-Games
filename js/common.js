@@ -357,12 +357,15 @@
             timer.start();
         }
 
+        // Difficulty / size selection updates only the toolbar state.
+        // The actual puzzle isn't regenerated until the player clicks
+        // New Game — this lets them flip multiple settings at once
+        // without spawning a throwaway puzzle in between.
         function setDifficulty(value) {
             if (!DIFFICULTY_VALUES.includes(value)) return;
             if (value === difficulty) return;
             difficulty = value;
             syncDifficultyButtons();
-            startFreshGame();
         }
 
         function setSize(rawValue) {
@@ -377,7 +380,6 @@
             if (n === size) return;
             size = n;
             syncSizeButtons();
-            startFreshGame();
         }
 
         function toggleReveal() {
