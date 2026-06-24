@@ -282,6 +282,14 @@
         let size = sizeCfg.kind === 'slider'
             ? clamp(sizeCfg.default, sizeCfg.min, sizeCfg.max)
             : sizeCfg.default;
+        // "Committed" mirrors the difficulty/size that the currently
+        // displayed puzzle was generated with. It diverges from
+        // `difficulty`/`size` the moment the player picks a new value
+        // in the toolbar and snaps back when they press New Game.
+        // The toolbar paints both states so the player can see what's
+        // running and what they've staged.
+        let appliedDifficulty = difficulty;
+        let appliedSize = size;
         let revealed = false;
 
         const timer = createTimer(dom.timer);
@@ -340,25 +348,55 @@
         function syncDifficultyButtons() {
             if (!dom.difficultySeg) return;
             dom.difficultySeg.querySelectorAll('button').forEach((btn) => {
-                btn.classList.toggle('active', btn.dataset.value === difficulty);
+                const v = btn.dataset.value;
+                btn.classList.toggle('active', v === difficulty);
+                btn.classList.toggle('committed', v === appliedDifficulty);
             });
         }
 
         function syncSizeButtons() {
             if (sizeCfg.kind === 'segmented' && dom.sizeSeg) {
                 dom.sizeSeg.querySelectorAll('button').forEach((btn) => {
-                    btn.classList.toggle('active',
-                        parseInt(btn.dataset.value, 10) === size);
+                    const v = parseInt(btn.dataset.value, 10);
+                    btn.classList.toggle('active', v === size);
+                    btn.classList.toggle('committed', v === appliedSize);
                 });
             } else if (sizeCfg.kind === 'slider' && dom.sizeSlider) {
                 dom.sizeSlider.value = String(size);
                 if (dom.sizeReadout) {
-                    dom.sizeReadout.textContent = `${size}×${size}`;
+                    if (size === appliedSize) {
+                        dom.sizeReadout.textContent = `${size}×${size}`;
+                        dom.sizeReadout.classList.remove('pending');
+                    } else {
+                        // Render "current → pending" so the player can
+                        // tell at a glance that the slider value isn't
+                        // yet what the board shows.
+                        dom.sizeReadout.innerHTML = '';
+                        const cur = document.createElement('span');
+                        cur.className = 'readout-current';
+                        cur.textContent = `${appliedSize}×${appliedSize}`;
+                        const arrow = document.createElement('span');
+                        arrow.className = 'readout-arrow';
+                        arrow.textContent = '→';
+                        const next = document.createElement('span');
+                        next.className = 'readout-next';
+                        next.textContent = `${size}×${size}`;
+                        dom.sizeReadout.appendChild(cur);
+                        dom.sizeReadout.appendChild(arrow);
+                        dom.sizeReadout.appendChild(next);
+                        dom.sizeReadout.classList.add('pending');
+                    }
                 }
             }
         }
 
         function startFreshGame() {
+            // Commit the toolbar's pending selection — the board is
+            // about to regenerate at these values.
+            appliedDifficulty = difficulty;
+            appliedSize = size;
+            syncDifficultyButtons();
+            syncSizeButtons();
             revealed = false;
             syncRevealButton();
             shell.setWin(false);

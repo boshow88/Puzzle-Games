@@ -73,7 +73,8 @@
 
 .game-toolbar {
     display: grid;
-    grid-template-columns: 1fr 1fr;
+    grid-template-columns: 1fr 1fr auto;
+    align-items: end;
     gap: var(--space-md);
     background: var(--bg-secondary);
     padding: var(--space-md);
@@ -81,6 +82,19 @@
     border-radius: var(--radius-md);
     box-shadow: var(--shadow-sm);
     margin-bottom: var(--space-md);
+}
+
+/* New Game lives in the toolbar so changing size or difficulty
+   without applying is visually obvious. Aligned to the bottom of
+   the toolbar so it lines up with the segmented controls instead
+   of stretching up to the labels. */
+.toolbar-action {
+    display: flex;
+    align-items: stretch;
+}
+
+.toolbar-action .btn {
+    white-space: nowrap;
 }
 
 .toolbar-group {
@@ -132,9 +146,22 @@
     color: var(--text-primary);
 }
 
+/* "active" = currently selected in the toolbar — always painted as
+   the solid accent.
+   "committed" = the value the puzzle on the board was generated
+   with. When it differs from the active selection (= the player
+   has staged a change but not pressed New Game yet) we keep a
+   faded tint on the committed button so they can still see what
+   the board is running. */
 .segmented button.active {
     background: var(--game-color, var(--accent-primary));
     color: var(--text-on-accent);
+}
+
+.segmented button.committed:not(.active) {
+    color: var(--text-primary);
+    background: color-mix(in srgb,
+        var(--game-color, var(--accent-primary)) 18%, transparent);
 }
 
 .size-control {
@@ -152,8 +179,29 @@
     font-variant-numeric: tabular-nums;
     font-weight: 600;
     color: var(--text-primary);
-    min-width: 3.5em;
+    /* Width budget for "8×8 → 12×12"-style pending readouts so the
+       slider track doesn't jiggle when committing/discarding a
+       pending size change. */
+    min-width: 8.5em;
     text-align: right;
+    display: inline-flex;
+    align-items: baseline;
+    justify-content: flex-end;
+    gap: 4px;
+}
+
+.size-readout .readout-current {
+    color: var(--text-secondary);
+    font-weight: 500;
+}
+
+.size-readout .readout-arrow {
+    color: var(--text-muted);
+    font-weight: 400;
+}
+
+.size-readout .readout-next {
+    color: var(--game-color, var(--accent-primary));
 }
 
 /* Action buttons */
