@@ -113,8 +113,54 @@ button {
 }
 
 .app-header {
+    position: relative;
     text-align: center;
     margin-bottom: var(--space-2xl);
+}
+
+/* Language toggle. Mounted in every page's topbar/header; small
+   2-button segmented control that flips PuzzleCommon.i18n locale. */
+.lang-toggle {
+    display: inline-flex;
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-sm);
+    overflow: hidden;
+    background: var(--bg-tertiary);
+    font-size: 0.78rem;
+    line-height: 1;
+}
+
+.app-header .lang-toggle {
+    position: absolute;
+    top: 0;
+    right: 0;
+}
+
+.lang-toggle button {
+    appearance: none;
+    background: transparent;
+    border: 0;
+    padding: 5px 10px;
+    color: var(--text-secondary);
+    cursor: pointer;
+    font-family: inherit;
+    transition: background var(--transition-fast),
+        color var(--transition-fast);
+}
+
+.lang-toggle button + button {
+    border-left: 1px solid var(--border-color);
+}
+
+.lang-toggle button:hover {
+    background: var(--bg-hover);
+    color: var(--text-primary);
+}
+
+.lang-toggle button.active {
+    background: var(--bg-hover);
+    color: var(--text-primary);
+    font-weight: 600;
 }
 
 .app-title {

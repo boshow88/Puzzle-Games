@@ -286,6 +286,29 @@
 
         const timer = createTimer(dom.timer);
 
+        // Last-rendered conflict count, kept so a locale change can
+        // re-render the violations pill without the game needing to
+        // know to recall setViolationCount.
+        let lastViolationN = 0;
+
+        function renderViolationCount() {
+            if (!dom.violations || !dom.violationsText) return;
+            if (lastViolationN > 0) {
+                dom.violations.hidden = false;
+                dom.violations.classList.add('active');
+                dom.violationsText.textContent =
+                    global.PuzzleCommon.i18n.t('conflict', lastViolationN);
+            } else {
+                dom.violations.hidden = true;
+                dom.violations.classList.remove('active');
+            }
+        }
+
+        // Subscribe BEFORE returning the shell so games that never
+        // call setViolationCount (Zip) still get any future label
+        // re-renders for free.
+        global.PuzzleCommon.i18n.subscribe(renderViolationCount);
+
         const shell = {
             dom,
             timer,
@@ -296,16 +319,8 @@
                 if (dom.winMessage) dom.winMessage.hidden = !b;
             },
             setViolationCount(n) {
-                if (!dom.violations || !dom.violationsText) return;
-                if (n > 0) {
-                    dom.violations.hidden = false;
-                    dom.violations.classList.add('active');
-                    dom.violationsText.textContent =
-                        `⚠ ${n} conflict${n === 1 ? '' : 's'}`;
-                } else {
-                    dom.violations.hidden = true;
-                    dom.violations.classList.remove('active');
-                }
+                lastViolationN = n;
+                renderViolationCount();
             },
             markSolved() {
                 const elapsed = timer.stop();
@@ -435,6 +450,300 @@
     // Public surface
     // -----------------------------------------------------------------
 
+    // -----------------------------------------------------------------
+    // i18n
+    //
+    // English is the active default. Users can flip to 'zh' via the
+    // lang-toggle in every page's topbar; the choice is persisted to
+    // localStorage so reloads keep it.
+    //
+    // Strings table is intentionally flat: one key → one string (or
+    // formatter function) per locale. Games can extend it at load
+    // time by mutating PC.i18n.STRINGS[loc] before subscribers fire.
+    //
+    // Translation reaches the DOM through `data-i18n="key"` attrs on
+    // any element that should carry localised text:
+    //   <span data-i18n="difficulty">Difficulty</span>
+    // Plus `data-i18n-title="..."` for tooltips and
+    // `data-i18n-aria-label="..."` for ARIA labels.
+    //
+    // Anything dynamic (the violations pill, the hint banner) calls
+    // PC.i18n.subscribe(cb) so it knows to re-render on a locale
+    // change without an extra event-bus.
+    // -----------------------------------------------------------------
+
+    const STRINGS = {
+        en: {
+            // Shared topbar / toolbar / actions
+            menu: '← Menu',
+            language: 'Language',
+            difficulty: 'Difficulty',
+            easy: 'Easy',
+            medium: 'Medium',
+            hard: 'Hard',
+            boardSize: 'Board size',
+            gameSettings: 'Game settings',
+            newGame: 'New Game',
+            reset: '↻ Reset',
+            hint: '💡 Hint',
+            reveal: '? Reveal',
+            winMessage: 'You Win! ✨',
+            howToPlay: 'How to play',
+            conflict: (n) => `⚠ ${n} conflict${n === 1 ? '' : 's'}`,
+            clearPlacements: 'Clear placements',
+            clearPath: 'Clear path',
+            highlightDeducible: 'Highlight one deducible cell',
+            showSolution: 'Show solution overlay',
+            showSolutionPath: 'Show solution path',
+
+            // Index / launcher
+            appTitle: 'Puzzle Games',
+            appSubtitle: "A collection of logic puzzles inspired by LinkedIn's daily games.",
+            playable: 'Playable',
+            builtNote: 'Built as a static site — works offline, deployable on GitHub Pages.',
+
+            // Queens
+            queensName: 'Queens',
+            queensTagline: 'Royal regions, one queen each.',
+            queensCardBody:
+                'Place N queens so that every row, column, color region and 8-neighborhood contains exactly one.',
+            queensBoardAria: 'Queens puzzle board',
+            queensHelp1Html:
+                'Click a cell to cycle through <strong>empty → × → ♛</strong> (× is just a personal "no" marker).',
+            queensHelp2:
+                'Every row, every column, every color region, and every 3×3 neighborhood may contain at most one queen.',
+            queensHelp3:
+                'Solve the board by placing exactly N queens — one per row, column, and region — with no two adjacent.',
+
+            // Tango
+            tangoName: 'Tango',
+            tangoTagline: 'Sun & moon balance.',
+            tangoCardBody:
+                'Fill the grid with suns and moons — half of each per row and column, no three in a row, respect the walls.',
+            tangoBoardAria: 'Tango puzzle board',
+            tangoHelp1Html:
+                'Click a cell to cycle through <strong>empty → ☀ → ☾</strong>. Pre-filled cells are locked.',
+            tangoHelp2Html:
+                'Each row and column must contain <strong>half suns and half moons</strong>, and never three of the same in a row.',
+            tangoHelp3Html:
+                'The badges between cells are constraints: <strong>=</strong> means the two neighbours must match, <strong>×</strong> means they must differ.',
+            tangoHelp4: 'The puzzle is solved when every cell is filled and no rule is broken.',
+
+            // Sudoku
+            sudokuName: 'Sudoku',
+            sudokuTagline: 'Classic number logic.',
+            sudokuCardBody:
+                'Fill the grid so every row, column and box contains each digit exactly once.',
+            sudokuBoardAria: 'Sudoku puzzle board',
+            sudokuNumPadAria: 'Number pad',
+            sudokuNotes: '✎ Notes',
+            sudokuErase: '⌫ Erase',
+            sudokuEraseAria: 'Erase',
+            sudokuEraseTitle: 'Erase (Backspace / Delete / 0)',
+            sudokuHelp1: 'Click a cell to select it. Pre-filled (locked) cells stay grey.',
+            sudokuHelp2:
+                'Fill a digit with the on-screen keypad or your keyboard. The same key again clears that digit.',
+            sudokuHelp3Html:
+                'Toggle <strong>✎ Notes</strong> (or press <kbd>N</kbd>) to write small candidate marks instead of a full digit.',
+            sudokuHelp4Html:
+                'Each <strong>row</strong>, <strong>column</strong> and <strong>box</strong> must contain every digit exactly once.',
+            sudokuHelp5Html:
+                '<kbd>Backspace</kbd> / <kbd>Delete</kbd> / <kbd>0</kbd> clears the cell. Arrow keys move the selection.',
+
+            // Zip
+            zipName: 'Zip',
+            zipTagline: 'One path, every cell.',
+            zipCardBodyHtml:
+                'Drag from <strong>1</strong> to draw a single path covering every open cell, hitting checkpoints in numerical order.',
+            zipBoardAria: 'Zip puzzle board',
+            zipHelp1Html:
+                'Drag from the cell marked <strong>1</strong> to draw a path through every white cell.',
+            zipHelp2Html:
+                'Visit the numbered checkpoints in order — <strong>1 → 2 → 3 → … → N</strong>.',
+            zipHelp3Html:
+                'The path cannot cross black <strong>walls</strong> or enter grey <strong>holes</strong>; only orthogonal moves.',
+            zipHelp4:
+                'You can pick up the drag from any cell already on the path — everything after that cell is dropped.',
+            zipHelp5:
+                'Solved when the path covers every white cell with checkpoints in the right order.',
+        },
+        zh: {
+            menu: '← 選單',
+            language: '語言',
+            difficulty: '難度',
+            easy: '簡單',
+            medium: '中等',
+            hard: '困難',
+            boardSize: '盤面大小',
+            gameSettings: '遊戲設定',
+            newGame: '新局',
+            reset: '↻ 重設',
+            hint: '💡 提示',
+            reveal: '? 解答',
+            winMessage: '你贏了！ ✨',
+            howToPlay: '遊玩方式',
+            conflict: (n) => `⚠ ${n} 個衝突`,
+            clearPlacements: '清除目前的標記',
+            clearPath: '清除路徑',
+            highlightDeducible: '標出一格可推論的位置',
+            showSolution: '顯示解答',
+            showSolutionPath: '顯示解答路徑',
+
+            appTitle: 'Puzzle Games',
+            appSubtitle: '一組受 LinkedIn 每日小遊戲啟發的邏輯謎題。',
+            playable: '可玩',
+            builtNote: '純靜態網站 — 可離線使用，也可部署於 GitHub Pages。',
+
+            queensName: 'Queens',
+            queensTagline: '皇家領地，每區一后。',
+            queensCardBody: '在每個列、行、色塊區域與 8 鄰域中各放一個皇后。',
+            queensBoardAria: 'Queens 盤面',
+            queensHelp1Html:
+                '點擊格子在 <strong>空 → × → ♛</strong> 之間循環（× 為個人「不放這」的標記）。',
+            queensHelp2:
+                '每個列、每個行、每個色塊區域、每個 3×3 鄰域中，最多只能有一個皇后。',
+            queensHelp3:
+                '在不違反規則的情況下放下 N 個皇后即過關 — 每列、每行、每區域各一，且不互相相鄰。',
+
+            tangoName: 'Tango',
+            tangoTagline: '太陽與月亮的平衡。',
+            tangoCardBody:
+                '用太陽和月亮填滿盤面 — 每列每行各半，不能連續三個相同，並遵循牆的限制。',
+            tangoBoardAria: 'Tango 盤面',
+            tangoHelp1Html:
+                '點擊格子在 <strong>空 → ☀ → ☾</strong> 之間循環。預填的格子是鎖定的。',
+            tangoHelp2Html:
+                '每列、每行必須是<strong>半數太陽、半數月亮</strong>，且不能連續三個相同。',
+            tangoHelp3Html:
+                '格子間的標記是限制：<strong>=</strong> 表示兩格相同，<strong>×</strong> 表示兩格相異。',
+            tangoHelp4: '所有格子都填滿、且無違規時即過關。',
+
+            sudokuName: 'Sudoku',
+            sudokuTagline: '經典數字邏輯。',
+            sudokuCardBody:
+                '填滿盤面，使每列、每行、每宮都恰好包含 1 至 N 各一次。',
+            sudokuBoardAria: 'Sudoku 盤面',
+            sudokuNumPadAria: '數字鍵盤',
+            sudokuNotes: '✎ 便箋',
+            sudokuErase: '⌫ 清除',
+            sudokuEraseAria: '清除',
+            sudokuEraseTitle: '清除（Backspace / Delete / 0）',
+            sudokuHelp1: '點擊格子選取它。預填（鎖定）的格子為灰色。',
+            sudokuHelp2:
+                '用螢幕鍵盤或實體鍵盤輸入數字。再按一次同一個鍵會清除該數字。',
+            sudokuHelp3Html:
+                '切換 <strong>✎ 便箋</strong>（或按 <kbd>N</kbd>）可寫入小型候選數字，而非正式數字。',
+            sudokuHelp4Html:
+                '每個 <strong>列</strong>、<strong>行</strong>、<strong>宮</strong> 都必須恰好包含每個數字各一次。',
+            sudokuHelp5Html:
+                '<kbd>Backspace</kbd> / <kbd>Delete</kbd> / <kbd>0</kbd> 清除格子；方向鍵移動選取。',
+
+            zipName: 'Zip',
+            zipTagline: '一條路徑，貫穿每格。',
+            zipCardBodyHtml:
+                '從 <strong>1</strong> 開始拖曳，畫出一條覆蓋每個白色格子的路徑，並依序通過編號的檢查點。',
+            zipBoardAria: 'Zip 盤面',
+            zipHelp1Html:
+                '從標示 <strong>1</strong> 的格子開始拖曳，畫一條經過每個白色格子的路徑。',
+            zipHelp2Html:
+                '依數字順序通過檢查點 — <strong>1 → 2 → 3 → … → N</strong>。',
+            zipHelp3Html:
+                '路徑不能越過黑色 <strong>牆</strong>，也不能進入灰色 <strong>洞</strong>；只能沿正交方向移動。',
+            zipHelp4:
+                '可以從路徑上任何一格重新拖曳 — 該格之後的部分都會被取消。',
+            zipHelp5: '當路徑覆蓋每個白格，且檢查點都依序通過時即過關。',
+        },
+    };
+
+    const LANG_KEY = storageKey('lang');
+    const LANG_SUPPORTED = ['en', 'zh'];
+    const localeSubscribers = new Set();
+    let currentLocale = readJSON(LANG_KEY, 'en');
+    if (!LANG_SUPPORTED.includes(currentLocale)) currentLocale = 'en';
+
+    function tForLocale(loc, key, ...args) {
+        const table = STRINGS[loc] || STRINGS.en;
+        let entry = table[key];
+        if (entry == null) entry = STRINGS.en[key];
+        if (entry == null) return key;
+        return typeof entry === 'function' ? entry(...args) : entry;
+    }
+
+    function t(key, ...args) {
+        return tForLocale(currentLocale, key, ...args);
+    }
+
+    function translateNode(rootEl) {
+        if (!rootEl) return;
+        const isHtmlKey = (key) => /Html$/.test(key);
+        const textNodes = rootEl.querySelectorAll('[data-i18n]');
+        for (const el of textNodes) {
+            const key = el.getAttribute('data-i18n');
+            const text = t(key);
+            if (isHtmlKey(key)) el.innerHTML = text;
+            else el.textContent = text;
+        }
+        const titleNodes = rootEl.querySelectorAll('[data-i18n-title]');
+        for (const el of titleNodes) {
+            el.setAttribute('title', t(el.getAttribute('data-i18n-title')));
+        }
+        const ariaNodes = rootEl.querySelectorAll('[data-i18n-aria-label]');
+        for (const el of ariaNodes) {
+            el.setAttribute('aria-label', t(el.getAttribute('data-i18n-aria-label')));
+        }
+    }
+
+    function setLocale(newLoc) {
+        if (!LANG_SUPPORTED.includes(newLoc)) return;
+        if (newLoc === currentLocale) return;
+        currentLocale = newLoc;
+        writeJSON(LANG_KEY, currentLocale);
+        document.documentElement.lang = currentLocale === 'zh' ? 'zh-Hant' : 'en';
+        translateNode(document);
+        syncLangToggle();
+        for (const cb of localeSubscribers) {
+            try { cb(currentLocale); } catch (e) { console.warn('[i18n] subscriber threw', e); }
+        }
+    }
+
+    function subscribe(cb) {
+        localeSubscribers.add(cb);
+        return () => localeSubscribers.delete(cb);
+    }
+
+    function syncLangToggle() {
+        const tog = document.getElementById('lang-toggle');
+        if (!tog) return;
+        for (const btn of tog.querySelectorAll('button[data-lang]')) {
+            const isActive = btn.dataset.lang === currentLocale;
+            btn.classList.toggle('active', isActive);
+            btn.setAttribute('aria-checked', isActive ? 'true' : 'false');
+        }
+    }
+
+    function wireLangToggle() {
+        const tog = document.getElementById('lang-toggle');
+        if (!tog) return;
+        tog.addEventListener('click', (ev) => {
+            const btn = ev.target.closest('button[data-lang]');
+            if (!btn) return;
+            setLocale(btn.dataset.lang);
+        });
+        syncLangToggle();
+    }
+
+    function bootstrapI18n() {
+        document.documentElement.lang = currentLocale === 'zh' ? 'zh-Hant' : 'en';
+        translateNode(document);
+        wireLangToggle();
+    }
+
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', bootstrapI18n);
+    } else {
+        bootstrapI18n();
+    }
+
     global.PuzzleCommon = {
         storage: { readJSON, writeJSON, storageKey },
         prefs: { get: getPrefs, set: setPrefs },
@@ -445,9 +754,14 @@
         clamp,
         el,
         svgEl,
-        // Shared hint locale. English is the active default; a future
-        // commit will add a UI toggle that flips this to 'zh' and
-        // re-renders. Per-game files read this for their hint strings.
-        i18n: { locale: 'en' },
+        i18n: {
+            get locale() { return currentLocale; },
+            setLocale,
+            t,
+            tForLocale,
+            subscribe,
+            translateNode,
+            STRINGS,
+        },
     };
 })(window);

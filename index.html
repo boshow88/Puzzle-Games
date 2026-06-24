@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="zh-Hant">
+<html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -10,8 +10,12 @@
 <body>
     <div class="app-shell">
         <header class="app-header">
-            <h1 class="app-title">Puzzle Games</h1>
-            <p class="app-subtitle">A collection of logic puzzles inspired by LinkedIn's daily games.</p>
+            <div class="lang-toggle" id="lang-toggle" role="radiogroup" data-i18n-aria-label="language">
+                <button type="button" data-lang="en" role="radio" aria-checked="true">EN</button>
+                <button type="button" data-lang="zh" role="radio" aria-checked="false">中</button>
+            </div>
+            <h1 class="app-title" data-i18n="appTitle">Puzzle Games</h1>
+            <p class="app-subtitle" data-i18n="appSubtitle">A collection of logic puzzles inspired by LinkedIn's daily games.</p>
         </header>
 
         <main class="games-grid">
@@ -19,16 +23,16 @@
                 <div class="game-card-header">
                     <span class="game-icon" aria-hidden="true">♛</span>
                     <div>
-                        <div class="game-name">Queens</div>
-                        <div class="game-tagline">Royal regions, one queen each.</div>
+                        <div class="game-name" data-i18n="queensName">Queens</div>
+                        <div class="game-tagline" data-i18n="queensTagline">Royal regions, one queen each.</div>
                     </div>
                 </div>
-                <p class="game-card-body">
+                <p class="game-card-body" data-i18n="queensCardBody">
                     Place N queens so that every row, column, color region
                     and 8-neighborhood contains exactly one.
                 </p>
                 <div class="game-card-footer">
-                    <span class="badge badge-playable">Playable</span>
+                    <span class="badge badge-playable" data-i18n="playable">Playable</span>
                 </div>
             </a>
 
@@ -36,16 +40,16 @@
                 <div class="game-card-header">
                     <span class="game-icon" aria-hidden="true">☀</span>
                     <div>
-                        <div class="game-name">Tango</div>
-                        <div class="game-tagline">Sun &amp; moon balance.</div>
+                        <div class="game-name" data-i18n="tangoName">Tango</div>
+                        <div class="game-tagline" data-i18n="tangoTagline">Sun &amp; moon balance.</div>
                     </div>
                 </div>
-                <p class="game-card-body">
+                <p class="game-card-body" data-i18n="tangoCardBody">
                     Fill the grid with suns and moons — half of each per
                     row and column, no three in a row, respect the walls.
                 </p>
                 <div class="game-card-footer">
-                    <span class="badge badge-playable">Playable</span>
+                    <span class="badge badge-playable" data-i18n="playable">Playable</span>
                 </div>
             </a>
 
@@ -53,16 +57,16 @@
                 <div class="game-card-header">
                     <span class="game-icon" aria-hidden="true">🔢</span>
                     <div>
-                        <div class="game-name">Sudoku</div>
-                        <div class="game-tagline">Classic number logic.</div>
+                        <div class="game-name" data-i18n="sudokuName">Sudoku</div>
+                        <div class="game-tagline" data-i18n="sudokuTagline">Classic number logic.</div>
                     </div>
                 </div>
-                <p class="game-card-body">
+                <p class="game-card-body" data-i18n="sudokuCardBody">
                     Fill the grid so every row, column and box contains
-                    each digit exactly once. Pencil-mark notes included.
+                    each digit exactly once.
                 </p>
                 <div class="game-card-footer">
-                    <span class="badge badge-playable">Playable</span>
+                    <span class="badge badge-playable" data-i18n="playable">Playable</span>
                 </div>
             </a>
 
@@ -70,23 +74,24 @@
                 <div class="game-card-header">
                     <span class="game-icon" aria-hidden="true">🔗</span>
                     <div>
-                        <div class="game-name">Zip</div>
-                        <div class="game-tagline">One path, every cell.</div>
+                        <div class="game-name" data-i18n="zipName">Zip</div>
+                        <div class="game-tagline" data-i18n="zipTagline">One path, every cell.</div>
                     </div>
                 </div>
-                <p class="game-card-body">
+                <p class="game-card-body" data-i18n="zipCardBodyHtml">
                     Drag from <strong>1</strong> to draw a single path covering every
                     open cell, hitting checkpoints in numerical order.
                 </p>
                 <div class="game-card-footer">
-                    <span class="badge badge-playable">Playable</span>
+                    <span class="badge badge-playable" data-i18n="playable">Playable</span>
                 </div>
             </a>
         </main>
 
         <footer class="app-footer">
-            <p>Built as a static site — works offline, deployable on GitHub Pages.</p>
+            <p data-i18n="builtNote">Built as a static site — works offline, deployable on GitHub Pages.</p>
         </footer>
     </div>
+    <script src="./js/common.js"></script>
 </body>
 </html>

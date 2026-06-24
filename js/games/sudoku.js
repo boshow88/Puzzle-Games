@@ -607,7 +607,8 @@
             'aria-pressed': 'false',
             'aria-label': 'Toggle pencil-mark notes mode',
             title: 'Toggle pencil-mark notes (N)',
-        }, '✎ Notes');
+            'data-i18n': 'sudokuNotes',
+        }, PC.i18n.t('sudokuNotes'));
         notesBtn.addEventListener('click', toggleNotesMode);
         actions.appendChild(notesBtn);
 
@@ -615,8 +616,11 @@
             type: 'button',
             class: 'keypad-btn erase',
             'aria-label': 'Erase',
-            title: 'Erase (Backspace / Delete / 0)',
-        }, '⌫ Erase');
+            'data-i18n': 'sudokuErase',
+            'data-i18n-aria-label': 'sudokuEraseAria',
+            'data-i18n-title': 'sudokuEraseTitle',
+            title: PC.i18n.t('sudokuEraseTitle'),
+        }, PC.i18n.t('sudokuErase'));
         eraseBtn.addEventListener('click', eraseSelected);
         actions.appendChild(eraseBtn);
 

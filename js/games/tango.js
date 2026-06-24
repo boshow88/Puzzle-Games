@@ -616,12 +616,20 @@
     //
     // state.hint shape (when active):
     //   {
-    //     mode: 'error' | 'deduction',
-    //     targetCells: [[r, c], ...],     // pulse-highlighted, hint stays
-    //                                     //   when player clicks any of these
+    //     mode: 'error' | 'deduction' | 'noHint',
+    //     // Common rendering data:
+    //     targetCells: [[r, c], ...],     // amber-highlighted target
     //     contextCells: [[r, c], ...],    // soft-highlighted background
-    //     bannerText: string,
-    //     badgeText: 'L1' | 'L2' | 'L3' | 'L4' | 'ERR',
+    //     violationCells: [[r, c], ...],  // red-highlighted breakage
+    //     chainPlacements: [{cell,value}, ...] | null,
+    //     badgeText: '',
+    //     // Mode-specific source fields used by renderHintBannerFromState
+    //     // to recompute bannerText each render (so a locale change
+    //     // refreshes the banner without recomputing the hint itself):
+    //     reason:    object   // 'deduction' only
+    //     wrongCount:integer  // 'error' only
+    //     filterTactic: 'L3' | null  // 'noHint' only
+    //     filterTactics:['L1',...]   // 'noHint' only
     //   }
     // -----------------------------------------------------------------
 
@@ -704,8 +712,6 @@
         // Toggle off if a hint is already showing.
         if (state.hint) { clearHint(); return; }
 
-        const ui = uiTexts();
-
         // Priority 1: wrong placements. Tango is unique-solution, so any
         // cell that disagrees with the stored solution is provably bad.
         const wrong = findWrongCells();
@@ -715,7 +721,8 @@
                 targetCells: wrong,
                 contextCells: [],
                 violationCells: [],
-                bannerText: wrong.length === 1 ? ui.wrongOne : ui.wrongMany(wrong.length),
+                chainPlacements: null,
+                wrongCount: wrong.length,
                 badgeText: '',
             };
             renderHintBannerFromState();
@@ -732,11 +739,17 @@
         const result = solver.findLowestAvailableTier(filled, state.puzzle.walls, N, tactics);
 
         if (!result || result.deductions.length === 0) {
-            state.hintBanner.hidden = false;
-            state.hintBanner.textContent = tactics.length < 4
-                ? ui.noneFiltered(tactics[0], tactics.join('/'))
-                : ui.noneAvail;
-            state.hint = null;
+            state.hint = {
+                mode: 'noHint',
+                targetCells: [],
+                contextCells: [],
+                violationCells: [],
+                chainPlacements: null,
+                filterTactic: tactics.length < 4 ? tactics[0] : null,
+                filterTactics: tactics,
+                badgeText: '',
+            };
+            renderHintBannerFromState();
             applyHintHighlights();
             return;
         }
@@ -759,7 +772,7 @@
             contextCells: solver.reasonContextCells(picked.reason),
             violationCells: solver.reasonViolationCells(picked.reason),
             chainPlacements: solver.reasonChainPlacements(picked.reason),
-            bannerText: solver.describeReason(picked.reason),
+            reason: picked.reason,
             // Never surface the L1/L2/L3/L4 tier in the banner — that
             // jargon is for the generator, not the player.
             badgeText: '',
@@ -872,6 +885,19 @@
     function renderHintBannerFromState() {
         const h = state.hint;
         if (!h || !state.hintBanner) return;
+        const ui = uiTexts();
+        let text = '';
+        if (h.mode === 'error') {
+            text = h.wrongCount === 1 ? ui.wrongOne : ui.wrongMany(h.wrongCount);
+        } else if (h.mode === 'deduction' && h.reason) {
+            const solver = window.PuzzleSolvers.tango;
+            text = solver.describeReason(h.reason);
+        } else if (h.mode === 'noHint') {
+            text = h.filterTactic
+                ? ui.noneFiltered(h.filterTactic, h.filterTactics.join('/'))
+                : ui.noneAvail;
+        }
+
         state.hintBanner.innerHTML = '';
         state.hintBanner.classList.toggle('error', h.mode === 'error');
         if (h.badgeText) {
@@ -880,7 +906,7 @@
             badge.textContent = h.badgeText;
             state.hintBanner.appendChild(badge);
         }
-        state.hintBanner.appendChild(document.createTextNode(h.bannerText));
+        state.hintBanner.appendChild(document.createTextNode(text));
         state.hintBanner.hidden = false;
     }
 
@@ -976,6 +1002,13 @@
         if (state.hintButton) {
             state.hintButton.addEventListener('click', showHint);
         }
+
+        // Re-render the hint banner if the locale flips while a hint
+        // is on screen (error / deduction / noHint all carry source
+        // fields so the banner text can be regenerated in any mode).
+        PC.i18n.subscribe(() => {
+            if (state.hint) renderHintBannerFromState();
+        });
 
         shell.start();
     }

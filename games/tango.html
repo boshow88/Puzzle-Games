@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="zh-Hant">
+<html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -14,30 +14,33 @@
 <body>
     <div class="game-shell">
         <header class="game-topbar">
-            <a class="back-link" href="../index.html">← Menu</a>
+            <a class="back-link" href="../index.html" data-i18n="menu">← Menu</a>
             <div class="game-title">
                 <span class="game-icon" aria-hidden="true">☀</span>
-                <span>Tango</span>
+                <span data-i18n="tangoName">Tango</span>
             </div>
-            <span class="topbar-spacer"></span>
+            <div class="lang-toggle" id="lang-toggle" role="radiogroup" data-i18n-aria-label="language">
+                <button type="button" data-lang="en" role="radio" aria-checked="true">EN</button>
+                <button type="button" data-lang="zh" role="radio" aria-checked="false">中</button>
+            </div>
         </header>
 
-        <section class="game-toolbar" aria-label="Game settings">
+        <section class="game-toolbar" data-i18n-aria-label="gameSettings">
             <div class="toolbar-group">
-                <span class="toolbar-label">Difficulty</span>
+                <span class="toolbar-label" data-i18n="difficulty">Difficulty</span>
                 <div class="toolbar-control">
-                    <div class="segmented" id="difficulty-seg" role="radiogroup" aria-label="Difficulty">
-                        <button type="button" data-value="easy" role="radio">Easy</button>
-                        <button type="button" data-value="medium" role="radio" class="active">Medium</button>
-                        <button type="button" data-value="hard" role="radio">Hard</button>
+                    <div class="segmented" id="difficulty-seg" role="radiogroup" data-i18n-aria-label="difficulty">
+                        <button type="button" data-value="easy" role="radio" data-i18n="easy">Easy</button>
+                        <button type="button" data-value="medium" role="radio" class="active" data-i18n="medium">Medium</button>
+                        <button type="button" data-value="hard" role="radio" data-i18n="hard">Hard</button>
                     </div>
                 </div>
             </div>
 
             <div class="toolbar-group">
-                <span class="toolbar-label">Board size</span>
+                <span class="toolbar-label" data-i18n="boardSize">Board size</span>
                 <div class="toolbar-control">
-                    <div class="segmented" id="size-seg" role="radiogroup" aria-label="Board size">
+                    <div class="segmented" id="size-seg" role="radiogroup" data-i18n-aria-label="boardSize">
                         <button type="button" data-value="6" role="radio" class="active">6×6</button>
                         <button type="button" data-value="8" role="radio">8×8</button>
                         <button type="button" data-value="10" role="radio">10×10</button>
@@ -47,10 +50,10 @@
         </section>
 
         <div class="action-row">
-            <button class="btn btn-primary" id="new-game-btn" type="button">New Game</button>
-            <button class="btn" id="reset-btn" type="button" title="Clear placements">↻ Reset</button>
-            <button class="btn" id="hint-btn" type="button" title="Highlight one deducible cell">💡 Hint</button>
-            <button class="btn toggle" id="reveal-btn" type="button" aria-pressed="false" title="Show solution overlay">? Reveal</button>
+            <button class="btn btn-primary" id="new-game-btn" type="button" data-i18n="newGame">New Game</button>
+            <button class="btn" id="reset-btn" type="button" data-i18n="reset" data-i18n-title="clearPlacements" title="Clear placements">↻ Reset</button>
+            <button class="btn" id="hint-btn" type="button" data-i18n="hint" data-i18n-title="highlightDeducible" title="Highlight one deducible cell">💡 Hint</button>
+            <button class="btn toggle" id="reveal-btn" type="button" aria-pressed="false" data-i18n="reveal" data-i18n-title="showSolution" title="Show solution overlay">? Reveal</button>
         </div>
 
         <div class="status-row" aria-live="polite">
@@ -60,7 +63,7 @@
             <span class="status-item violations" id="violations" hidden>
                 <span id="violations-text"></span>
             </span>
-            <span class="status-item win-message" id="win-message" hidden>You Win! ✨</span>
+            <span class="status-item win-message" id="win-message" hidden data-i18n="winMessage">You Win! ✨</span>
         </div>
 
         <div class="board-wrap">
@@ -69,6 +72,7 @@
                  viewBox="-3 -3 486 486"
                  xmlns="http://www.w3.org/2000/svg"
                  role="application"
+                 data-i18n-aria-label="tangoBoardAria"
                  aria-label="Tango puzzle board">
             </svg>
         </div>
@@ -76,12 +80,12 @@
         <div class="hint-banner" id="hint-banner" hidden aria-live="polite"></div>
 
         <section class="game-footer">
-            <h4>How to play</h4>
+            <h4 data-i18n="howToPlay">How to play</h4>
             <ul>
-                <li>Click a cell to cycle through <strong>empty → ☀ → ☾</strong>. Pre-filled cells are locked.</li>
-                <li>Each row and column must contain <strong>half suns and half moons</strong>, and never three of the same in a row.</li>
-                <li>The badges between cells are constraints: <strong>=</strong> means the two neighbours must match, <strong>×</strong> means they must differ.</li>
-                <li>The puzzle is solved when every cell is filled and no rule is broken.</li>
+                <li data-i18n="tangoHelp1Html">Click a cell to cycle through <strong>empty → ☀ → ☾</strong>. Pre-filled cells are locked.</li>
+                <li data-i18n="tangoHelp2Html">Each row and column must contain <strong>half suns and half moons</strong>, and never three of the same in a row.</li>
+                <li data-i18n="tangoHelp3Html">The badges between cells are constraints: <strong>=</strong> means the two neighbours must match, <strong>×</strong> means they must differ.</li>
+                <li data-i18n="tangoHelp4">The puzzle is solved when every cell is filled and no rule is broken.</li>
             </ul>
         </section>
     </div>
