@@ -445,5 +445,9 @@
         clamp,
         el,
         svgEl,
+        // Shared hint locale. English is the active default; a future
+        // commit will add a UI toggle that flips this to 'zh' and
+        // re-renders. Per-game files read this for their hint strings.
+        i18n: { locale: 'en' },
     };
 })(window);

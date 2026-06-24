@@ -49,6 +49,7 @@
         <div class="action-row">
             <button class="btn btn-primary" id="new-game-btn" type="button">New Game</button>
             <button class="btn" id="reset-btn" type="button" title="Clear placements">↻ Reset</button>
+            <button class="btn" id="hint-btn" type="button" title="Highlight one deducible cell">💡 Hint</button>
             <button class="btn toggle" id="reveal-btn" type="button" aria-pressed="false" title="Show solution overlay">? Reveal</button>
         </div>
 
@@ -71,6 +72,8 @@
                  aria-label="Tango puzzle board">
             </svg>
         </div>
+
+        <div class="hint-banner" id="hint-banner" hidden aria-live="polite"></div>
 
         <section class="game-footer">
             <h4>How to play</h4>

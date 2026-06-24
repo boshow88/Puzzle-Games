@@ -256,6 +256,96 @@
 }
 
 /* ----------------------------------------------------------------
+   Hint banner (shown when player asks for a hint)
+   ---------------------------------------------------------------- */
+
+.hint-banner {
+    margin-bottom: var(--space-sm);
+    padding: var(--space-sm) var(--space-md);
+    background: color-mix(in srgb, var(--game-color, var(--accent-primary)) 10%, white);
+    border-left: 4px solid var(--game-color, var(--accent-primary));
+    border-radius: var(--radius-sm, 6px);
+    font-size: 0.9rem;
+    line-height: 1.45;
+    color: var(--text-primary, #222);
+}
+
+.hint-banner .hint-tier {
+    display: inline-block;
+    font-size: 0.75rem;
+    font-weight: 700;
+    padding: 1px 6px;
+    border-radius: 3px;
+    background: var(--game-color, var(--accent-primary));
+    color: var(--text-on-accent);
+    margin-right: 6px;
+    letter-spacing: 0.5px;
+}
+
+.hint-banner.error {
+    background: color-mix(in srgb, var(--accent-danger) 10%, white);
+    border-left-color: var(--accent-danger);
+}
+
+.hint-banner .hint-tier.err {
+    background: var(--accent-danger);
+}
+
+/* Cell highlights driven by an active hint. Two flavours:
+   - target: the cell the hint is about (solid amber pulse).
+   - violation: cells where a rule actually breaks (steady red tint).
+   Supporting/context cells deliberately get no background tint — for
+   L2+ the orange "ghost" glyphs already mark them, and for L1 the
+   prose names the relevant cells precisely (so they don't need a
+   competing yellow that fights the target). */
+.cell-bg.hint-target {
+    fill: #ffd54f;
+}
+.cell-bg.hint-violation {
+    fill: #ffcdd2;
+}
+
+/* Target-cell ghost on L2+ hints "plays" the reasoning by crossfading
+   between two glyphs: the red "wrong" value (the bad hypothesis being
+   tested) and the green "right" value (what the cell must actually
+   be). Pre-faded soft red/green colours keep the cycle gentle rather
+   than alarming, and the staggered keyframes make sure the cell is
+   always showing exactly one of the two values at any moment. The
+   compound selectors beat `.symbol.sun` / `.symbol.moon` on
+   specificity so the red/green fills win the cascade. */
+@keyframes hint-target-show-wrong {
+    0%, 25%  { opacity: 0.9; }
+    50%, 75% { opacity: 0; }
+    100%     { opacity: 0.9; }
+}
+@keyframes hint-target-show-right {
+    0%, 25%  { opacity: 0; }
+    50%, 75% { opacity: 0.9; }
+    100%     { opacity: 0; }
+}
+.symbol.hint-target-wrong.sun,
+.symbol.hint-target-wrong.moon {
+    fill: #e57373;
+    animation: hint-target-show-wrong 2.5s ease-in-out infinite;
+}
+.symbol.hint-target-right.sun,
+.symbol.hint-target-right.moon {
+    fill: #66bb6a;
+    animation: hint-target-show-right 2.5s ease-in-out infinite;
+}
+
+/* Faded red ghost for the rest of the propagation chain. Stays at a
+   low fixed opacity so it reads as quiet supporting context next to
+   the target's animated red/green pulse. */
+.symbol.hint-ghost.sun,
+.symbol.hint-ghost.moon {
+    fill: #c62828;
+}
+.symbol.hint-ghost {
+    opacity: 0.3;
+}
+
+/* ----------------------------------------------------------------
    Board area
    ---------------------------------------------------------------- */
 

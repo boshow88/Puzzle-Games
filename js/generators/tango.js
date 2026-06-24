@@ -1331,6 +1331,206 @@
     }
 
     // -----------------------------------------------------------------
+    // Enumerate every deduction at the lowest tier that has any. The
+    // hint UI uses this so it can rank multiple equally-easy choices
+    // by player-continuity heuristics (which `nextDeduction` can't do
+    // because it short-circuits on the first hit).
+    //
+    // Output:
+    //   { tier: 'L1'..'L4',
+    //     deductions: [{ tier, cell:[r,c], value, reason }, ...] }
+    //   or null if no tactic in `tactics` finds anything.
+    // -----------------------------------------------------------------
+
+    function findLowestAvailableTier(filled, walls, N, tactics) {
+        const wallIndex = buildWallIndex(walls);
+        const allowed = tactics || ['L1', 'L2', 'L3', 'L4'];
+        const tierExplain = {
+            L1: l1Explain,
+            L2: l2Explain,
+            L3: l3Explain,
+            L4: l4Explain,
+        };
+        for (const tier of ['L1', 'L2', 'L3', 'L4']) {
+            if (!allowed.includes(tier)) continue;
+            const fn = tierExplain[tier];
+            const out = [];
+            for (let r = 0; r < N; r++) {
+                for (let c = 0; c < N; c++) {
+                    if (filled[r][c] !== 0) continue;
+                    const e = fn(r, c, filled, wallIndex, N);
+                    if (e) out.push({ tier, cell: [r, c], value: e.value, reason: e.reason });
+                }
+            }
+            if (out.length > 0) return { tier, deductions: out };
+        }
+        return null;
+    }
+
+    // -----------------------------------------------------------------
+    // Natural-language descriptions of L1 reasons and contradictions.
+    // Used by both the in-game hint UI and the debug trace tool, so the
+    // wording stays in sync.
+    // -----------------------------------------------------------------
+
+    function symbolText(v) { return v === SUN ? '☀' : '☾'; }
+    function cellText([r, c]) { return `(${r}, ${c})`; }
+
+    /**
+     * Hint-text dictionary. English is the active locale (see
+     * `PuzzleCommon.i18n.locale`); Chinese strings are kept here too
+     * so a future UI toggle can switch back without re-translating.
+     * Both locales receive the same pre-rendered symbol glyphs (☀/☾)
+     * and wall glyphs (=/×), which read the same in any language.
+     */
+    const HINT_TEXTS = {
+        en: {
+            rowName: 'row',
+            colName: 'column',
+            tCount: (orient, full, val) =>
+                `Half this ${orient} is already ${full}, so the remaining cells must be ${val}.`,
+            tThree: (orient, src, val) =>
+                `Placing ${src} here would make three ${src} in this ${orient}, so this cell must be ${val}.`,
+            tWall: (wall, neighbor, val) =>
+                `The cell across the ${wall} wall is ${neighbor}, so this cell must be ${val}.`,
+            lAssume: (hypVal, tail, val) =>
+                `Assuming this cell were ${hypVal} would force ${tail} (shown in red), so it must be ${val}.`,
+            cCountOverflow: (orient, val) =>
+                `too many ${val} in a ${orient}`,
+            cThreeInRow: (val) =>
+                `three ${val} in a row`,
+            cWall: (wall) =>
+                `a ${wall} wall to be broken`,
+            cDefault: () => 'a rule violation',
+        },
+        zh: {
+            rowName: '列',
+            colName: '行',
+            tCount: (orient, full, val) =>
+                `這一${orient}的 ${full} 已經放滿一半，剩下的格子必須是 ${val}。`,
+            tThree: (orient, src, val) =>
+                `若這格放 ${src}，這一${orient}會出現連續三個 ${src}，所以這格是 ${val}。`,
+            tWall: (wall, neighbor, val) =>
+                `與這格有 ${wall} 牆相連的格子是 ${neighbor}，所以這格是 ${val}。`,
+            lAssume: (hypVal, tail, val) =>
+                `假設這格是 ${hypVal} 的話，會逼得${tail}（紅色高亮）。所以這格只能是 ${val}。`,
+            cCountOverflow: (orient, val) =>
+                `這一${orient}的 ${val} 超過一半`,
+            cThreeInRow: (val) =>
+                `連續三格都是 ${val}`,
+            cWall: (wall) =>
+                `${wall} 牆兩側不符規則`,
+            cDefault: () => '違反規則',
+        },
+    };
+
+    function currentTexts() {
+        const loc = (global.PuzzleCommon && global.PuzzleCommon.i18n
+            && global.PuzzleCommon.i18n.locale) || 'en';
+        return HINT_TEXTS[loc] || HINT_TEXTS.en;
+    }
+
+    /**
+     * Player-facing brief description of a contradiction. Avoids
+     * coordinates (the board itself highlights the cells in red)
+     * and avoids "L1/L2/L3/L4" / "step count" jargon.
+     */
+    function describeContradictionBrief(c) {
+        const t = currentTexts();
+        if (c.kind === 'count-overflow') {
+            const orient = c.orientation === 'row' ? t.rowName : t.colName;
+            return t.cCountOverflow(orient, symbolText(c.value));
+        }
+        if (c.kind === 'three-in-row') {
+            return t.cThreeInRow(symbolText(c.value));
+        }
+        if (c.kind === 'wall') {
+            const wall = c.wallKind === 'same' ? '=' : '×';
+            return t.cWall(wall);
+        }
+        return t.cDefault();
+    }
+
+    /**
+     * Player-facing description of a deduction. The hint UI marks
+     * cells on the board so the prose stays jargon-free: no tier
+     * names, no chain-length counts. The board provides the "where",
+     * the prose provides the "why".
+     */
+    function describeReason(reason) {
+        const t = currentTexts();
+        if (reason.kind === 'T-count') {
+            const orient = reason.orientation === 'row' ? t.rowName : t.colName;
+            return t.tCount(orient, symbolText(reason.fullValue), symbolText(reason.value));
+        }
+        if (reason.kind === 'T-three') {
+            const orient = reason.orientation === 'row' ? t.rowName : t.colName;
+            return t.tThree(orient, symbolText(reason.sourceValue), symbolText(reason.value));
+        }
+        if (reason.kind === 'T-wall') {
+            const wall = reason.wallKind === 'same' ? '=' : '×';
+            return t.tWall(wall, symbolText(reason.neighborValue), symbolText(reason.value));
+        }
+        if (reason.kind === 'L2' || reason.kind === 'L3' || reason.kind === 'L4') {
+            const tail = describeContradictionBrief(reason.contradiction);
+            return t.lAssume(symbolText(reason.hypothesis.value), tail, symbolText(reason.value));
+        }
+        return JSON.stringify(reason);
+    }
+
+    /**
+     * Supporting cells the hint UI should soft-highlight (yellow).
+     * - For L1 reasons: the cells whose values are directly cited
+     *   (T-count's same-color line cells, T-three's two siblings,
+     *   T-wall's wall neighbour).
+     * - For L2/L3/L4: the propagation chain that follows from the
+     *   bad hypothesis, excluding the final-contradiction cells
+     *   (those go to violationCells).
+     */
+    function reasonContextCells(reason) {
+        if (reason.kind === 'T-count') return reason.sources || [];
+        if (reason.kind === 'T-three') return reason.sources || [];
+        if (reason.kind === 'T-wall') return [reason.neighbor];
+        if (reason.kind === 'L2' || reason.kind === 'L3' || reason.kind === 'L4') {
+            return (reason.propagation || []).map((s) => s.cell);
+        }
+        return [];
+    }
+
+    /**
+     * Cells where the actual rule violation happens — only meaningful
+     * for L2/L3/L4 deductions. The hint UI paints these red so the
+     * player sees exactly *what* breaks if they pick the bad value.
+     */
+    function reasonViolationCells(reason) {
+        if (reason.kind === 'L2' || reason.kind === 'L3' || reason.kind === 'L4') {
+            return (reason.contradiction && reason.contradiction.cells) || [];
+        }
+        return [];
+    }
+
+    /**
+     * Intermediate placements forced by the bad hypothesis. The hint
+     * UI overlays these as faded "ghost" symbols so the player can
+     * follow the contradiction chain visually. Includes the hypothesis
+     * cell itself (the player needs to see the assumed value on the
+     * target cell, not just "if X is something"). Empty for L1.
+     */
+    function reasonChainPlacements(reason) {
+        if (reason.kind === 'L2' || reason.kind === 'L3' || reason.kind === 'L4') {
+            const out = [];
+            if (reason.hypothesis && reason.hypothesis.cell) {
+                out.push({ cell: reason.hypothesis.cell, value: reason.hypothesis.value });
+            }
+            for (const s of (reason.propagation || [])) {
+                out.push({ cell: s.cell, value: s.value });
+            }
+            return out;
+        }
+        return [];
+    }
+
+    // -----------------------------------------------------------------
     // Public surface
     // -----------------------------------------------------------------
 
@@ -1339,6 +1539,13 @@
     if (!global.PuzzleSolvers) global.PuzzleSolvers = {};
     global.PuzzleSolvers.tango = {
         nextDeduction,
+        findLowestAvailableTier,
+        describeReason,
+        describeContradictionBrief,
+        reasonContextCells,
+        reasonViolationCells,
+        reasonChainPlacements,
+        buildWallIndex,
         SUN, MOON,
     };
 })(window);

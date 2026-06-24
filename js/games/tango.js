@@ -56,6 +56,26 @@
         displayedViolations: null,
         displayedPairs: 0,
         violationTimer: null,
+
+        hint: null,                 // active hint object from PuzzleSolvers.tango.nextDeduction
+        hintBanner: null,           // DOM node for the hint message banner
+        hintButton: null,           // DOM node for the hint button
+
+        // -- Hint continuity bookkeeping --
+        // The most recent hint we showed the player, retained until its
+        // target cell is filled with the suggested value. Even if the
+        // player ignores it and works on something else, we keep
+        // re-suggesting it whenever no clearly-easier (lower-tier) hint
+        // exists.
+        pendingHint: null,          // { cell:[r,c], value, reasonKind, tier } | null
+        // The player's last placement / cycle. Used to rank otherwise-
+        // tied candidate hints by similarity (same row/col, same wall
+        // cluster, same assumption line, etc.) so the next hint feels
+        // continuous with what the player just did.
+        lastMove: null,             // { cell:[r,c], value, reasonKind } | null
+        // Cached wall-graph connected components for the current puzzle,
+        // used by similarityScore for T-wall locality matching.
+        wallIndex: null,
     };
 
     let shell = null;
@@ -74,6 +94,13 @@
         state.displayedPairs = 0;
         cancelViolationTimer();
         state.won = false;
+        clearHint();
+        state.pendingHint = null;
+        state.lastMove = null;
+        const solver = window.PuzzleSolvers && window.PuzzleSolvers.tango;
+        state.wallIndex = solver && solver.buildWallIndex
+            ? solver.buildWallIndex(state.puzzle.walls)
+            : null;
     }
 
     function cancelViolationTimer() {
@@ -380,6 +407,7 @@
         svg.appendChild(hitGroup);
 
         repaintSymbols();
+        applyHintHighlights();
     }
 
     function repaintSymbols() {
@@ -409,6 +437,66 @@
                 });
                 text.textContent = SYMBOL[v];
                 group.appendChild(text);
+            }
+        }
+
+        // Chain ghosts for L2/L3/L4 hints. The hypothesis cell (the
+        // hint's target) is the first chainPlacement — there we render
+        // *two* glyphs at the same position, one for the "wrong" value
+        // and one for the "right" value, and let CSS keyframes
+        // crossfade between them. That visually plays the reasoning:
+        // "assume ☾ here (red) → contradiction → so it must be ☀
+        // (green)". The rest of the propagation chain stays a single
+        // faded red ghost so the target's animation reads as the main
+        // event. Cells that already carry a real symbol are skipped
+        // (their real symbol IS the value the chain is reasoning
+        // about).
+        if (state.hint && state.hint.chainPlacements && state.hint.chainPlacements.length > 0) {
+            for (let i = 0; i < state.hint.chainPlacements.length; i++) {
+                const { cell, value } = state.hint.chainPlacements[i];
+                const [r, c] = cell;
+                if (effective(r, c) !== STATES.EMPTY) continue;
+                const cx = c * cs + cs / 2;
+                const cy = r * cs + cs / 2;
+
+                if (i === 0) {
+                    const wrongKind = value === STATES.SUN ? 'sun' : 'moon';
+                    const wrong = PC.svgEl('text', {
+                        class: `symbol ${wrongKind} hint-target-wrong`,
+                        x: cx, y: cy,
+                        'text-anchor': 'middle',
+                        'dominant-baseline': 'middle',
+                        dy: '0.12em',
+                        'font-size': symbolFont,
+                    });
+                    wrong.textContent = SYMBOL[value];
+                    group.appendChild(wrong);
+
+                    const rightVal = value === STATES.SUN ? STATES.MOON : STATES.SUN;
+                    const rightKind = rightVal === STATES.SUN ? 'sun' : 'moon';
+                    const right = PC.svgEl('text', {
+                        class: `symbol ${rightKind} hint-target-right`,
+                        x: cx, y: cy,
+                        'text-anchor': 'middle',
+                        'dominant-baseline': 'middle',
+                        dy: '0.12em',
+                        'font-size': symbolFont,
+                    });
+                    right.textContent = SYMBOL[rightVal];
+                    group.appendChild(right);
+                } else {
+                    const symbolKind = value === STATES.SUN ? 'sun' : 'moon';
+                    const text = PC.svgEl('text', {
+                        class: `symbol ${symbolKind} hint-ghost`,
+                        x: cx, y: cy,
+                        'text-anchor': 'middle',
+                        'dominant-baseline': 'middle',
+                        dy: '0.12em',
+                        'font-size': symbolFont,
+                    });
+                    text.textContent = SYMBOL[value];
+                    group.appendChild(text);
+                }
             }
         }
 
@@ -472,9 +560,30 @@
     function cycleCell(r, c) {
         if (!state.puzzle || state.won) return;
         if (isPrefilled(r, c)) return;
+        // The hint banner sits below the board now, so touching any cell
+        // dismisses it without misleading the player. (pendingHint /
+        // lastMove are intentionally NOT cleared here — clearHint only
+        // hides the displayed banner; the continuity state survives.)
+        clearHint();
         const cur = state.placements[r][c];
         const idx = STATE_CYCLE.indexOf(cur);
-        state.placements[r][c] = STATE_CYCLE[(idx + 1) % STATE_CYCLE.length];
+        const newVal = STATE_CYCLE[(idx + 1) % STATE_CYCLE.length];
+        state.placements[r][c] = newVal;
+
+        // Update hint-continuity bookkeeping. If the player's cycle
+        // landed on the value the pendingHint suggested for this cell,
+        // the hint is "completed" and we drop it. We also forward the
+        // hint's rule-kind into lastMove so the next similarity ranking
+        // can prefer same-rule candidates.
+        let lastMoveReasonKind = null;
+        if (state.pendingHint
+            && state.pendingHint.cell[0] === r
+            && state.pendingHint.cell[1] === c
+            && state.pendingHint.value === newVal) {
+            lastMoveReasonKind = state.pendingHint.reasonKind || null;
+            state.pendingHint = null;
+        }
+        state.lastMove = { cell: [r, c], value: newVal, reasonKind: lastMoveReasonKind };
 
         recomputeViolations();
         if (checkWin() && !state.won) {
@@ -482,6 +591,7 @@
             cancelViolationTimer();
             state.displayedViolations = emptyViolationGrid(state.puzzle.size);
             state.displayedPairs = 0;
+            clearHint();
             shell.markSolved();
             repaintSymbols();
             updateStatusRow();
@@ -499,6 +609,334 @@
         const r = parseInt(target.getAttribute('data-r'), 10);
         const c = parseInt(target.getAttribute('data-c'), 10);
         cycleCell(r, c);
+    }
+
+    // -----------------------------------------------------------------
+    // Hints
+    //
+    // state.hint shape (when active):
+    //   {
+    //     mode: 'error' | 'deduction',
+    //     targetCells: [[r, c], ...],     // pulse-highlighted, hint stays
+    //                                     //   when player clicks any of these
+    //     contextCells: [[r, c], ...],    // soft-highlighted background
+    //     bannerText: string,
+    //     badgeText: 'L1' | 'L2' | 'L3' | 'L4' | 'ERR',
+    //   }
+    // -----------------------------------------------------------------
+
+    /**
+     * Optional URL filter for which tiers count as a hint. Use
+     * `?hintMin=L3` to skip L1/L2 (so debugging L3+ doesn't require
+     * actually getting stuck), `?hintMin=L4` to only return L4, etc.
+     * Defaults to all four tiers.
+     */
+    function getHintTierFilter() {
+        const params = new URLSearchParams(window.location.search);
+        const min = (params.get('hintMin') || '').toUpperCase();
+        const all = ['L1', 'L2', 'L3', 'L4'];
+        const idx = all.indexOf(min);
+        return idx > 0 ? all.slice(idx) : all;
+    }
+
+    /**
+     * Compose the `filled` grid we feed to the solver for hinting.
+     * Includes prefill plus any player placements that already match
+     * the solution — that way wrong guesses can't fool the solver into
+     * walking off into nonsense, but correct progress still counts.
+     */
+    function composeFilledForHint() {
+        const N = state.puzzle.size;
+        const sol = state.puzzle.solution;
+        const out = Array.from({ length: N }, () => new Array(N).fill(STATES.EMPTY));
+        for (let r = 0; r < N; r++) {
+            for (let c = 0; c < N; c++) {
+                const pre = state.puzzle.prefilled[r][c];
+                if (pre !== STATES.EMPTY) { out[r][c] = pre; continue; }
+                const pla = state.placements[r][c];
+                if (pla !== STATES.EMPTY && pla === sol[r][c]) out[r][c] = pla;
+            }
+        }
+        return out;
+    }
+
+    function findWrongCells() {
+        const N = state.puzzle.size;
+        const sol = state.puzzle.solution;
+        const out = [];
+        for (let r = 0; r < N; r++) {
+            for (let c = 0; c < N; c++) {
+                if (state.puzzle.prefilled[r][c] !== STATES.EMPTY) continue;
+                const pla = state.placements[r][c];
+                if (pla !== STATES.EMPTY && pla !== sol[r][c]) out.push([r, c]);
+            }
+        }
+        return out;
+    }
+
+    // Hint-banner UI strings. English is the active locale; Chinese
+    // strings are preserved so a future commit can wire a UI toggle
+    // that flips PuzzleCommon.i18n.locale without re-translating.
+    const HINT_UI_TEXTS = {
+        en: {
+            wrongOne: 'This highlighted cell does not match the unique solution — please reconsider.',
+            wrongMany: (n) =>
+                `These ${n} highlighted cells do not match the unique solution — please reconsider.`,
+            noneFiltered: (min, list) =>
+                `(hintMin=${min}) No ${list} deductions are available right now.`,
+            noneAvail: 'There are no more cells that can be deduced.',
+        },
+        zh: {
+            wrongOne: '高亮的這格與唯一解不符，請重新檢查。',
+            wrongMany: (n) => `高亮的這 ${n} 格與唯一解不符，請重新檢查。`,
+            noneFiltered: (min, list) => `（hintMin=${min}）目前沒有 ${list} 等級的推論可指。`,
+            noneAvail: '目前已經沒有可推論的格子。',
+        },
+    };
+
+    function uiTexts() {
+        const loc = (PC.i18n && PC.i18n.locale) || 'en';
+        return HINT_UI_TEXTS[loc] || HINT_UI_TEXTS.en;
+    }
+
+    function showHint() {
+        if (!state.puzzle || state.won) return;
+        // Toggle off if a hint is already showing.
+        if (state.hint) { clearHint(); return; }
+
+        const ui = uiTexts();
+
+        // Priority 1: wrong placements. Tango is unique-solution, so any
+        // cell that disagrees with the stored solution is provably bad.
+        const wrong = findWrongCells();
+        if (wrong.length > 0) {
+            state.hint = {
+                mode: 'error',
+                targetCells: wrong,
+                contextCells: [],
+                violationCells: [],
+                bannerText: wrong.length === 1 ? ui.wrongOne : ui.wrongMany(wrong.length),
+                badgeText: '',
+            };
+            renderHintBannerFromState();
+            applyHintHighlights();
+            return;
+        }
+
+        // Priority 2: regular deduction. Honours ?hintMin=L3 / =L4 for
+        // testing higher tiers without grinding through L1 cells first.
+        const tactics = getHintTierFilter();
+        const filled = composeFilledForHint();
+        const N = state.puzzle.size;
+        const solver = window.PuzzleSolvers.tango;
+        const result = solver.findLowestAvailableTier(filled, state.puzzle.walls, N, tactics);
+
+        if (!result || result.deductions.length === 0) {
+            state.hintBanner.hidden = false;
+            state.hintBanner.textContent = tactics.length < 4
+                ? ui.noneFiltered(tactics[0], tactics.join('/'))
+                : ui.noneAvail;
+            state.hint = null;
+            applyHintHighlights();
+            return;
+        }
+
+        const picked = pickHint(result.deductions, state.lastMove, state.pendingHint);
+
+        // Remember this hint so we can re-suggest it on subsequent
+        // calls until the player either fulfills it or a strictly
+        // easier hint becomes available elsewhere.
+        state.pendingHint = {
+            cell: picked.cell,
+            value: picked.value,
+            reasonKind: picked.reason.kind,
+            tier: picked.tier,
+        };
+
+        state.hint = {
+            mode: 'deduction',
+            targetCells: [picked.cell],
+            contextCells: solver.reasonContextCells(picked.reason),
+            violationCells: solver.reasonViolationCells(picked.reason),
+            chainPlacements: solver.reasonChainPlacements(picked.reason),
+            bannerText: solver.describeReason(picked.reason),
+            // Never surface the L1/L2/L3/L4 tier in the banner — that
+            // jargon is for the generator, not the player.
+            badgeText: '',
+        };
+        renderHintBannerFromState();
+        applyHintHighlights();
+        repaintSymbols();
+    }
+
+    /**
+     * Choose which of the (equally-low-tier) candidate deductions to
+     * surface. The order of preference is:
+     *
+     *   1) pendingHint's cell, if still in the candidate list —
+     *      "stubborn hint". The player previously saw this hint and
+     *      hasn't completed it; we keep nudging them toward the same
+     *      conclusion so they aren't whiplashed between unrelated
+     *      suggestions every click.
+     *      (Because `result.deductions` only contains the lowest
+     *      available tier, this automatically defers to any new
+     *      strictly-lower-tier hint that has opened up since.)
+     *
+     *   2) Otherwise, rank by similarityScore against `lastMove` —
+     *      prefer same-line / same-wall-cluster / same-rule hints so
+     *      the next suggestion feels like a natural follow-up.
+     *
+     *   3) Row-major tiebreak (first candidate with the best score
+     *      wins, by virtue of iterating the list in order).
+     */
+    function pickHint(deductions, lastMove, pendingHint) {
+        if (deductions.length === 0) return null;
+        if (pendingHint) {
+            const match = deductions.find((d) =>
+                d.cell[0] === pendingHint.cell[0] && d.cell[1] === pendingHint.cell[1]);
+            if (match) return match;
+        }
+        if (!lastMove) return deductions[0];
+        let best = deductions[0];
+        let bestScore = similarityScore(deductions[0], lastMove);
+        for (let i = 1; i < deductions.length; i++) {
+            const s = similarityScore(deductions[i], lastMove);
+            if (s > bestScore) {
+                best = deductions[i];
+                bestScore = s;
+            }
+        }
+        return best;
+    }
+
+    /**
+     * Score how "similar" a candidate hint is to the player's last
+     * move, additive across two independent dimensions:
+     *
+     *   Locality (+3)  — the deduction's natural region of reasoning
+     *                    contains the player's last cell:
+     *                      T-count: same row/col as the rule's line
+     *                      T-three: same row/col as the rule's line
+     *                      T-wall:  same connected wall component
+     *                      L2/L3:   same row/col as the hypothesis
+     *                      L4:      shares a row/col with hypothesis
+     *
+     *   Same rule (+2) — if the player followed a hint last move, we
+     *                    know exactly which rule they just applied.
+     *                    Prefer another hint of the same rule kind so
+     *                    they can keep using the same mental model.
+     *
+     * A baseline of 0 is fine; ties resolve by row-major order, which
+     * is good enough for a UI hint and avoids over-engineering this.
+     */
+    function similarityScore(deduction, lastMove) {
+        const [lr, lc] = lastMove.cell;
+        const r = deduction.reason;
+        let score = 0;
+
+        let localityMatched = false;
+        if (r.kind === 'T-count') {
+            if (r.orientation === 'row' && r.line === lr) localityMatched = true;
+            else if (r.orientation === 'col' && r.line === lc) localityMatched = true;
+        } else if (r.kind === 'T-three') {
+            if (r.orientation === 'row' && deduction.cell[0] === lr) localityMatched = true;
+            else if (r.orientation === 'col' && deduction.cell[1] === lc) localityMatched = true;
+        } else if (r.kind === 'T-wall') {
+            const wi = state.wallIndex;
+            if (wi && typeof wi.wallComponentOf === 'function') {
+                const a = wi.wallComponentOf(lr, lc);
+                const b = wi.wallComponentOf(deduction.cell[0], deduction.cell[1]);
+                if (a != null && a === b) localityMatched = true;
+            }
+        } else if (r.kind === 'L2' || r.kind === 'L3') {
+            const hyp = r.hypothesis;
+            if (hyp && hyp.cell) {
+                const [hr, hc] = hyp.cell;
+                if (r.orientation === 'row' && hr === lr) localityMatched = true;
+                else if (r.orientation === 'col' && hc === lc) localityMatched = true;
+            }
+        } else if (r.kind === 'L4') {
+            const hyp = r.hypothesis;
+            if (hyp && hyp.cell) {
+                const [hr, hc] = hyp.cell;
+                if (hr === lr || hc === lc) localityMatched = true;
+            }
+        }
+        if (localityMatched) score += 3;
+
+        if (lastMove.reasonKind && lastMove.reasonKind === r.kind) score += 2;
+
+        return score;
+    }
+
+    function renderHintBannerFromState() {
+        const h = state.hint;
+        if (!h || !state.hintBanner) return;
+        state.hintBanner.innerHTML = '';
+        state.hintBanner.classList.toggle('error', h.mode === 'error');
+        if (h.badgeText) {
+            const badge = document.createElement('span');
+            badge.className = 'hint-tier' + (h.mode === 'error' ? ' err' : '');
+            badge.textContent = h.badgeText;
+            state.hintBanner.appendChild(badge);
+        }
+        state.hintBanner.appendChild(document.createTextNode(h.bannerText));
+        state.hintBanner.hidden = false;
+    }
+
+    function clearHint() {
+        if (!state.hint && state.hintBanner && state.hintBanner.hidden) return;
+        const hadChain = !!(state.hint && state.hint.chainPlacements && state.hint.chainPlacements.length > 0);
+        state.hint = null;
+        if (state.hintBanner) {
+            state.hintBanner.hidden = true;
+            state.hintBanner.textContent = '';
+            state.hintBanner.classList.remove('error');
+        }
+        applyHintHighlights();
+        // Ghost glyphs live in the symbol layer (rebuilt by
+        // repaintSymbols), so dropping them requires a repaint —
+        // applyHintHighlights only touches the cell-background classes.
+        if (hadChain && board) repaintSymbols();
+    }
+
+    /**
+     * Toggle hint-target / hint-context / hint-violation CSS classes on
+     * the existing cell-bg rects. `renderBoard` builds the rects in
+     * row-major order so `cells[r * N + c]` gives the right node.
+     *
+     * Class priority (visual stacking):
+     *   hint-target    — the cell the hint is about (pulsing yellow)
+     *   hint-violation — cells where the rule actually breaks (red)
+     *   hint-context   — supporting cells (soft yellow)
+     */
+    function applyHintHighlights() {
+        if (!board) return;
+        const N = state.puzzle ? state.puzzle.size : 0;
+        const cellsGroup = board.querySelector('g.cells');
+        if (!cellsGroup) return;
+        const rects = cellsGroup.querySelectorAll('rect');
+        for (const rect of rects) {
+            rect.classList.remove('hint-target', 'hint-context', 'hint-violation');
+        }
+        if (!state.hint || N === 0) return;
+        const taken = new Set();
+        for (const [r, c] of state.hint.targetCells) {
+            const i = r * N + c;
+            taken.add(i);
+            if (rects[i]) rects[i].classList.add('hint-target');
+        }
+        for (const [r, c] of (state.hint.violationCells || [])) {
+            const i = r * N + c;
+            if (taken.has(i)) continue;
+            taken.add(i);
+            if (rects[i]) rects[i].classList.add('hint-violation');
+        }
+        for (const [r, c] of (state.hint.contextCells || [])) {
+            const i = r * N + c;
+            if (taken.has(i)) continue;
+            if (rects[i]) rects[i].classList.add('hint-context');
+        }
     }
 
     function startNewGame() {
@@ -532,6 +970,13 @@
         });
         board = shell.dom.board;
         board.addEventListener('click', onBoardClick);
+
+        state.hintBanner = document.getElementById('hint-banner');
+        state.hintButton = document.getElementById('hint-btn');
+        if (state.hintButton) {
+            state.hintButton.addEventListener('click', showHint);
+        }
+
         shell.start();
     }
 
