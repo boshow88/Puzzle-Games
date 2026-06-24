@@ -1388,32 +1388,32 @@
             rowName: 'row',
             colName: 'column',
             tCount: (orient, full, val) =>
-                `Half this ${orient} is already ${full}, so the remaining cells must be ${val}.`,
+                `Half this ${orient} is already ${full}, so the yellow cell is ${val}.`,
             tThree: (orient, src, val) =>
-                `Placing ${src} here would make three ${src} in this ${orient}, so this cell must be ${val}.`,
+                `${src} in the yellow cell makes three ${src} in this ${orient}, so it's ${val}.`,
             tWall: (wall, neighbor, val) =>
-                `The cell across the ${wall} wall is ${neighbor}, so this cell must be ${val}.`,
+                `Across the ${wall} wall is ${neighbor}, so the yellow cell is ${val}.`,
             lAssume: (hypVal, tail, val) =>
-                `Assuming this cell were ${hypVal} would force ${tail} (shown in red), so it must be ${val}.`,
+                `If the yellow cell were ${hypVal}: ${tail} (red). So it's ${val}.`,
             cCountOverflow: (orient, val) =>
                 `too many ${val} in a ${orient}`,
             cThreeInRow: (val) =>
                 `three ${val} in a row`,
             cWall: (wall) =>
-                `a ${wall} wall to be broken`,
+                `the ${wall} wall would break`,
             cDefault: () => 'a rule violation',
         },
         zh: {
             rowName: '列',
             colName: '行',
             tCount: (orient, full, val) =>
-                `這一${orient}的 ${full} 已經放滿一半，剩下的格子必須是 ${val}。`,
+                `這一${orient}的 ${full} 已經放滿一半，所以黃底這格必須是 ${val}。`,
             tThree: (orient, src, val) =>
-                `若這格放 ${src}，這一${orient}會出現連續三個 ${src}，所以這格是 ${val}。`,
+                `若黃底這格放 ${src}，這一${orient}就會出現連續三個 ${src}，所以它必須是 ${val}。`,
             tWall: (wall, neighbor, val) =>
-                `與這格有 ${wall} 牆相連的格子是 ${neighbor}，所以這格是 ${val}。`,
+                `${wall} 牆對面的格子是 ${neighbor}，所以黃底這格必須是 ${val}。`,
             lAssume: (hypVal, tail, val) =>
-                `假設這格是 ${hypVal} 的話，會逼得${tail}（紅色高亮）。所以這格只能是 ${val}。`,
+                `假設黃底這格是 ${hypVal}，會逼得${tail}（紅色推論），所以它只能是 ${val}。`,
             cCountOverflow: (orient, val) =>
                 `這一${orient}的 ${val} 超過一半`,
             cThreeInRow: (val) =>

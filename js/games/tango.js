@@ -440,63 +440,45 @@
             }
         }
 
-        // Chain ghosts for L2/L3/L4 hints. The hypothesis cell (the
-        // hint's target) is the first chainPlacement — there we render
-        // *two* glyphs at the same position, one for the "wrong" value
-        // and one for the "right" value, and let CSS keyframes
-        // crossfade between them. That visually plays the reasoning:
-        // "assume ☾ here (red) → contradiction → so it must be ☀
-        // (green)". The rest of the propagation chain stays a single
-        // faded red ghost so the target's animation reads as the main
-        // event. Cells that already carry a real symbol are skipped
-        // (their real symbol IS the value the chain is reasoning
-        // about).
+        // Chain ghosts for L2/L3/L4 hints — render the bad-hypothesis
+        // value forced into each cell along the contradiction chain
+        // as a static faded-red glyph. The hint-target cell carries
+        // an amber background (set by applyHintHighlights), which is
+        // what visually distinguishes step 1 from the rest. A tiny
+        // step-order badge in the top-right corner makes the
+        // derivation order explicit; top-left is left for the reveal
+        // overlay.
         if (state.hint && state.hint.chainPlacements && state.hint.chainPlacements.length > 0) {
+            const stepFont = Math.max(9, Math.floor(cs * 0.22));
             for (let i = 0; i < state.hint.chainPlacements.length; i++) {
                 const { cell, value } = state.hint.chainPlacements[i];
                 const [r, c] = cell;
                 if (effective(r, c) !== STATES.EMPTY) continue;
                 const cx = c * cs + cs / 2;
                 const cy = r * cs + cs / 2;
+                const symbolKind = value === STATES.SUN ? 'sun' : 'moon';
+                const ghost = PC.svgEl('text', {
+                    class: `symbol ${symbolKind} hint-ghost`,
+                    x: cx, y: cy,
+                    'text-anchor': 'middle',
+                    'dominant-baseline': 'middle',
+                    dy: '0.12em',
+                    'font-size': symbolFont,
+                });
+                ghost.textContent = SYMBOL[value];
+                group.appendChild(ghost);
 
-                if (i === 0) {
-                    const wrongKind = value === STATES.SUN ? 'sun' : 'moon';
-                    const wrong = PC.svgEl('text', {
-                        class: `symbol ${wrongKind} hint-target-wrong`,
-                        x: cx, y: cy,
-                        'text-anchor': 'middle',
-                        'dominant-baseline': 'middle',
-                        dy: '0.12em',
-                        'font-size': symbolFont,
-                    });
-                    wrong.textContent = SYMBOL[value];
-                    group.appendChild(wrong);
-
-                    const rightVal = value === STATES.SUN ? STATES.MOON : STATES.SUN;
-                    const rightKind = rightVal === STATES.SUN ? 'sun' : 'moon';
-                    const right = PC.svgEl('text', {
-                        class: `symbol ${rightKind} hint-target-right`,
-                        x: cx, y: cy,
-                        'text-anchor': 'middle',
-                        'dominant-baseline': 'middle',
-                        dy: '0.12em',
-                        'font-size': symbolFont,
-                    });
-                    right.textContent = SYMBOL[rightVal];
-                    group.appendChild(right);
-                } else {
-                    const symbolKind = value === STATES.SUN ? 'sun' : 'moon';
-                    const text = PC.svgEl('text', {
-                        class: `symbol ${symbolKind} hint-ghost`,
-                        x: cx, y: cy,
-                        'text-anchor': 'middle',
-                        'dominant-baseline': 'middle',
-                        dy: '0.12em',
-                        'font-size': symbolFont,
-                    });
-                    text.textContent = SYMBOL[value];
-                    group.appendChild(text);
-                }
+                // Step-order badge (top-right corner).
+                const stepLabel = PC.svgEl('text', {
+                    class: 'symbol hint-step',
+                    x: c * cs + cs * 0.84,
+                    y: r * cs + cs * 0.20,
+                    'text-anchor': 'middle',
+                    'dominant-baseline': 'middle',
+                    'font-size': stepFont,
+                });
+                stepLabel.textContent = String(i + 1);
+                group.appendChild(stepLabel);
             }
         }
 
