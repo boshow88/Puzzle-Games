@@ -1637,7 +1637,7 @@
             tWall: (wall, neighbor, val) =>
                 `${wall} 牆對面的格子是 ${neighbor}，所以黃底這格必須是 ${val}。`,
             lAssume: (hypVal, tail, val) =>
-                `假設黃底這格是 ${hypVal}，會逼得${tail}（紅色推論），所以它只能是 ${val}。`,
+                `假設黃底這格是 ${hypVal}，會逼得 ${tail}（紅色推論），所以它只能是 ${val}。`,
             cCountOverflow: (orient, val) =>
                 `這一${orient}的 ${val} 超過一半`,
             cThreeInRow: (val) =>

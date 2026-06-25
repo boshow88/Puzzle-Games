@@ -610,24 +610,10 @@
     //     // refreshes the banner without recomputing the hint itself):
     //     reason:    object   // 'deduction' only
     //     wrongCount:integer  // 'error' only
-    //     filterTactic: 'L3' | null  // 'noHint' only
-    //     filterTactics:['L1',...]   // 'noHint' only
     //   }
     // -----------------------------------------------------------------
 
-    /**
-     * Optional URL filter for which tiers count as a hint. Use
-     * `?hintMin=L3` to skip L1/L2 (so debugging L3+ doesn't require
-     * actually getting stuck), `?hintMin=L4` to only return L4, etc.
-     * Defaults to all four tiers.
-     */
-    function getHintTierFilter() {
-        const params = new URLSearchParams(window.location.search);
-        const min = (params.get('hintMin') || '').toUpperCase();
-        const all = ['L1', 'L2', 'L3', 'L4'];
-        const idx = all.indexOf(min);
-        return idx > 0 ? all.slice(idx) : all;
-    }
+    const HINT_TIERS = ['L1', 'L2', 'L3', 'L4'];
 
     /**
      * Compose the `filled` grid we feed to the solver for hinting.
@@ -672,14 +658,11 @@
             wrongOne: 'This highlighted cell does not match the unique solution — please reconsider.',
             wrongMany: (n) =>
                 `These ${n} highlighted cells do not match the unique solution — please reconsider.`,
-            noneFiltered: (min, list) =>
-                `(hintMin=${min}) No ${list} deductions are available right now.`,
             noneAvail: 'There are no more cells that can be deduced.',
         },
         zh: {
             wrongOne: '高亮的這格與唯一解不符，請重新檢查。',
             wrongMany: (n) => `高亮的這 ${n} 格與唯一解不符，請重新檢查。`,
-            noneFiltered: (min, list) => `（hintMin=${min}）目前沒有 ${list} 等級的推論可指。`,
             noneAvail: '目前已經沒有可推論的格子。',
         },
     };
@@ -712,13 +695,11 @@
             return;
         }
 
-        // Priority 2: regular deduction. Honours ?hintMin=L3 / =L4 for
-        // testing higher tiers without grinding through L1 cells first.
-        const tactics = getHintTierFilter();
+        // Priority 2: regular deduction across all four tiers.
         const filled = composeFilledForHint();
         const N = state.puzzle.size;
         const solver = window.PuzzleSolvers.tango;
-        const result = solver.findLowestAvailableTier(filled, state.puzzle.walls, N, tactics);
+        const result = solver.findLowestAvailableTier(filled, state.puzzle.walls, N, HINT_TIERS);
 
         if (!result || result.deductions.length === 0) {
             state.hint = {
@@ -727,8 +708,6 @@
                 contextCells: [],
                 violationCells: [],
                 chainPlacements: null,
-                filterTactic: tactics.length < 4 ? tactics[0] : null,
-                filterTactics: tactics,
                 badgeText: '',
             };
             renderHintBannerFromState();
@@ -875,9 +854,7 @@
             const solver = window.PuzzleSolvers.tango;
             text = solver.describeReason(h.reason);
         } else if (h.mode === 'noHint') {
-            text = h.filterTactic
-                ? ui.noneFiltered(h.filterTactic, h.filterTactics.join('/'))
-                : ui.noneAvail;
+            text = ui.noneAvail;
         }
 
         state.hintBanner.innerHTML = '';
