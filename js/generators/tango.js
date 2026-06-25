@@ -48,52 +48,276 @@
     const MOON = 2;
 
     // -----------------------------------------------------------------
-    // Random complete solution (randomised backtracking).
+    // Random complete solution.
+    //
+    // We've verified empirically (see git history for the analysis
+    // tool that lived under tools/) that naive cell-by-cell first-
+    // success backtracking is *badly* biased — on 6×6 the worst
+    // board appears ~10000× more often than the rarest. Two effects
+    // combine to produce this: the row-major scan order, and the
+    // "if it can complete, take it" choice rule that favours the
+    // larger subtree at every branch point.
+    //
+    // What we ship instead:
+    //
+    //   • For N ≤ 8: row-pattern rejection sampling. There are
+    //     only 14 valid row patterns at N=6 and ~36 at N=8, so we
+    //     enumerate them once, draw N independent row patterns,
+    //     and check column constraints. Each accept gives a sample
+    //     drawn exactly uniformly from the set of valid Tango
+    //     solutions. Accept rate is ~0.15% at N=6 and ~10^-6 at
+    //     N=8; per sample we expect ~700 trials at N=6 and ~10^6
+    //     at N=8, both well under a millisecond per sample.
+    //
+    //   • For N = 10: rejection is infeasible (accept rate ≈ 10^-10
+    //     → hours per sample). We use row-pattern *backtracking*
+    //     to seed a valid board cheaply, then run a Markov chain
+    //     over valid boards using three move types: 2×2 anti-
+    //     diagonal flip, whole-row swap, and whole-column swap.
+    //     All three preserve row/column counts; the chain rejects
+    //     a move only when no-three would break. 500K mixing steps
+    //     pulls the distribution comfortably into "indistinguishable
+    //     from uniform" territory under our analysis tool's chi²
+    //     test (verified at N=6, where we have ground truth).
     // -----------------------------------------------------------------
 
-    function randomSolution(N, rng) {
+    const validRowPatternsCache = new Map();
+    function getValidRowPatterns(N) {
+        if (validRowPatternsCache.has(N)) return validRowPatternsCache.get(N);
         const half = N / 2;
-        const grid = Array.from({ length: N }, () => new Array(N).fill(0));
-        const rowSun = new Array(N).fill(0);
-        const rowMoon = new Array(N).fill(0);
+        const out = [];
+        // Enumerate all length-N binary strings with exactly `half`
+        // suns, then keep only those with no run of three.
+        const idx = new Array(half);
+        for (let i = 0; i < half; i++) idx[i] = i;
+        while (true) {
+            const pat = new Array(N).fill(MOON);
+            for (let i = 0; i < half; i++) pat[idx[i]] = SUN;
+            let bad = false;
+            for (let i = 0; i + 2 < N; i++) {
+                if (pat[i] === pat[i+1] && pat[i+1] === pat[i+2]) { bad = true; break; }
+            }
+            if (!bad) out.push(pat);
+            let i = half - 1;
+            while (i >= 0 && idx[i] === N - half + i) i--;
+            if (i < 0) break;
+            idx[i]++;
+            for (let j = i + 1; j < half; j++) idx[j] = idx[j-1] + 1;
+        }
+        validRowPatternsCache.set(N, out);
+        return out;
+    }
+
+    // L — exact-uniform sampler via row-pattern rejection.
+    // Returns null if the rare-but-bounded retry budget is exhausted.
+    function sampleByRowRejection(N, rng) {
+        const half = N / 2;
+        const patterns = getValidRowPatterns(N);
+        const M = patterns.length;
+        // 25M attempts ≈ 5 s wall clock at ~200 ns / attempt.
+        // For 6×6 the fail probability is e^(-25M * 0.0015) ≈ 10^-130;
+        // for 8×8 it's e^(-25M * 10^-6) ≈ 10^-11. Both are negligible
+        // in practice — the bound exists so a pathological seed can't
+        // wedge the UI thread, not because we expect it to trigger.
+        const MAX_ATTEMPTS = 25_000_000;
+        const g = new Array(N);
+        for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
+            for (let r = 0; r < N; r++) {
+                g[r] = patterns[(rng() * M) | 0];
+            }
+            let ok = true;
+            for (let c = 0; c < N && ok; c++) {
+                let sunCount = 0;
+                for (let r = 0; r < N; r++) {
+                    if (g[r][c] === SUN) sunCount += 1;
+                }
+                if (sunCount !== half) { ok = false; break; }
+                for (let r = 0; r + 2 < N && ok; r++) {
+                    if (g[r][c] === g[r+1][c] && g[r+1][c] === g[r+2][c]) {
+                        ok = false;
+                    }
+                }
+            }
+            if (ok) {
+                // DEBUG: report so we can sanity-check accept rate in
+                // the field. Remove once we've confirmed numbers match
+                // the offline analysis.
+                console.log('[tango-gen] L(N=' + N + ', M=' + M
+                    + ') hit after ' + (attempt + 1) + ' attempts');
+                return g.map((row) => row.slice());
+            }
+        }
+        return null;
+    }
+
+    // M — row-pattern backtracking. Used as the MCMC seed for N=10.
+    // Still biased (first-success at row granularity) but very fast.
+    function sampleByRowBacktrack(N, rng) {
+        const half = N / 2;
+        const patterns = getValidRowPatterns(N);
+        const M = patterns.length;
+        const grid = new Array(N);
         const colSun = new Array(N).fill(0);
         const colMoon = new Array(N).fill(0);
-
-        function fits(r, c, v) {
-            if (v === SUN) {
-                if (rowSun[r] >= half || colSun[c] >= half) return false;
-            } else {
-                if (rowMoon[r] >= half || colMoon[c] >= half) return false;
+        const colLast = new Array(N).fill(0);
+        const colRun = new Array(N).fill(0);
+        const patOrder = new Array(M);
+        for (let i = 0; i < M; i++) patOrder[i] = i;
+        function fitsRow(pat) {
+            for (let c = 0; c < N; c++) {
+                const v = pat[c];
+                if (v === SUN && colSun[c] >= half) return false;
+                if (v === MOON && colMoon[c] >= half) return false;
+                if (colLast[c] === v && colRun[c] >= 2) return false;
             }
-            if (c >= 2 && grid[r][c - 1] === v && grid[r][c - 2] === v) return false;
-            if (r >= 2 && grid[r - 1][c] === v && grid[r - 2][c] === v) return false;
             return true;
         }
-        function set(r, c, v) {
-            grid[r][c] = v;
-            if (v === SUN) { rowSun[r]++; colSun[c]++; }
-            else { rowMoon[r]++; colMoon[c]++; }
+        function applyRow(pat) {
+            const prevLast = colLast.slice();
+            const prevRun = colRun.slice();
+            for (let c = 0; c < N; c++) {
+                const v = pat[c];
+                if (v === SUN) colSun[c]++; else colMoon[c]++;
+                if (colLast[c] === v) colRun[c]++;
+                else { colLast[c] = v; colRun[c] = 1; }
+            }
+            return { prevLast, prevRun };
         }
-        function unset(r, c, v) {
-            grid[r][c] = 0;
-            if (v === SUN) { rowSun[r]--; colSun[c]--; }
-            else { rowMoon[r]--; colMoon[c]--; }
+        function undoRow(pat, snap) {
+            for (let c = 0; c < N; c++) {
+                if (pat[c] === SUN) colSun[c]--; else colMoon[c]--;
+                colLast[c] = snap.prevLast[c];
+                colRun[c] = snap.prevRun[c];
+            }
         }
-        function solve(idx) {
-            if (idx === N * N) return true;
-            const r = Math.floor(idx / N);
-            const c = idx % N;
-            const choices = [SUN, MOON];
-            PC.rng.shuffle(choices, rng);
-            for (const v of choices) {
-                if (!fits(r, c, v)) continue;
-                set(r, c, v);
-                if (solve(idx + 1)) return true;
-                unset(r, c, v);
+        function solve(r) {
+            if (r === N) return true;
+            PC.rng.shuffle(patOrder, rng);
+            for (let i = 0; i < M; i++) {
+                const pat = patterns[patOrder[i]];
+                if (!fitsRow(pat)) continue;
+                const snap = applyRow(pat);
+                grid[r] = pat;
+                if (solve(r + 1)) return true;
+                grid[r] = undefined;
+                undoRow(pat, snap);
             }
             return false;
         }
-        return solve(0) ? grid : null;
+        return solve(0) ? grid.map((row) => row.slice()) : null;
+    }
+
+    // -----------------------------------------------------------------
+    // MCMC mixing — three move types, all preserve row & col counts.
+    //   2×2 flip   : A B / B A  →  B A / A B
+    //   row swap   : swap two whole rows
+    //   col swap   : swap two whole columns
+    // After any move, check the relevant no-three constraint; revert
+    // on violation. Detailed balance holds because each move is its
+    // own inverse and selection is uniform.
+    // -----------------------------------------------------------------
+    function colNoThreeAt(g, c, N) {
+        for (let r = 0; r + 2 < N; r++) {
+            if (g[r][c] === g[r+1][c] && g[r+1][c] === g[r+2][c]) return false;
+        }
+        return true;
+    }
+    function rowNoThreeAt(g, r, N) {
+        for (let c = 0; c + 2 < N; c++) {
+            if (g[r][c] === g[r][c+1] && g[r][c+1] === g[r][c+2]) return false;
+        }
+        return true;
+    }
+    function mcmcMix(g, rng, steps) {
+        const N = g.length;
+        for (let step = 0; step < steps; step++) {
+            const which = rng();
+            if (which < 0.5) {
+                const r1 = (rng() * N) | 0;
+                const r2 = (rng() * N) | 0;
+                if (r1 === r2) continue;
+                const c1 = (rng() * N) | 0;
+                const c2 = (rng() * N) | 0;
+                if (c1 === c2) continue;
+                const a = g[r1][c1], b = g[r1][c2];
+                if (a === b) continue;
+                if (g[r2][c1] !== b || g[r2][c2] !== a) continue;
+                g[r1][c1] = b; g[r1][c2] = a;
+                g[r2][c1] = a; g[r2][c2] = b;
+                if (!(colNoThreeAt(g, c1, N) && colNoThreeAt(g, c2, N)
+                    && rowNoThreeAt(g, r1, N) && rowNoThreeAt(g, r2, N))) {
+                    g[r1][c1] = a; g[r1][c2] = b;
+                    g[r2][c1] = b; g[r2][c2] = a;
+                }
+            } else if (which < 0.75) {
+                const r1 = (rng() * N) | 0;
+                const r2 = (rng() * N) | 0;
+                if (r1 === r2) continue;
+                const tmp = g[r1]; g[r1] = g[r2]; g[r2] = tmp;
+                // Row swap only re-orders rows; the columns are the
+                // only place no-three can break.
+                let ok = true;
+                for (let c = 0; c < N && ok; c++) {
+                    if (!colNoThreeAt(g, c, N)) ok = false;
+                }
+                if (!ok) {
+                    const t = g[r1]; g[r1] = g[r2]; g[r2] = t;
+                }
+            } else {
+                const c1 = (rng() * N) | 0;
+                const c2 = (rng() * N) | 0;
+                if (c1 === c2) continue;
+                for (let r = 0; r < N; r++) {
+                    const t = g[r][c1]; g[r][c1] = g[r][c2]; g[r][c2] = t;
+                }
+                let ok = true;
+                for (let r = 0; r < N && ok; r++) {
+                    if (!rowNoThreeAt(g, r, N)) ok = false;
+                }
+                if (!ok) {
+                    for (let r = 0; r < N; r++) {
+                        const t = g[r][c1]; g[r][c1] = g[r][c2]; g[r][c2] = t;
+                    }
+                }
+            }
+        }
+        return g;
+    }
+
+    // Per-size MCMC step budget. The 6/8 numbers only matter if
+    // `sampleByRowRejection` ever falls back (it basically never
+    // does); 10's value is the one that actually runs in production.
+    function mcmcStepsFor(N) {
+        if (N <= 6) return 20_000;
+        if (N <= 8) return 100_000;
+        return 500_000;
+    }
+
+    function randomSolution(N, rng) {
+        // DEBUG: time the whole sampler call. Remove with the other
+        // [tango-gen] console.log lines once we're happy.
+        const t0 = (typeof performance !== 'undefined' ? performance.now() : Date.now());
+        if (N <= 8) {
+            const g = sampleByRowRejection(N, rng);
+            if (g) {
+                const dt = ((typeof performance !== 'undefined' ? performance.now() : Date.now()) - t0).toFixed(2);
+                console.log('[tango-gen] randomSolution(N=' + N + ') path=L took ' + dt + ' ms');
+                return g;
+            }
+            console.warn('[tango-gen] row-rejection budget exhausted at N=' + N
+                + '; falling back to MCMC sampler');
+        }
+        const seed = sampleByRowBacktrack(N, rng);
+        if (!seed) return null;
+        const steps = mcmcStepsFor(N);
+        const tMix0 = (typeof performance !== 'undefined' ? performance.now() : Date.now());
+        const g = mcmcMix(seed, rng, steps);
+        const now = (typeof performance !== 'undefined' ? performance.now() : Date.now());
+        console.log('[tango-gen] randomSolution(N=' + N + ') path=O '
+            + 'seed=' + (tMix0 - t0).toFixed(2) + ' ms, '
+            + 'mcmc(' + steps + ' steps)=' + (now - tMix0).toFixed(2) + ' ms, '
+            + 'total=' + (now - t0).toFixed(2) + ' ms');
+        return g;
     }
 
     // -----------------------------------------------------------------
