@@ -390,18 +390,38 @@
             }
         }
 
-        function startFreshGame() {
-            // Commit the toolbar's pending selection — the board is
-            // about to regenerate at these values.
-            appliedDifficulty = difficulty;
-            appliedSize = size;
-            syncDifficultyButtons();
-            syncSizeButtons();
-            revealed = false;
-            syncRevealButton();
-            shell.setWin(false);
-            onNewGame();
-            timer.start();
+        let isGenerating = false;
+        async function startFreshGame() {
+            if (isGenerating) return;
+            isGenerating = true;
+            try {
+                // Commit the toolbar's pending selection — the board is
+                // about to regenerate at these values.
+                appliedDifficulty = difficulty;
+                appliedSize = size;
+                syncDifficultyButtons();
+                syncSizeButtons();
+                revealed = false;
+                syncRevealButton();
+                shell.setWin(false);
+                if (dom.newGameBtn) dom.newGameBtn.disabled = true;
+                progress.start(t('generatingPuzzle'));
+                // Let the browser paint the overlay (still invisible
+                // thanks to its CSS fade-in delay) before we hand the
+                // main thread to the generator. The fade-in then
+                // continues on the compositor thread even while
+                // onNewGame() blocks.
+                await progress.waitNextPaint();
+                try {
+                    await onNewGame();
+                } finally {
+                    progress.finish();
+                    if (dom.newGameBtn) dom.newGameBtn.disabled = false;
+                }
+                timer.start();
+            } finally {
+                isGenerating = false;
+            }
         }
 
         function applyReset() {
@@ -515,6 +535,7 @@
             // Shared topbar / toolbar / actions
             menu: '← Menu',
             language: 'Language',
+            generatingPuzzle: 'Generating puzzle…',
             difficulty: 'Difficulty',
             easy: 'Easy',
             medium: 'Medium',
@@ -608,6 +629,7 @@
         zh: {
             menu: '← 選單',
             language: '語言',
+            generatingPuzzle: '正在產生關卡…',
             difficulty: '難度',
             easy: '簡單',
             medium: '中等',
@@ -782,6 +804,97 @@
         bootstrapI18n();
     }
 
+    // -----------------------------------------------------------------
+    // Progress indicator
+    //
+    // A single shared overlay rendered into `.board-wrap` (or the body,
+    // if no board exists) while a long synchronous task — currently
+    // just puzzle generation — runs on the main thread. The visible
+    // part is delayed by ~250ms via a CSS keyframe so quick generations
+    // don't flash a card on screen for ~50ms.
+    //
+    // The indeterminate progress bar is driven entirely by a CSS
+    // transform animation. Compositor-thread animations keep ticking
+    // even when the JS thread is blocked, so the bar continues to
+    // visibly move during a multi-second generate() call without us
+    // needing to make the generator async.
+    // -----------------------------------------------------------------
+
+    const progress = (function () {
+        let overlay = null;
+        let textEl = null;
+        let attachedTo = null;
+        let activeCount = 0;
+
+        function ensureDom(host) {
+            if (overlay && attachedTo === host) return;
+            if (overlay && overlay.parentNode) overlay.parentNode.removeChild(overlay);
+            overlay = document.createElement('div');
+            overlay.className = 'puzzle-progress';
+            overlay.setAttribute('role', 'status');
+            overlay.setAttribute('aria-live', 'polite');
+            overlay.hidden = true;
+            const card = document.createElement('div');
+            card.className = 'puzzle-progress-card';
+            textEl = document.createElement('div');
+            textEl.className = 'puzzle-progress-text';
+            const bar = document.createElement('div');
+            bar.className = 'puzzle-progress-bar';
+            const fill = document.createElement('span');
+            fill.className = 'puzzle-progress-bar-fill';
+            bar.appendChild(fill);
+            card.appendChild(textEl);
+            card.appendChild(bar);
+            overlay.appendChild(card);
+            host.appendChild(overlay);
+            attachedTo = host;
+        }
+
+        function resolveHost() {
+            return document.querySelector('.board-wrap')
+                || document.querySelector('main')
+                || document.body;
+        }
+
+        function start(text) {
+            const host = resolveHost();
+            ensureDom(host);
+            // Reset the keyframe so each new generate restarts its
+            // fade-in delay. Cheap trick: remove + reflow + add the
+            // running class.
+            textEl.textContent = text || '';
+            overlay.classList.remove('is-running');
+            overlay.hidden = false;
+            void overlay.offsetWidth;
+            overlay.classList.add('is-running');
+            activeCount += 1;
+        }
+
+        function update(text) {
+            if (!textEl) return;
+            textEl.textContent = text || '';
+        }
+
+        function finish() {
+            if (activeCount > 0) activeCount -= 1;
+            if (activeCount > 0) return;
+            if (overlay) {
+                overlay.classList.remove('is-running');
+                overlay.hidden = true;
+            }
+        }
+
+        function waitNextPaint() {
+            return new Promise((resolve) => {
+                requestAnimationFrame(() => {
+                    requestAnimationFrame(() => resolve());
+                });
+            });
+        }
+
+        return { start, update, finish, waitNextPaint };
+    })();
+
     global.PuzzleCommon = {
         storage: { readJSON, writeJSON, storageKey },
         prefs: { get: getPrefs, set: setPrefs },
@@ -801,5 +914,6 @@
             translateNode,
             STRINGS,
         },
+        progress,
     };
 })(window);

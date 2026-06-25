@@ -387,6 +387,67 @@
     display: flex;
     align-items: center;
     justify-content: center;
+    position: relative;
+}
+
+/* Progress overlay -------------------------------------------------- */
+.puzzle-progress {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: inherit;
+    background: rgba(255, 255, 255, 0.55);
+    backdrop-filter: blur(1px);
+    pointer-events: none;
+    z-index: 5;
+    opacity: 0;
+}
+.puzzle-progress.is-running {
+    /* 250 ms invisible head ⇒ short generations leave no flash. */
+    animation: puzzle-progress-fade 350ms ease-out 250ms forwards;
+}
+@keyframes puzzle-progress-fade {
+    from { opacity: 0; }
+    to   { opacity: 1; }
+}
+
+.puzzle-progress-card {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: var(--space-sm);
+    padding: 14px 18px;
+    background: var(--bg-primary);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-md);
+    box-shadow: var(--shadow-md);
+    color: var(--text-secondary);
+    font-size: 0.9rem;
+}
+
+.puzzle-progress-bar {
+    position: relative;
+    width: 200px;
+    height: 4px;
+    background: rgba(0, 0, 0, 0.08);
+    border-radius: 2px;
+    overflow: hidden;
+}
+.puzzle-progress-bar-fill {
+    position: absolute;
+    inset: 0;
+    width: 40%;
+    background: var(--game-color);
+    border-radius: inherit;
+    transform: translateX(-100%);
+    animation: puzzle-progress-slide 1.2s ease-in-out infinite;
+    will-change: transform;
+}
+@keyframes puzzle-progress-slide {
+    0%   { transform: translateX(-100%); }
+    100% { transform: translateX(250%); }
 }
 
 .board-svg {
