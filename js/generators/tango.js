@@ -139,11 +139,6 @@
                 }
             }
             if (ok) {
-                // DEBUG: report so we can sanity-check accept rate in
-                // the field. Remove once we've confirmed numbers match
-                // the offline analysis.
-                console.log('[tango-gen] L(N=' + N + ', M=' + M
-                    + ') hit after ' + (attempt + 1) + ' attempts');
                 return g.map((row) => row.slice());
             }
         }
@@ -294,30 +289,15 @@
     }
 
     function randomSolution(N, rng) {
-        // DEBUG: time the whole sampler call. Remove with the other
-        // [tango-gen] console.log lines once we're happy.
-        const t0 = (typeof performance !== 'undefined' ? performance.now() : Date.now());
         if (N <= 8) {
             const g = sampleByRowRejection(N, rng);
-            if (g) {
-                const dt = ((typeof performance !== 'undefined' ? performance.now() : Date.now()) - t0).toFixed(2);
-                console.log('[tango-gen] randomSolution(N=' + N + ') path=L took ' + dt + ' ms');
-                return g;
-            }
+            if (g) return g;
             console.warn('[tango-gen] row-rejection budget exhausted at N=' + N
                 + '; falling back to MCMC sampler');
         }
         const seed = sampleByRowBacktrack(N, rng);
         if (!seed) return null;
-        const steps = mcmcStepsFor(N);
-        const tMix0 = (typeof performance !== 'undefined' ? performance.now() : Date.now());
-        const g = mcmcMix(seed, rng, steps);
-        const now = (typeof performance !== 'undefined' ? performance.now() : Date.now());
-        console.log('[tango-gen] randomSolution(N=' + N + ') path=O '
-            + 'seed=' + (tMix0 - t0).toFixed(2) + ' ms, '
-            + 'mcmc(' + steps + ' steps)=' + (now - tMix0).toFixed(2) + ' ms, '
-            + 'total=' + (now - t0).toFixed(2) + ' ms');
-        return g;
+        return mcmcMix(seed, rng, mcmcStepsFor(N));
     }
 
     // -----------------------------------------------------------------
