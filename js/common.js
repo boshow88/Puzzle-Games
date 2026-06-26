@@ -863,7 +863,12 @@
             // fade-in delay. Cheap trick: remove + reflow + add the
             // running class.
             textEl.textContent = text || '';
-            overlay.classList.remove('is-running');
+            overlay.classList.remove('is-running', 'is-determinate');
+            const fillEl = overlay.querySelector('.puzzle-progress-bar-fill');
+            if (fillEl) {
+                fillEl.style.width = '';
+                fillEl.style.transform = '';
+            }
             overlay.hidden = false;
             void overlay.offsetWidth;
             overlay.classList.add('is-running');
@@ -875,11 +880,25 @@
             textEl.textContent = text || '';
         }
 
+        // Switch the bar to determinate mode and set its fill ratio
+        // (0..1). First call also kills the indeterminate slide
+        // animation. Safe to call repeatedly with the same overlay.
+        function setFraction(fraction) {
+            if (!overlay) return;
+            const fillEl = overlay.querySelector('.puzzle-progress-bar-fill');
+            if (!fillEl) return;
+            if (!overlay.classList.contains('is-determinate')) {
+                overlay.classList.add('is-determinate');
+            }
+            const f = Math.max(0, Math.min(1, fraction));
+            fillEl.style.width = (f * 100).toFixed(2) + '%';
+        }
+
         function finish() {
             if (activeCount > 0) activeCount -= 1;
             if (activeCount > 0) return;
             if (overlay) {
-                overlay.classList.remove('is-running');
+                overlay.classList.remove('is-running', 'is-determinate');
                 overlay.hidden = true;
             }
         }
@@ -892,7 +911,7 @@
             });
         }
 
-        return { start, update, finish, waitNextPaint };
+        return { start, update, setFraction, finish, waitNextPaint };
     })();
 
     global.PuzzleCommon = {

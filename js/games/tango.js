@@ -37,8 +37,24 @@
 
     const VIOLATION_DELAY_MS = 800;
 
-    function generatePuzzle(size, difficulty, seed) {
-        return window.PuzzleGenerators.tango(size, difficulty, seed);
+    async function generatePuzzle(size, difficulty, seed) {
+        const progress = PC.progress;
+        // Tango's generator is the only async one — it drives a real
+        // determinate bar via the per-K progress callback. Other
+        // games keep their sync paths and use the indeterminate bar
+        // that `startFreshGame` shows around `onNewGame()`.
+        //
+        // We deliberately don't surface K (e.g. "3/30") in the text:
+        // a fraction next to "Generating puzzle…" reads like "puzzle
+        // 3 of 30", which is wrong. The bar itself carries the
+        // progress signal.
+        const onProgress = progress
+            ? async (fraction) => {
+                progress.setFraction(fraction);
+                await progress.waitNextPaint();
+            }
+            : null;
+        return window.PuzzleGenerators.tango(size, difficulty, seed, onProgress);
     }
 
     // -----------------------------------------------------------------
@@ -924,9 +940,9 @@
         }
     }
 
-    function startNewGame() {
+    async function startNewGame() {
         const seed = (Date.now() ^ Math.floor(Math.random() * 0xffffffff)) >>> 0;
-        state.puzzle = generatePuzzle(shell.size, shell.difficulty, seed);
+        state.puzzle = await generatePuzzle(shell.size, shell.difficulty, seed);
         ensurePlacementsForCurrent();
         renderBoard();
         updateStatusRow();

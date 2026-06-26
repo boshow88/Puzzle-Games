@@ -449,6 +449,14 @@
     0%   { transform: translateX(-100%); }
     100% { transform: translateX(250%); }
 }
+/* Determinate mode: width is driven by inline style, so kill the
+ * sliding indeterminate animation and reset the translate offset. */
+.puzzle-progress.is-determinate .puzzle-progress-bar-fill {
+    animation: none;
+    transform: none;
+    width: 0%;
+    transition: width 180ms linear;
+}
 
 .board-svg {
     width: 100%;

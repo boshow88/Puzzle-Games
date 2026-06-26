@@ -243,11 +243,11 @@
             return [];
         }
 
-        function newPuzzle() {
+        async function newPuzzle() {
             const N = +document.getElementById('size').value;
             const d = document.getElementById('difficulty').value;
             const seed = (Date.now() & 0xffffffff) >>> 0;
-            puzzle = window.PuzzleGenerators.tango(N, d, seed);
+            puzzle = await window.PuzzleGenerators.tango(N, d, seed);
             prefilled = puzzle.prefilled.map((row) => row.slice());
             filled = puzzle.prefilled.map((row) => row.slice());
             steps = [];
@@ -390,11 +390,11 @@
             // gets a chance to repaint on slow boxes.
             const batch = 25;
             let attempts = 0;
-            const tick = () => {
+            const tick = async () => {
                 const start = attempts;
                 for (; attempts < Math.min(start + batch, MAX); attempts++) {
                     const seed = ((Date.now() + attempts * 0x9e3779b9) >>> 0);
-                    const candidate = window.PuzzleGenerators.tango(N, 'hard', seed);
+                    const candidate = await window.PuzzleGenerators.tango(N, 'hard', seed);
                     const hit = probeDiscountedL4(candidate);
                     if (hit) {
                         puzzle = candidate;

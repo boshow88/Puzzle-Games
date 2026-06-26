@@ -1,22 +1,35 @@
 /**
  * Tango puzzle generator — constructive, logic-solvable.
  *
- * Strategy
- * --------
- * 1. Sample a random complete legal solution by randomised backtracking.
- * 2. Seed a small number of `=` / `×` walls compatible with that solution.
- * 3. Starting from the fully-filled board, run a backward loop:
- *      a) Try to hide a cell whose value is L1-recoverable from the
- *         remaining state. (Easy / Medium / Hard all do this first.)
- *      b) If L1 stalls AND difficulty allows L3, try to hide a cell
- *         whose value is L3-recoverable but not L1-recoverable.
- *      c) Otherwise, try adding a wall (compatible with the solution)
- *         that immediately creates an L1-erasable cell, then hide it.
- *      d) Otherwise, freeze the remaining filled cells as prefill.
+ * Strategy (all three difficulties)
+ * ---------------------------------
+ * 1. Sample a uniform random complete legal solution (see the
+ *    `randomSolution` block for the two-mode sampler).
+ * 2. Build a max-constraint puzzle from that solution: every cell
+ *    pre-filled, every adjacent boundary carrying its compatible
+ *    `=` / `×` wall.
+ * 3. Iteratively remove constraints (one cell value or one wall at
+ *    a time) using a weighted-randomised "longest-survivor" score
+ *    `(h + 1) · kindWeight · noise`, where `h` counts how many
+ *    times the constraint has previously survived a removal attempt.
+ *    After each tentative removal we re-run `verifySolvable` and
+ *    only commit the removal if the puzzle is still solvable using
+ *    the difficulty's allowed tactic tiers.
+ * 4. Score the resulting puzzle by `tierScore`: a weighted sum over
+ *    how many cells the solver had to derive at each tier, with
+ *    L4 weighted dynamically by `log10(E) · N` per step.
  *
- * The resulting puzzle is guaranteed solvable using only the tactic
- * tiers permitted for its difficulty. The generator self-checks this
- * before returning.
+ * Difficulty wiring
+ * -----------------
+ *   Easy   – single carve, then back-fill the last few removals so
+ *            the player gets back a chunk of "hardest" constraints
+ *            (controlled by `easyBackfillCount`).
+ *   Medium – best of K carves (K_max = hard/2), bias-driven schedule.
+ *   Hard   – best of K carves (K_max = 30 / 10 / 5 for 6 / 8 / 10).
+ *
+ * For Medium / Hard each generation samples one `batchBias ∈ U(0, 1)`
+ * which drives both the per-batch (wCell, wWall) weights and the
+ * actual K. See `generateFromMaxOnSolution` for the formulas.
  *
  * Tactic tiers (the underlying game rules they apply are documented in
  * docs/rules.md):
@@ -27,18 +40,12 @@
  *               by two of the same value (immediate neighbours or one
  *               + one over) is forced.
  *     T-wall  : a `=` / `×` wall to a known neighbour forces the cell.
- *   L3   row/col-bounded contradiction:
- *     Assume the opposite at X. If no completion of the line (using
- *     only that line's existing values, internal walls, half-count and
- *     no-three rules) is valid → X is forced. L1 is a strict subset of
- *     L3 in coverage; the two stay separate so the player experience
- *     (and the generator's choice) reflects the cognitive cost.
- *
- * L4 (line + immediately-adjacent cross-line cues) is on the
- * roadmap; not implemented yet.
- *
- * Output JSON contract matches the original dummy generator (see
- * tango.js header comment).
+ *   L2   single-line hypothesis, minimum-chain = 1 (one L1 step away
+ *        from contradiction).
+ *   L3   single-line hypothesis, minimum-chain ≥ 2.
+ *   L4   anywhere-on-board hypothesis, minimum-chain ≤ L4_BUDGET, with
+ *        a wall-chain discount (consecutive T-wall placements in the
+ *        chain count as ceil(K/3) since they're visually mechanical).
  */
 (function (global) {
     'use strict';
@@ -515,67 +522,6 @@
     function l1ForcedAt(r, c, filled, wallIndex, N) {
         const e = l1Explain(r, c, filled, wallIndex, N);
         return e ? e.value : 0;
-    }
-
-    /**
-     * Enumerate every currently-filled cell whose value the player can
-     * deduce via L1 once it's hidden. Returns array of [r, c].
-     *
-     * O(N^4) worst case: cell scan × row/col scan inside l1ForcedAt.
-     * For N ≤ 10 that's 10^4 = trivial.
-     */
-    function findL1ErasableCells(filled, wallIndex, N) {
-        const out = [];
-        for (let r = 0; r < N; r++) {
-            for (let c = 0; c < N; c++) {
-                const v = filled[r][c];
-                if (v === 0) continue;
-                filled[r][c] = 0;
-                const forced = l1ForcedAt(r, c, filled, wallIndex, N);
-                filled[r][c] = v;
-                if (forced === v) out.push([r, c]);
-            }
-        }
-        return out;
-    }
-
-    // -----------------------------------------------------------------
-    // Wall addition
-    //
-    // Find walls we could add (compatible with the solution) such that
-    // a new L1-erasable cell appears. Returns array of
-    //   { wall, erasable: [[r,c], ...] }
-    // -----------------------------------------------------------------
-
-    function findWallAddCandidates(filled, walls, wallIndex, solution, N) {
-        const out = [];
-        const pairs = adjacentPairs(N);
-        for (const [r1, c1, r2, c2] of pairs) {
-            const key = wallKey(r1, c1, r2, c2);
-            if (wallIndex.seen.has(key)) continue;
-            const kind = solution[r1][c1] === solution[r2][c2] ? 'same' : 'diff';
-            const newWall = { r1, c1, r2, c2, kind };
-
-            walls.push(newWall);
-            const a = cellKey(r1, c1), b = cellKey(r2, c2);
-            if (!wallIndex.byCell.has(a)) wallIndex.byCell.set(a, []);
-            if (!wallIndex.byCell.has(b)) wallIndex.byCell.set(b, []);
-            wallIndex.byCell.get(a).push({ kind, otherR: r2, otherC: c2 });
-            wallIndex.byCell.get(b).push({ kind, otherR: r1, otherC: c1 });
-            wallIndex.seen.add(key);
-
-            const erasable = findL1ErasableCells(filled, wallIndex, N);
-
-            wallIndex.byCell.get(a).pop();
-            wallIndex.byCell.get(b).pop();
-            wallIndex.seen.delete(key);
-            walls.pop();
-
-            if (erasable.length > 0) {
-                out.push({ wall: newWall, erasable });
-            }
-        }
-        return out;
     }
 
     // -----------------------------------------------------------------
@@ -1114,86 +1060,6 @@
         return e ? e.value : 0;
     }
 
-    /**
-     * Disjoint erasable-cell sets per tier. Each `findL{K}ErasableCells`
-     * returns cells uniquely first-classified at that tier (i.e. no
-     * lower tier forces the same cell). This makes the generator's tier
-     * preference free of double counting.
-     */
-    function findL2ErasableCells(filled, wallIndex, N) {
-        const out = [];
-        for (let r = 0; r < N; r++) {
-            for (let c = 0; c < N; c++) {
-                const v = filled[r][c];
-                if (v === 0) continue;
-                filled[r][c] = 0;
-                if (l1ForcedAt(r, c, filled, wallIndex, N) !== v
-                    && l2ForcedAt(r, c, filled, wallIndex, N) === v) {
-                    out.push([r, c]);
-                }
-                filled[r][c] = v;
-            }
-        }
-        return out;
-    }
-
-    function findL3ErasableCells(filled, wallIndex, N) {
-        const out = [];
-        for (let r = 0; r < N; r++) {
-            for (let c = 0; c < N; c++) {
-                const v = filled[r][c];
-                if (v === 0) continue;
-                filled[r][c] = 0;
-                if (l1ForcedAt(r, c, filled, wallIndex, N) !== v
-                    && l2ForcedAt(r, c, filled, wallIndex, N) !== v
-                    && l3ForcedAt(r, c, filled, wallIndex, N) === v) {
-                    out.push([r, c]);
-                }
-                filled[r][c] = v;
-            }
-        }
-        return out;
-    }
-
-    function findL4ErasableCells(filled, wallIndex, N) {
-        const out = [];
-        for (let r = 0; r < N; r++) {
-            for (let c = 0; c < N; c++) {
-                const v = filled[r][c];
-                if (v === 0) continue;
-                filled[r][c] = 0;
-                if (l1ForcedAt(r, c, filled, wallIndex, N) !== v
-                    && l2ForcedAt(r, c, filled, wallIndex, N) !== v
-                    && l3ForcedAt(r, c, filled, wallIndex, N) !== v
-                    && l4ForcedAt(r, c, filled, wallIndex, N) === v) {
-                    out.push([r, c]);
-                }
-                filled[r][c] = v;
-            }
-        }
-        return out;
-    }
-
-    // -----------------------------------------------------------------
-    // Seed walls — sprinkle a handful of walls compatible with the
-    // solution before the main erase loop. Keeps Easy puzzles from
-    // ending up with zero walls when L1 erases freely without ever
-    // needing help.
-    // -----------------------------------------------------------------
-
-    function seedWalls(solution, rng, budget, N) {
-        const slots = adjacentPairs(N);
-        PC.rng.shuffle(slots, rng);
-        const walls = [];
-        const take = Math.min(budget, slots.length);
-        for (let i = 0; i < take; i++) {
-            const [r1, c1, r2, c2] = slots[i];
-            const kind = solution[r1][c1] === solution[r2][c2] ? 'same' : 'diff';
-            walls.push({ r1, c1, r2, c2, kind });
-        }
-        return walls;
-    }
-
     // -----------------------------------------------------------------
     // Self-check: simulate the player applying the allowed tactics
     // until convergence and verify it reaches the solution. If this
@@ -1248,103 +1114,441 @@
     // -----------------------------------------------------------------
     // Difficulty tunables.
     //
-    //   tactics    : which tactic tiers the puzzle is allowed to need.
-    //                Easy   = L1 + L2 — direct rules, plus one-step
-    //                         line-bounded hypotheses (still feels L1-y).
-    //                Medium = + L3      — multi-step line hypotheses.
-    //                Hard   = + L4      — cross-board hypotheses.
-    //   wallBudget : how many seed walls to scatter compatibly with the
-    //                solution before the main erase loop. Smaller = the
-    //                puzzle leans harder on prefill / mid-loop walls.
-    //   preferHigh : during the erase loop, greedily pick the highest
-    //                allowed tier whenever it has candidates. Pushes
-    //                the puzzle toward actually needing the hardest
-    //                tactic it's allowed to use.
+    //   tactics : which tactic tiers the puzzle is allowed to need.
+    //             Easy   = L1 + L2 — direct rules, plus one-step
+    //                      line-bounded hypotheses (still feels L1-y).
+    //             Medium = + L3   — multi-step line hypotheses.
+    //             Hard   = + L4   — cross-board hypotheses.
+    //
+    // The carve loop reads only `tactics` (everything else — K, the
+    // batch bias, scoring — is driven by `startFromMaxBudget` and
+    // `generateFromMaxOnSolution`).
     // -----------------------------------------------------------------
 
     function difficultyParams(N, difficulty) {
-        const base = Math.max(1, Math.floor(N / 3));
-        if (difficulty === 'easy') {
-            return {
-                tactics: ['L1', 'L2'],
-                wallBudget: base + 1,
-                preferHigh: false,
-            };
-        }
-        if (difficulty === 'hard') {
-            return {
-                tactics: ['L1', 'L2', 'L3', 'L4'],
-                wallBudget: Math.max(0, base - 1),
-                preferHigh: true,
-            };
-        }
-        // Medium
-        return {
-            tactics: ['L1', 'L2', 'L3'],
-            wallBudget: base,
-            preferHigh: true,
-        };
+        if (difficulty === 'easy')   return { tactics: ['L1', 'L2'] };
+        if (difficulty === 'hard')   return { tactics: ['L1', 'L2', 'L3', 'L4'] };
+        return { tactics: ['L1', 'L2', 'L3'] };
     }
 
     // -----------------------------------------------------------------
     // Main entry point.
     //
-    // For Medium / Hard we don't trust a single attempt — the generator
-    // is greedy and the higher-tier erasures it picks can later be
-    // diluted by lower-tier erasures that make those same cells reach-
-    // able from the final prefill. So we run the inner constructor a
-    // handful of times and pick the candidate with the highest count
-    // of cells that *strictly require* the difficulty's headline tier
-    // (L3 for Medium, L4 for Hard). Easy uses a single attempt.
+    // All three difficulties share the same generator: sample a
+    // uniform random solution, then run K start-from-max carves
+    // against it (each carve tactic-bounded by the difficulty's
+    // allowed tiers) and return the puzzle whose final state has the
+    // highest weighted tier-breakdown score. K is bounded per
+    // (N, difficulty) — see `startFromMaxBudget` — so the caller can
+    // drive a determinate progress bar.
+    //
+    // `onProgress` is optional. When supplied it's awaited as
+    //     await onProgress(fraction /* 0..1 */)
+    // after each completed carve, giving the UI a chance to repaint.
     // -----------------------------------------------------------------
 
-    function generate(size, difficulty, seed) {
-        const params = difficultyParams(size, difficulty);
-        // Pick the metric to maximise per difficulty:
-        //   Hard   → strict L4-required (cells L1+L2+L3 can't reach)
-        //   Medium → strict L3-required (cells L1+L2 can't reach)
-        //   Easy   → no retry — its tactic budget is L1 + L2 only.
-        const scoreOf = difficulty === 'hard'
-            ? (p) => p.stats.l4RequiredCells
-            : difficulty === 'medium'
-                ? (p) => p.stats.l3OrAboveRequiredCells
-                : (_) => 0;
-        const wantsRetry = difficulty !== 'easy';
-        const target = wantsRetry ? 1 : 0;
-        // Hard candidates fail verifySolvable occasionally because the
-        // erase-time L_K checks are local — a cell that's L4-solvable
-        // mid-erasure may not be once *every* other erasable cell is
-        // gone. We treat those as throwaways and keep sampling; if we
-        // run out, we fall back to the best unverified candidate so
-        // the UI always gets something to show.
-        const maxAttempts = wantsRetry ? 30 : 1;
-
-        let best = null;            // best verified
-        let bestUnverified = null;  // fallback if no verified found
-        let attemptsUsed = 0;
-        for (let a = 0; a < maxAttempts; a++) {
-            attemptsUsed = a + 1;
-            const attemptSeed = (seed + a * 0x9e3779b9) >>> 0;
-            const cand = generateOnce(size, difficulty, attemptSeed);
-            if (cand.stats.verified) {
-                if (!best || scoreOf(cand) > scoreOf(best)) best = cand;
-            } else if (!bestUnverified
-                || scoreOf(cand) > scoreOf(bestUnverified)) {
-                bestUnverified = cand;
-            }
-            if (best && scoreOf(best) >= target) break;
-        }
-        const result = best || bestUnverified;
-        result.stats.attemptsUsed = attemptsUsed;
-        if (!best) {
-            console.warn('[tango-gen] no verified candidate after',
-                attemptsUsed, 'attempts; returning unverified',
-                result.id);
+    async function generate(size, difficulty, seed, onProgress) {
+        const result = await generateOnce(size, difficulty, seed, onProgress);
+        if (!result.stats.verified) {
+            console.warn('[tango-gen] returning unverified', result.id);
         }
         return result;
     }
 
-    function generateOnce(size, difficulty, seed) {
+    // Per-(N, difficulty) maximum K for the inner start-from-max
+    // loop. Easy is single-shot — see generateFromMaxOnSolution's
+    // easy branch, which back-fills the last few removals instead
+    // of K-selecting. Medium gets half of hard's budget.
+    function startFromMaxBudget(N, difficulty) {
+        if (difficulty === 'easy') return 1;
+        const hard = N <= 6 ? 30 : N <= 8 ? 10 : 5;
+        if (difficulty === 'medium') return Math.max(1, Math.round(hard / 2));
+        return hard;
+    }
+
+    // Static per-cell weights for L1 / L2 / L3 — see tierScore. L4
+    // is dynamic and weighted per inference step (see
+    // buildTierBreakdown's l4Score accumulator), so it doesn't
+    // appear here.
+    function tierWeights(N) {
+        return {
+            L1: 1,
+            L2: 1.5,
+            L3: N / 2,
+        };
+    }
+
+    // Returns a function that, given (filled, walls), walks the
+    // actual solver step-by-step (lowest allowed tier first, same
+    // policy as verifySolvable) and reports how each cell got
+    // derived:
+    //   l1Count, l2Count, l3Count : # cells filled at that tier
+    //   l4Count                    : # cells filled at L4
+    //   l4Score                    : Σ log10(E) * N, where E is the
+    //                                empty-cell count at the moment
+    //                                that L4 step fires (including
+    //                                the L4 target itself).
+    //   unreachable               : cells the allowed tactics can't
+    //                                reach (always 0 for verified
+    //                                puzzles).
+    // L4 weight scales as `log10(E) * N` so it typically sits in
+    // the 2× – 4× L3 range — bigger boards / sparser puzzles weight
+    // L4 more, but the log keeps it from exploding.
+    function buildTierBreakdown(N, tactics) {
+        const has = { L1: true, L2: false, L3: false, L4: false };
+        for (const t of tactics) has[t] = true;
+        const tierFn = {
+            L1: l1ForcedAt,
+            L2: l2ForcedAt,
+            L3: l3ForcedAt,
+            L4: l4ForcedAt,
+        };
+        const tierOrder = ['L1', 'L2', 'L3', 'L4'].filter((t) => has[t]);
+
+        return (filled, walls) => {
+            const f = filled.map((row) => row.slice());
+            const idx = buildWallIndex(walls);
+            let emptyCount = 0;
+            for (const row of f) for (const v of row) if (v === 0) emptyCount++;
+
+            let l1Count = 0, l2Count = 0, l3Count = 0, l4Count = 0;
+            let l4Score = 0;
+
+            let progressed = true;
+            while (progressed) {
+                progressed = false;
+                for (const tier of tierOrder) {
+                    const fn = tierFn[tier];
+                    for (let r = 0; r < N; r++) {
+                        for (let c = 0; c < N; c++) {
+                            if (f[r][c] !== 0) continue;
+                            const v = fn(r, c, f, idx, N);
+                            if (v === 0) continue;
+                            if (tier === 'L1') l1Count++;
+                            else if (tier === 'L2') l2Count++;
+                            else if (tier === 'L3') l3Count++;
+                            else {
+                                l4Count++;
+                                // emptyCount currently includes the
+                                // cell we're about to fill (the L4
+                                // target itself), per the user spec.
+                                l4Score += Math.log10(Math.max(2, emptyCount)) * N;
+                            }
+                            f[r][c] = v;
+                            emptyCount--;
+                            progressed = true;
+                        }
+                    }
+                    if (progressed) break;
+                }
+            }
+            return {
+                l1Count, l2Count, l3Count, l4Count,
+                l4Score,
+                unreachable: emptyCount,
+            };
+        };
+    }
+
+    function tierScore(breakdown, weights) {
+        return breakdown.l1Count * weights.L1
+             + breakdown.l2Count * weights.L2
+             + breakdown.l3Count * weights.L3
+             + breakdown.l4Score;
+    }
+
+    // Run a single start-from-max carve against `solution`. Builds the
+    // maximum constraint set (every cell prefilled, every adjacent pair
+    // walled to match the solution), then in each pass scores every
+    // remaining constraint by `(score + 1) * kindWeight * noise`,
+    // sorts descending, and walks the list committing removals that
+    // survive `verifySolvable`. Loops until a pass removes nothing.
+    //
+    // `wCell` / `wWall` are passed in by the caller — the batch
+    // policy (see generateFromMaxOnSolution) decides the cell/wall
+    // preference once and reuses it for every K-run. The returned
+    // `removalLog` is the ordered list of successful removals so
+    // the caller can back-fill (used by easy to roll back the
+    // hardest few decisions).
+    function carveFromMaxOnce(N, params, solution, rng, wCell, wWall) {
+        const filled = solution.map((row) => row.slice());
+        const pairs = adjacentPairs(N);
+        const walls = pairs.map(([r1, c1, r2, c2]) => ({
+            r1, c1, r2, c2,
+            kind: solution[r1][c1] === solution[r2][c2] ? 'same' : 'diff',
+        }));
+
+        const weights = tierWeights(N);
+        const breakdown = buildTierBreakdown(N, params.tactics);
+        const scoreNow = () => tierScore(breakdown(filled, walls), weights);
+
+        const stats = {
+            passes: 0, attempts: 0,
+            cellsRemoved: 0, wallsRemoved: 0,
+            weightCell: +wCell.toFixed(3),
+            weightWall: +wWall.toFixed(3),
+        };
+        const removalLog = [];
+
+        while (true) {
+            stats.passes++;
+            const cands = [];
+            for (let r = 0; r < N; r++) {
+                for (let c = 0; c < N; c++) {
+                    if (filled[r][c] !== 0) cands.push({ kind: 'cell', r, c });
+                }
+            }
+            for (const w of walls) cands.push({ kind: 'wall', wall: w });
+
+            // Score every candidate: tentative-remove → hardness →
+            // restore. Solvability isn't gated here — even an
+            // unsolvable removal has a hardness number; the real gate
+            // is verifySolvable in the try-pass below.
+            for (const cand of cands) {
+                let restore;
+                if (cand.kind === 'cell') {
+                    const v = filled[cand.r][cand.c];
+                    filled[cand.r][cand.c] = 0;
+                    restore = () => { filled[cand.r][cand.c] = v; };
+                } else {
+                    const idx = walls.indexOf(cand.wall);
+                    walls.splice(idx, 1);
+                    restore = () => { walls.splice(idx, 0, cand.wall); };
+                }
+                const h = scoreNow();
+                restore();
+                const w = cand.kind === 'cell' ? wCell : wWall;
+                const noise = 0.5 + rng() * 1.5;
+                cand.score = (h + 1) * w * noise;
+            }
+            cands.sort((a, b) => b.score - a.score);
+
+            let removed = 0;
+            for (const cand of cands) {
+                stats.attempts++;
+                let restore;
+                if (cand.kind === 'cell') {
+                    const v = filled[cand.r][cand.c];
+                    if (v === 0) continue;
+                    filled[cand.r][cand.c] = 0;
+                    restore = () => { filled[cand.r][cand.c] = v; };
+                } else {
+                    const idx = walls.indexOf(cand.wall);
+                    if (idx < 0) continue;
+                    walls.splice(idx, 1);
+                    restore = () => { walls.splice(idx, 0, cand.wall); };
+                }
+                if (verifySolvable(filled, walls, solution, N, params.tactics)) {
+                    removed++;
+                    if (cand.kind === 'cell') {
+                        stats.cellsRemoved++;
+                        removalLog.push({ kind: 'cell', r: cand.r, c: cand.c });
+                    } else {
+                        stats.wallsRemoved++;
+                        removalLog.push({ kind: 'wall', wall: cand.wall });
+                    }
+                } else {
+                    restore();
+                }
+            }
+            if (removed === 0) break;
+        }
+
+        return { filled, walls, stats, removalLog };
+    }
+
+    // Build the final puzzle envelope around a finished carve.
+    // Factored out so easy (single carve + back-fill) and the
+    // medium/hard K-loop don't need to duplicate the stats block.
+    function buildPuzzleFromCarve(N, difficulty, seed, solution, params,
+            carve, metrics, plannedK, actualK, batchBias) {
+        const { filled, walls, stats: carveStats } = carve;
+        const prefillCount = filled.flat().filter((v) => v !== 0).length;
+        const puzzle = {
+            id: `tango-${N}x${N}-${difficulty}-${seed.toString(36)}`,
+            game: 'tango',
+            size: N,
+            difficulty,
+            prefilled: filled,
+            walls,
+            solution,
+            stats: {
+                prefillCount,
+                wallCount: walls.length,
+                // Per-tier "exactly first-classified at this tier"
+                // counts from the solver walk.
+                l1OnlyCells: metrics.l1Count,
+                l2OnlyCells: metrics.l2Count,
+                l3OnlyCells: metrics.l3Count,
+                l4OnlyCells: metrics.l4Count,
+                l4Score: +metrics.l4Score.toFixed(3),
+                // Aggregate "≥ tier required" counters retained for
+                // back-compat with the stats / debug tooling.
+                l2OrAboveRequiredCells: metrics.l2Count + metrics.l3Count + metrics.l4Count,
+                l3OrAboveRequiredCells: metrics.l3Count + metrics.l4Count,
+                l4RequiredCells: metrics.l4Count,
+                hardnessScore: +metrics.score.toFixed(3),
+                // K-loop bookkeeping. attemptsUsed = how many carves
+                // we actually ran for this puzzle (easy = 1, medium/
+                // hard = the bias-driven K).
+                attemptsUsed: actualK,
+                startMaxK: plannedK,
+                startMaxKActual: actualK,
+                batchBias: batchBias == null ? null : +batchBias.toFixed(3),
+                startMaxPasses: carveStats.passes,
+                startMaxAttempts: carveStats.attempts,
+                startMaxCellRemoves: carveStats.cellsRemoved,
+                startMaxWallRemoves: carveStats.wallsRemoved,
+                weightCell: carveStats.weightCell,
+                weightWall: carveStats.weightWall,
+            },
+        };
+        puzzle.stats.verified = verifySolvable(filled, walls, solution, N, params.tactics);
+        return puzzle;
+    }
+
+    // How many of the *last* successful removals an easy carve
+    // rolls back. Larger N → more rollbacks so the absolute amount
+    // of "extra help" scales with the board.
+    function easyBackfillCount(N) {
+        return Math.max(2, Math.floor(N / 2));
+    }
+
+    // Generate a puzzle by running the start-from-max carve on the
+    // sampled `solution`. Calls
+    //   await onProgress(fraction /* 0..1 */)
+    // after each completed carve so the UI can drive a determinate
+    // bar.
+    //
+    // Branch behaviour
+    // ----------------
+    //   Easy
+    //     Single carve. (wCell, wWall) are anchored at the natural
+    //     cell/wall count ratio with ±50% jitter so each New Game
+    //     still feels different. After the carve hits its
+    //     can't-remove-anything fixed point we restore the last
+    //     `easyBackfillCount(N)` removals so the player gets back a
+    //     chunk of the "hardest" constraints that would otherwise
+    //     have been carved away.
+    //   Medium / Hard
+    //     Pick the batch-level cell/wall preference once via
+    //     `batchBias ∈ U(0, 1)`. Every K-carve in this batch reuses
+    //     the same (wCell, wWall) = (2·bias, 2·(1−bias)); within-
+    //     batch variation comes from the per-candidate noise. Among
+    //     the K carves we pick the highest-scoring one (the
+    //     "hardest available within this bias").
+    //
+    //     K is non-linear in bias to balance the time spent across
+    //     bias regimes:
+    //         K = max(2, round(K_max · ((1 − b) + 0.45 · (1 − b)^2)))
+    //     The (1 − b)^2 booster pushes K above K_max in the prefill-
+    //     favouring half (low bias produces naturally easy puzzles
+    //     where more tries are useful), and the floor of 2 keeps
+    //     the wall-favouring tail honest — we always pick the
+    //     better of at least two carves. Expected E[K] ≈ 0.65·K_max,
+    //     ~30% more attempts than a pure linear schedule.
+    async function generateFromMaxOnSolution(N, difficulty, seed, solution, params, onProgress) {
+        const masterRng = PC.rng.make(seed);
+        const weights = tierWeights(N);
+        const breakdown = buildTierBreakdown(N, params.tactics);
+        const scoreOf = (filled, walls) => {
+            const b = breakdown(filled, walls);
+            return { ...b, score: tierScore(b, weights) };
+        };
+
+        // ---- Easy: 1 carve + back-fill ----
+        if (difficulty === 'easy') {
+            const cellCount = N * N;
+            const wallCount = 2 * N * (N - 1);
+            const wAvg = 2 / (cellCount + wallCount);
+            // Per-carve anchor at the natural count ratio; the
+            // ±50% jitter still injects variation between New Game
+            // presses.
+            const wCell = cellCount * wAvg * (0.5 + masterRng());
+            const wWall = wallCount * wAvg * (0.5 + masterRng());
+            const carveRng = PC.rng.make((seed ^ 0x9e3779b9) >>> 0);
+
+            const carve = carveFromMaxOnce(N, params, solution, carveRng, wCell, wWall);
+
+            // Roll back the last few removals. These are the
+            // constraints the carve dropped *latest*, i.e. the
+            // most "essential" ones (everything earlier survived
+            // verifySolvable just fine). Putting them back makes
+            // the puzzle easier without invalidating it.
+            const backfill = Math.min(easyBackfillCount(N), carve.removalLog.length);
+            let cellsBackfilled = 0;
+            let wallsBackfilled = 0;
+            for (let i = 0; i < backfill; i++) {
+                const item = carve.removalLog.pop();
+                if (item.kind === 'cell') {
+                    carve.filled[item.r][item.c] = solution[item.r][item.c];
+                    carve.stats.cellsRemoved--;
+                    cellsBackfilled++;
+                } else {
+                    carve.walls.push(item.wall);
+                    carve.stats.wallsRemoved--;
+                    wallsBackfilled++;
+                }
+            }
+            carve.stats.easyBackfill = backfill;
+            carve.stats.easyBackfillCells = cellsBackfilled;
+            carve.stats.easyBackfillWalls = wallsBackfilled;
+
+            if (onProgress) await onProgress(1);
+
+            const m = scoreOf(carve.filled, carve.walls);
+            return buildPuzzleFromCarve(N, difficulty, seed, solution, params,
+                carve, m, 1, 1, null);
+        }
+
+        // ---- Medium / Hard: batch-bias-driven K-loop ----
+        const batchBias = masterRng();           // U(0, 1)
+        // batchBias = 1 → wCell maximal, wWall ≈ 0 → cells get
+        //                 removed first → wall-heavy puzzle (hard)
+        // batchBias = 0 → wWall maximal, wCell ≈ 0 → walls get
+        //                 removed first → cell-heavy puzzle (easy)
+        // batchBias = cellShare → matches the natural count anchor.
+        const wCell = batchBias * 2;
+        const wWall = (1 - batchBias) * 2;
+
+        const Kmax = startFromMaxBudget(N, difficulty);
+        // Non-linear K schedule with floor = 2.
+        //
+        //   K = Kmax * ( (1-bias) + 0.45 * (1-bias)^2 )
+        //
+        // The first term is the original linear schedule; the
+        // (1-bias)^2 booster only kicks in meaningfully at low
+        // bias (prefill-favouring half), where it pushes K above
+        // Kmax — at bias=0 we run ~1.45*Kmax carves to dig out a
+        // hard puzzle, while the wall-favouring tail relaxes onto
+        // the floor of 2. The integral of the booster is 0.45/3 =
+        // 0.15, so overall E[K] ≈ 0.65*Kmax, ~30% more attempts
+        // than the linear (E[K] = 0.5*Kmax) baseline.
+        const Kfloor = 2;
+        const t = 1 - batchBias;
+        const K = Math.max(Kfloor, Math.round(Kmax * (t + 0.45 * t * t)));
+
+        let best = null;
+        let bestScore = -Infinity;
+        for (let k = 0; k < K; k++) {
+            const attemptSeed = (seed ^ ((k + 1) * 0x9e3779b9)) >>> 0;
+            const attemptRng = PC.rng.make(attemptSeed);
+            const carve = carveFromMaxOnce(N, params, solution, attemptRng, wCell, wWall);
+            const m = scoreOf(carve.filled, carve.walls);
+            if (m.score > bestScore) {
+                bestScore = m.score;
+                best = { ...carve, metrics: m };
+            }
+            if (onProgress) {
+                await onProgress((k + 1) / K);
+            }
+        }
+
+        return buildPuzzleFromCarve(N, difficulty, seed, solution, params,
+            best, best.metrics, Kmax, K, batchBias);
+    }
+
+    async function generateOnce(size, difficulty, seed, onProgress) {
         const N = size;
         const rng = PC.rng.make(seed);
 
@@ -1361,141 +1565,8 @@
         }
 
         const params = difficultyParams(N, difficulty);
-        const useL2 = params.tactics.includes('L2');
-        const useL3 = params.tactics.includes('L3');
-        const useL4 = params.tactics.includes('L4');
-        const filled = solution.map((row) => row.slice());
-        const walls = seedWalls(solution, rng, params.wallBudget, N);
-        let wallIndex = buildWallIndex(walls);
-
-        // Per-puzzle stats so we can see, after the fact, how much each
-        // tactic tier actually got used. Surfaced in the puzzle output
-        // so the stats / debug pages can read it without rerunning.
-        const stats = {
-            l1Erases: 0, l2Erases: 0, l3Erases: 0, l4Erases: 0,
-            wallAdds: 0,
-        };
-
-        const maxIters = N * N * 4;
-        for (let iter = 0; iter < maxIters; iter++) {
-            // Tier preference per difficulty:
-            //   - Easy   : L1 first, L2 as bonus.
-            //   - Medium : L3 → L2 → L1 (push toward needing L3).
-            //   - Hard   : L4 → L3 → L2 → L1 (push toward needing L4).
-            // findL{1..4}ErasableCells return disjoint sets, so the
-            // tier ordering directly drives what kind of cell we erase.
-            let pick = null;
-            let pickKind = null;
-            const tryAt = (tier, finder) => {
-                if (pick) return;
-                const l = finder(filled, wallIndex, N);
-                if (l.length > 0) { pick = l; pickKind = tier; }
-            };
-            const tryL1 = () => tryAt('l1', findL1ErasableCells);
-            const tryL2 = () => { if (useL2) tryAt('l2', findL2ErasableCells); };
-            const tryL3 = () => { if (useL3) tryAt('l3', findL3ErasableCells); };
-            const tryL4 = () => { if (useL4) tryAt('l4', findL4ErasableCells); };
-            if (params.preferHigh) {
-                tryL4(); tryL3(); tryL2(); tryL1();
-            } else {
-                tryL1(); tryL2(); tryL3(); tryL4();
-            }
-            if (pick) {
-                const [r, c] = pick[Math.floor(rng() * pick.length)];
-                filled[r][c] = 0;
-                stats[pickKind + 'Erases']++;
-                continue;
-            }
-            const wallChoices =
-                findWallAddCandidates(filled, walls, wallIndex, solution, N);
-            if (wallChoices.length > 0) {
-                const choice = wallChoices[Math.floor(rng() * wallChoices.length)];
-                walls.push(choice.wall);
-                stats.wallAdds++;
-                // Rebuild rather than incrementally patch — the cost is
-                // tiny and it keeps the index invariant trivially.
-                wallIndex = buildWallIndex(walls);
-                const [r, c] = choice.erasable[Math.floor(rng() * choice.erasable.length)];
-                filled[r][c] = 0;
-                stats.l1Erases++;
-                continue;
-            }
-            break;
-        }
-
-        const prefillCount = filled.reduce(
-            (a, row) => a + row.reduce((s, v) => s + (v ? 1 : 0), 0), 0);
-
-        // Three "what does the player *have* to use" metrics by
-        // running a tier-restricted fixpoint from prefill and counting
-        // unsolved cells:
-        //   l2OrAboveRequired : empty after L1 alone        (need ≥ L2)
-        //   l3OrAboveRequired : empty after L1+L2           (need ≥ L3)
-        //   l4Required        : empty after L1+L2+L3        (need L4)
-        const tierFns = {
-            L1: l1ForcedAt,
-            L2: l2ForcedAt,
-            L3: l3ForcedAt,
-            L4: l4ForcedAt,
-        };
-        const runFixpoint = (tiers) => {
-            const f = filled.map((row) => row.slice());
-            const idx = buildWallIndex(walls);
-            let progressed = true;
-            while (progressed) {
-                progressed = false;
-                for (const tier of tiers) {
-                    const fn = tierFns[tier];
-                    for (let r = 0; r < N; r++) {
-                        for (let c = 0; c < N; c++) {
-                            if (f[r][c] !== 0) continue;
-                            const v = fn(r, c, f, idx, N);
-                            if (v !== 0) { f[r][c] = v; progressed = true; }
-                        }
-                    }
-                    if (progressed) break;  // restart from lowest tier
-                }
-            }
-            let empty = 0;
-            for (const row of f) for (const v of row) if (v === 0) empty++;
-            return empty;
-        };
-        const l2OrAboveRequired = runFixpoint(['L1']);
-        const l3OrAboveRequired = runFixpoint(['L1', 'L2']);
-        const l4Required = runFixpoint(['L1', 'L2', 'L3']);
-
-        const puzzle = {
-            id: `tango-${N}x${N}-${difficulty}-${seed.toString(36)}`,
-            game: 'tango',
-            size: N,
-            difficulty,
-            prefilled: filled,
-            walls,
-            solution,
-            stats: {
-                ...stats,
-                prefillCount,
-                wallCount: walls.length,
-                l2OrAboveRequiredCells: l2OrAboveRequired,
-                l3OrAboveRequiredCells: l3OrAboveRequired,
-                l4RequiredCells: l4Required,
-            },
-        };
-        const verified = verifySolvable(filled, walls, solution, N, params.tactics);
-        puzzle.stats.verified = verified;
-        if (!verified) {
-            // Dump enough to reproduce: the seed alone is sufficient
-            // since generate(N, difficulty, seed) is deterministic.
-            console.warn('[tango-gen] self-check failed for', puzzle.id,
-                'tactics=' + params.tactics.join('+'),
-                'seed=' + seed,
-                'prefill=' + prefillCount,
-                'walls=' + walls.length,
-                'erases=L1:' + stats.l1Erases + '/L2:' + stats.l2Erases
-                    + '/L3:' + stats.l3Erases + '/L4:' + stats.l4Erases,
-                'wallAdds=' + stats.wallAdds);
-        }
-        return puzzle;
+        return await generateFromMaxOnSolution(N, difficulty, seed,
+            solution, params, onProgress);
     }
 
     // -----------------------------------------------------------------
