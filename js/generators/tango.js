@@ -16,16 +16,33 @@
  *    only commit the removal if the puzzle is still solvable using
  *    the difficulty's allowed tactic tiers.
  * 4. Score the resulting puzzle by `tierScore`: a weighted sum over
- *    how many cells the solver had to derive at each tier, with
- *    L4 weighted dynamically by `log10(E) · N` per step.
+ *    how many cells the solver had to derive at each tier.
+ *    L1 splits into two sub-weights: T-wall (`=` / `×` to a known
+ *    neighbour) is downgraded to 0.5 because it's the most trivial
+ *    L1; T-count / T-three carry the full L1 weight of 1.
+ *    L4 is weighted dynamically at `log10(E) · N` per step.
+ * 5. Post-process the chosen carve with a cluster-simplification
+ *    pass: sweep walls whose both sides are already prefilled
+ *    (redundant), and — for Medium / Hard only — with a per-puzzle
+ *    intensity `s` sampled from `simplifyRange(difficulty)`, give
+ *    each remaining wall a single Bernoulli(s) "absorb" fate.
+ *    Walls flagged True absorb (cascade-style) whenever they touch
+ *    a prefill, filling the empty side with its solution value and
+ *    dropping the wall. The breakdown is re-computed after the
+ *    sweep so the recorded difficulty matches what the player gets.
  *
  * Difficulty wiring
  * -----------------
  *   Easy   – single carve, then back-fill the last few removals so
  *            the player gets back a chunk of "hardest" constraints
- *            (controlled by `easyBackfillCount`).
- *   Medium – best of K carves (K_max = hard/2), bias-driven schedule.
+ *            (controlled by `easyBackfillCount`). Simplification
+ *            does redundant-wall removal only (s = 0).
+ *   Medium – best of K carves (same K_max as Hard), bias-driven
+ *            schedule. Per-carve cost is lower (no L4 propagation)
+ *            so wall-clock is still well below Hard.
+ *            Simplification s ~ U(0.2, 0.8).
  *   Hard   – best of K carves (K_max = 30 / 10 / 5 for 6 / 8 / 10).
+ *            Simplification s ~ U(0.3, 1.0).
  *
  * For Medium / Hard each generation samples one `batchBias ∈ U(0, 1)`
  * which drives both the per-batch (wCell, wWall) weights and the
@@ -1158,21 +1175,27 @@
     // Per-(N, difficulty) maximum K for the inner start-from-max
     // loop. Easy is single-shot — see generateFromMaxOnSolution's
     // easy branch, which back-fills the last few removals instead
-    // of K-selecting. Medium gets half of hard's budget.
+    // of K-selecting. Medium and Hard share the same budget;
+    // Medium's per-carve cost is naturally lower (no L4 in
+    // verifySolvable) so giving it the same K still finishes faster.
     function startFromMaxBudget(N, difficulty) {
         if (difficulty === 'easy') return 1;
-        const hard = N <= 6 ? 30 : N <= 8 ? 10 : 5;
-        if (difficulty === 'medium') return Math.max(1, Math.round(hard / 2));
-        return hard;
+        return N <= 6 ? 30 : N <= 8 ? 10 : 5;
     }
 
     // Static per-cell weights for L1 / L2 / L3 — see tierScore. L4
     // is dynamic and weighted per inference step (see
     // buildTierBreakdown's l4Score accumulator), so it doesn't
     // appear here.
+    //
+    // L1 splits into two sub-weights: T-wall (forced by a `=`/`×`
+    // wall to a known neighbour) is downgraded because it's the
+    // most trivial L1 — a single glance. T-count / T-three carry
+    // the full L1 weight.
     function tierWeights(N) {
         return {
-            L1: 1,
+            L1Wall: 0.5,
+            L1Other: 1,
             L2: 1.5,
             L3: N / 2,
         };
@@ -1182,27 +1205,18 @@
     // actual solver step-by-step (lowest allowed tier first, same
     // policy as verifySolvable) and reports how each cell got
     // derived:
-    //   l1Count, l2Count, l3Count : # cells filled at that tier
-    //   l4Count                    : # cells filled at L4
-    //   l4Score                    : Σ log10(E) * N, where E is the
-    //                                empty-cell count at the moment
-    //                                that L4 step fires (including
-    //                                the L4 target itself).
-    //   unreachable               : cells the allowed tactics can't
-    //                                reach (always 0 for verified
-    //                                puzzles).
-    // L4 weight scales as `log10(E) * N` so it typically sits in
-    // the 2× – 4× L3 range — bigger boards / sparser puzzles weight
+    //   l1WallCount  : # cells filled at L1 via T-wall
+    //   l1OtherCount : # cells filled at L1 via T-count / T-three
+    //   l2Count, l3Count : # cells filled at those tiers
+    //   l4Count, l4Score : # cells filled at L4 and Σ log10(E)*N
+    //   unreachable  : cells the allowed tactics can't reach
+    //                  (always 0 for verified puzzles).
+    // L4 weight scales as log10(E)*N so it typically sits in the
+    // 2× – 4× L3 range — bigger boards / sparser puzzles weight
     // L4 more, but the log keeps it from exploding.
     function buildTierBreakdown(N, tactics) {
         const has = { L1: true, L2: false, L3: false, L4: false };
         for (const t of tactics) has[t] = true;
-        const tierFn = {
-            L1: l1ForcedAt,
-            L2: l2ForcedAt,
-            L3: l3ForcedAt,
-            L4: l4ForcedAt,
-        };
         const tierOrder = ['L1', 'L2', 'L3', 'L4'].filter((t) => has[t]);
 
         return (filled, walls) => {
@@ -1211,29 +1225,42 @@
             let emptyCount = 0;
             for (const row of f) for (const v of row) if (v === 0) emptyCount++;
 
-            let l1Count = 0, l2Count = 0, l3Count = 0, l4Count = 0;
+            let l1WallCount = 0, l1OtherCount = 0;
+            let l2Count = 0, l3Count = 0, l4Count = 0;
             let l4Score = 0;
 
             let progressed = true;
             while (progressed) {
                 progressed = false;
                 for (const tier of tierOrder) {
-                    const fn = tierFn[tier];
                     for (let r = 0; r < N; r++) {
                         for (let c = 0; c < N; c++) {
                             if (f[r][c] !== 0) continue;
-                            const v = fn(r, c, f, idx, N);
-                            if (v === 0) continue;
-                            if (tier === 'L1') l1Count++;
-                            else if (tier === 'L2') l2Count++;
-                            else if (tier === 'L3') l3Count++;
-                            else {
-                                l4Count++;
-                                // emptyCount currently includes the
-                                // cell we're about to fill (the L4
-                                // target itself), per the user spec.
-                                l4Score += Math.log10(Math.max(2, emptyCount)) * N;
+                            let v = 0;
+                            if (tier === 'L1') {
+                                const e = l1Explain(r, c, f, idx, N);
+                                if (e) {
+                                    v = e.value;
+                                    if (e.reason.kind === 'T-wall') l1WallCount++;
+                                    else l1OtherCount++;
+                                }
+                            } else if (tier === 'L2') {
+                                v = l2ForcedAt(r, c, f, idx, N);
+                                if (v) l2Count++;
+                            } else if (tier === 'L3') {
+                                v = l3ForcedAt(r, c, f, idx, N);
+                                if (v) l3Count++;
+                            } else {
+                                v = l4ForcedAt(r, c, f, idx, N);
+                                if (v) {
+                                    l4Count++;
+                                    // emptyCount currently includes the
+                                    // cell we're about to fill (the L4
+                                    // target itself), per the user spec.
+                                    l4Score += Math.log10(Math.max(2, emptyCount)) * N;
+                                }
                             }
+                            if (v === 0) continue;
                             f[r][c] = v;
                             emptyCount--;
                             progressed = true;
@@ -1243,7 +1270,8 @@
                 }
             }
             return {
-                l1Count, l2Count, l3Count, l4Count,
+                l1WallCount, l1OtherCount,
+                l2Count, l3Count, l4Count,
                 l4Score,
                 unreachable: emptyCount,
             };
@@ -1251,7 +1279,8 @@
     }
 
     function tierScore(breakdown, weights) {
-        return breakdown.l1Count * weights.L1
+        return breakdown.l1WallCount * weights.L1Wall
+             + breakdown.l1OtherCount * weights.L1Other
              + breakdown.l2Count * weights.L2
              + breakdown.l3Count * weights.L3
              + breakdown.l4Score;
@@ -1360,10 +1389,15 @@
     // Build the final puzzle envelope around a finished carve.
     // Factored out so easy (single carve + back-fill) and the
     // medium/hard K-loop don't need to duplicate the stats block.
+    //
+    // `simplify` (optional) records what the post-carve cluster
+    // simplification pass did:
+    //   { s, redundantRemoved, absorbed, qualifyingInitial }
     function buildPuzzleFromCarve(N, difficulty, seed, solution, params,
-            carve, metrics, plannedK, actualK, batchBias) {
+            carve, metrics, plannedK, actualK, batchBias, simplify) {
         const { filled, walls, stats: carveStats } = carve;
         const prefillCount = filled.flat().filter((v) => v !== 0).length;
+        const l1Cells = metrics.l1WallCount + metrics.l1OtherCount;
         const puzzle = {
             id: `tango-${N}x${N}-${difficulty}-${seed.toString(36)}`,
             game: 'tango',
@@ -1376,8 +1410,12 @@
                 prefillCount,
                 wallCount: walls.length,
                 // Per-tier "exactly first-classified at this tier"
-                // counts from the solver walk.
-                l1OnlyCells: metrics.l1Count,
+                // counts from the solver walk. L1 splits into the
+                // T-wall sub-count (downweighted to 0.5 in tierScore)
+                // and the T-count / T-three remainder.
+                l1WallCells: metrics.l1WallCount,
+                l1OtherCells: metrics.l1OtherCount,
+                l1OnlyCells: l1Cells,  // back-compat aggregate
                 l2OnlyCells: metrics.l2Count,
                 l3OnlyCells: metrics.l3Count,
                 l4OnlyCells: metrics.l4Count,
@@ -1401,6 +1439,11 @@
                 startMaxWallRemoves: carveStats.wallsRemoved,
                 weightCell: carveStats.weightCell,
                 weightWall: carveStats.weightWall,
+                // Cluster-simplification pass results.
+                simplifyS: simplify ? +simplify.s.toFixed(3) : null,
+                simplifyRedundantRemoved: simplify ? simplify.redundantRemoved : 0,
+                simplifyAbsorbed: simplify ? simplify.absorbed : 0,
+                simplifyQualifyingInitial: simplify ? simplify.qualifyingInitial : 0,
             },
         };
         puzzle.stats.verified = verifySolvable(filled, walls, solution, N, params.tactics);
@@ -1412,6 +1455,97 @@
     // of "extra help" scales with the board.
     function easyBackfillCount(N) {
         return Math.max(2, Math.floor(N / 2));
+    }
+
+    // Post-carve simplification pass.
+    //
+    // Two effects, both monotonically easier (puzzle stays solvable,
+    // L1+below tactics suffice for the absorbed cells):
+    //
+    //   1. Redundant walls. A wall sitting between two already-
+    //      prefilled cells contributes zero information — both
+    //      endpoints are fixed, so the same/different constraint is
+    //      trivially satisfied. We remove all such walls
+    //      unconditionally (a leftover from easy back-fill, since the
+    //      carve already drops these for medium/hard).
+    //
+    //   2. Cluster absorption (medium/hard only). For each remaining
+    //      wall we pre-roll a single Bernoulli(s) fate. Then while
+    //      some wall has fate=True AND at least one neighbouring cell
+    //      is prefilled, we "absorb" the wall: fill the empty side
+    //      with its solution value, then drop the wall. The cascade
+    //      naturally expands the cluster — every newly-promoted
+    //      prefill can unlock another absorption.
+    //
+    //      Why: a prefill + adjacent wall is a one-glance T-wall
+    //      deduction — the most trivial L1 there is. Hard puzzles
+    //      stuffed with these feel padded. Absorbing them leaves the
+    //      same solution and the same harder reasoning intact, but
+    //      strips away the busywork.
+    //
+    // Returns { redundantRemoved, absorbed, qualifyingInitial }.
+    // qualifyingInitial = walls that had at least one prefill side
+    // at the start of the probabilistic pass, useful for measuring
+    // the empirical absorption ratio.
+    function simplifyClusters(filled, walls, solution, rng, s) {
+        let redundantRemoved = 0;
+        for (let i = walls.length - 1; i >= 0; i--) {
+            const w = walls[i];
+            if (filled[w.r1][w.c1] !== 0 && filled[w.r2][w.c2] !== 0) {
+                walls.splice(i, 1);
+                redundantRemoved += 1;
+            }
+        }
+
+        if (!(s > 0)) {
+            return { redundantRemoved, absorbed: 0, qualifyingInitial: 0 };
+        }
+
+        // Single-shot Bernoulli(s) per wall, cascade by activation.
+        const fates = walls.map(() => rng() < s);
+        let qualifyingInitial = 0;
+        for (let i = 0; i < walls.length; i++) {
+            const w = walls[i];
+            if (filled[w.r1][w.c1] !== 0 || filled[w.r2][w.c2] !== 0) {
+                qualifyingInitial += 1;
+            }
+        }
+
+        let absorbed = 0;
+        let changed = true;
+        while (changed) {
+            changed = false;
+            for (let i = walls.length - 1; i >= 0; i--) {
+                if (!fates[i]) continue;
+                const w = walls[i];
+                const aFilled = filled[w.r1][w.c1] !== 0;
+                const bFilled = filled[w.r2][w.c2] !== 0;
+                if (!aFilled && !bFilled) continue;
+                if (!aFilled) {
+                    filled[w.r1][w.c1] = solution[w.r1][w.c1];
+                } else if (!bFilled) {
+                    filled[w.r2][w.c2] = solution[w.r2][w.c2];
+                }
+                // Otherwise both already prefilled — wall is now
+                // redundant; drop it without touching `filled`.
+                walls.splice(i, 1);
+                fates.splice(i, 1);
+                absorbed += 1;
+                changed = true;
+            }
+        }
+
+        return { redundantRemoved, absorbed, qualifyingInitial };
+    }
+
+    // Per-difficulty range for the simplification intensity `s`. Easy
+    // returns null (no probabilistic absorption — only redundant
+    // walls get swept). Medium / Hard sample s ~ U(low, high) per
+    // puzzle.
+    function simplifyRange(difficulty) {
+        if (difficulty === 'hard')   return [0.3, 1.0];
+        if (difficulty === 'medium') return [0.2, 0.8];
+        return null;
     }
 
     // Generate a puzzle by running the start-from-max carve on the
@@ -1429,7 +1563,10 @@
     //     can't-remove-anything fixed point we restore the last
     //     `easyBackfillCount(N)` removals so the player gets back a
     //     chunk of the "hardest" constraints that would otherwise
-    //     have been carved away.
+    //     have been carved away. The simplification pass then sweeps
+    //     redundant walls (both sides already prefilled — easy
+    //     back-fill can create these) but does no probabilistic
+    //     absorption.
     //   Medium / Hard
     //     Pick the batch-level cell/wall preference once via
     //     `batchBias ∈ U(0, 1)`. Every K-carve in this batch reuses
@@ -1447,6 +1584,13 @@
     //     the wall-favouring tail honest — we always pick the
     //     better of at least two carves. Expected E[K] ≈ 0.65·K_max,
     //     ~30% more attempts than a pure linear schedule.
+    //
+    //     After the best carve is chosen we sample one cluster-
+    //     simplification intensity `s` per puzzle from the per-
+    //     difficulty range (Hard U(0.3, 1), Medium U(0.2, 0.8)) and
+    //     absorb prefill-adjacent walls accordingly. The breakdown
+    //     is then re-computed against the post-simplification board
+    //     so the stats reflect the actual delivered difficulty.
     async function generateFromMaxOnSolution(N, difficulty, seed, solution, params, onProgress) {
         const masterRng = PC.rng.make(seed);
         const weights = tierWeights(N);
@@ -1494,11 +1638,19 @@
             carve.stats.easyBackfillCells = cellsBackfilled;
             carve.stats.easyBackfillWalls = wallsBackfilled;
 
+            // Easy skips the probabilistic absorption (s = null) but
+            // still sweeps any wall whose both sides got prefilled
+            // by the back-fill step.
+            const simplifyRng = PC.rng.make((seed ^ 0x517cc1b7) >>> 0);
+            const simplify = simplifyClusters(
+                carve.filled, carve.walls, solution, simplifyRng, 0);
+            simplify.s = 0;
+
             if (onProgress) await onProgress(1);
 
             const m = scoreOf(carve.filled, carve.walls);
             return buildPuzzleFromCarve(N, difficulty, seed, solution, params,
-                carve, m, 1, 1, null);
+                carve, m, 1, 1, null, simplify);
         }
 
         // ---- Medium / Hard: batch-bias-driven K-loop ----
@@ -1544,8 +1696,20 @@
             }
         }
 
+        // Post-K-loop cluster simplification. Sample s ~ U(low, high)
+        // from the per-difficulty range and absorb prefill-adjacent
+        // walls. Re-score the resulting board so stats reflect what
+        // the player actually receives.
+        const simplifyRng = PC.rng.make((seed ^ 0x517cc1b7) >>> 0);
+        const [sLow, sHigh] = simplifyRange(difficulty);
+        const s = sLow + (sHigh - sLow) * masterRng();
+        const simplify = simplifyClusters(
+            best.filled, best.walls, solution, simplifyRng, s);
+        simplify.s = s;
+        const finalMetrics = scoreOf(best.filled, best.walls);
+
         return buildPuzzleFromCarve(N, difficulty, seed, solution, params,
-            best, best.metrics, Kmax, K, batchBias);
+            best, finalMetrics, Kmax, K, batchBias, simplify);
     }
 
     async function generateOnce(size, difficulty, seed, onProgress) {

@@ -34,22 +34,28 @@
         size K inside the chain is counted as ceil(K/3), since
         consecutive walls are visually mechanical). Difficulty:
         Easy = L1+L2, Medium = +L3, Hard = +L4.
-        <b>L{n} cells</b> is the average number of cells the solver
-        first-classifies at that tier; <b>L4 score</b> is the sum of
-        log10(E)·N over those L4 steps (E = empty count at the
-        moment the step fires). <b>hard</b> is the composite
-        hardness score (Σ L1·1 + L2·1.5 + L3·N/2 + L4-score) the
-        generator uses to pick the best of K carves.
-        For Hard only, we also walk the solve trace and report how
-        many L4 deductions actually used the wall-chain discount
+        L1 splits into <b>L1w cells</b> (T-wall — `=` / `×` to a known
+        neighbour) and <b>L1o cells</b> (T-count / T-three). T-wall is
+        weighted 0.5 in <b>hard</b>; the rest follow Σ L1o·1 + L2·1.5
+        + L3·N/2 + L4-score. <b>L4 score</b> is the sum of log10(E)·N
+        over the L4 steps (E = empty count at the moment the step
+        fires).
+        After K-selection, Medium / Hard run a cluster-simplification
+        pass that absorbs prefill-adjacent walls (turning the trivial
+        T-wall step into a given). <b>simp s</b> is the average per-
+        puzzle intensity (sampled U(0.3, 1) for Hard, U(0.2, 0.8) for
+        Medium); <b>simp abs</b> is the average # walls absorbed;
+        <b>simp red</b> is the average # redundant walls (both sides
+        prefilled) swept unconditionally.
+        For Hard we also walk the solve trace and report how many L4
+        deductions actually used the wall-chain discount
         (rawChainLength &gt; chainLength): <b>L4 disc avg</b> = avg
         discounted L4 steps per puzzle, <b>disc K</b> = puzzles with
         ≥1 such step, <b>max save</b> = largest single-step savings.
         <b>unverified</b> shows how many puzzles in the sample
         ultimately ended up unverified. <b>attempts</b> is the
         average K (carves actually run); easy is always 1.
-        Open the browser console for generator logs and self-check
-        warnings.
+        Open the browser console for self-check warnings.
     </p>
 
     <label>Runs per combo: <input id="k" type="number" value="20" min="1" max="500"></label>
@@ -91,8 +97,9 @@
 
         async function run(K) {
             const rows = [['size', 'diff', 'prefill', 'walls',
-                'L1 cells', 'L2 cells', 'L3 cells', 'L4 cells',
+                'L1w cells', 'L1o cells', 'L2 cells', 'L3 cells', 'L4 cells',
                 'L4 score', 'hard',
+                'simp s', 'simp abs', 'simp red',
                 'L4 req K',
                 'L4 disc avg', 'disc K', 'max save',
                 'unverified', 'attempts', 'time ms', 'warn']];
@@ -101,8 +108,10 @@
             for (const N of SIZES) {
                 for (const d of DIFFS) {
                     let pSum = 0, wSum = 0;
-                    let l1Sum = 0, l2Sum = 0, l3Sum = 0, l4Sum = 0;
+                    let l1wSum = 0, l1oSum = 0, l2Sum = 0, l3Sum = 0, l4Sum = 0;
                     let l4scoreSum = 0, hardSum = 0;
+                    let simpSSum = 0, simpAbsSum = 0, simpRedSum = 0;
+                    let simpSCount = 0;
                     let l4reqCount = 0;
                     let l4discSum = 0, l4discCount = 0, maxSave = 0;
                     let atSum = 0, tSum = 0, warns = 0;
@@ -115,12 +124,19 @@
                         const t1 = performance.now();
                         pSum += p.stats.prefillCount;
                         wSum += p.stats.wallCount;
-                        l1Sum += p.stats.l1OnlyCells || 0;
+                        l1wSum += p.stats.l1WallCells || 0;
+                        l1oSum += p.stats.l1OtherCells || 0;
                         l2Sum += p.stats.l2OnlyCells || 0;
                         l3Sum += p.stats.l3OnlyCells || 0;
                         l4Sum += p.stats.l4OnlyCells || 0;
                         l4scoreSum += p.stats.l4Score || 0;
                         hardSum += p.stats.hardnessScore || 0;
+                        if (typeof p.stats.simplifyS === 'number') {
+                            simpSSum += p.stats.simplifyS;
+                            simpSCount += 1;
+                        }
+                        simpAbsSum += p.stats.simplifyAbsorbed || 0;
+                        simpRedSum += p.stats.simplifyRedundantRemoved || 0;
                         if ((p.stats.l4RequiredCells || 0) > 0) l4reqCount += 1;
                         atSum += p.stats.attemptsUsed || 1;
                         tSum += (t1 - t0);
@@ -143,12 +159,16 @@
                         d,
                         (pSum / K).toFixed(1) + '/' + total,
                         (wSum / K).toFixed(1),
-                        (l1Sum / K).toFixed(1),
+                        (l1wSum / K).toFixed(1),
+                        (l1oSum / K).toFixed(1),
                         (l2Sum / K).toFixed(1),
                         (l3Sum / K).toFixed(1),
                         (l4Sum / K).toFixed(1),
                         (l4scoreSum / K).toFixed(2),
                         (hardSum / K).toFixed(2),
+                        simpSCount > 0 ? (simpSSum / simpSCount).toFixed(2) : '—',
+                        (simpAbsSum / K).toFixed(1),
+                        (simpRedSum / K).toFixed(1),
                         l4reqCount + '/' + K,
                         d === 'hard' ? (l4discSum / K).toFixed(2) : '—',
                         d === 'hard' ? `${l4discCount}/${K}` : '—',
