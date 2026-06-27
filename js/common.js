@@ -546,6 +546,10 @@
             reset: '↻ Reset',
             hint: '💡 Hint',
             reveal: '? Reveal',
+            share: '🔗 Share',
+            shareTitle: 'Copy a link to this puzzle',
+            shareCopied: 'Link copied!',
+            shareFailed: 'Copy failed — copy from the address bar instead.',
             winMessage: 'You Win! ✨',
             howToPlay: 'How to play',
             conflict: (n) => `⚠ ${n} conflict${n === 1 ? '' : 's'}`,
@@ -640,6 +644,10 @@
             reset: '↻ 重設',
             hint: '💡 提示',
             reveal: '? 解答',
+            share: '🔗 分享',
+            shareTitle: '複製本關卡的連結',
+            shareCopied: '連結已複製！',
+            shareFailed: '複製失敗 — 請從網址列手動複製。',
             winMessage: '你贏了！ ✨',
             howToPlay: '遊玩方式',
             conflict: (n) => `⚠ ${n} 個衝突`,
@@ -914,6 +922,151 @@
         return { start, update, setFraction, finish, waitNextPaint };
     })();
 
+    // -----------------------------------------------------------------
+    // Share helpers
+    //
+    // A game page that wants shareable URLs publishes its current
+    // (size, difficulty, seed) into the address bar via
+    // `share.replaceUrl(...)` after every successful generation. The
+    // friend who opens the link reads the same three values via
+    // `share.readParams()` on boot and uses them to seed their first
+    // puzzle. Anything missing or malformed is silently ignored —
+    // partial state is treated as "no shared puzzle, use defaults".
+    //
+    // The seed travels as base36 (uint32 → up to 7 chars) to match
+    // the format already baked into `puzzle.id`. Determinism of the
+    // generator given (size, difficulty, seed) is the contract that
+    // makes this work end-to-end.
+    // -----------------------------------------------------------------
+
+    const share = (function () {
+        const KEY_SIZE = 'size';
+        const KEY_DIFF = 'diff';
+        const KEY_SEED = 'seed';
+
+        function parseSeed(raw) {
+            if (raw == null) return null;
+            // base36 uint32 — matches puzzle.id encoding.
+            const n = parseInt(String(raw).trim(), 36);
+            if (!Number.isFinite(n) || n < 0) return null;
+            return (n >>> 0);
+        }
+
+        function formatSeed(n) {
+            return ((n >>> 0)).toString(36);
+        }
+
+        function readParams() {
+            try {
+                const sp = new URL(location.href).searchParams;
+                const sizeRaw = sp.get(KEY_SIZE);
+                const sizeNum = sizeRaw == null ? null
+                    : parseInt(sizeRaw, 10);
+                return {
+                    size: Number.isFinite(sizeNum) ? sizeNum : null,
+                    difficulty: sp.get(KEY_DIFF),
+                    seed: parseSeed(sp.get(KEY_SEED)),
+                };
+            } catch (e) {
+                return { size: null, difficulty: null, seed: null };
+            }
+        }
+
+        function replaceUrl(params) {
+            try {
+                const url = new URL(location.href);
+                if (params.size != null) {
+                    url.searchParams.set(KEY_SIZE, String(params.size));
+                }
+                if (params.difficulty != null) {
+                    url.searchParams.set(KEY_DIFF, params.difficulty);
+                }
+                if (params.seed != null) {
+                    url.searchParams.set(KEY_SEED, formatSeed(params.seed));
+                }
+                history.replaceState(null, '', url.toString());
+            } catch (e) {
+                // history API can throw on file:// — silently ignore so
+                // the rest of the page keeps working.
+            }
+        }
+
+        async function copyCurrentUrl() {
+            return copyText(location.href);
+        }
+
+        async function copyText(text) {
+            try {
+                if (navigator.clipboard && navigator.clipboard.writeText) {
+                    await navigator.clipboard.writeText(text);
+                    return true;
+                }
+            } catch (e) {
+                // Permissions denied / not in secure context — fall
+                // through to the legacy path.
+            }
+            try {
+                const ta = document.createElement('textarea');
+                ta.value = text;
+                ta.setAttribute('readonly', '');
+                ta.style.position = 'fixed';
+                ta.style.top = '0';
+                ta.style.left = '0';
+                ta.style.opacity = '0';
+                document.body.appendChild(ta);
+                ta.select();
+                const ok = document.execCommand
+                    && document.execCommand('copy');
+                document.body.removeChild(ta);
+                return !!ok;
+            } catch (e) {
+                return false;
+            }
+        }
+
+        return { readParams, replaceUrl, copyCurrentUrl, copyText };
+    })();
+
+    // -----------------------------------------------------------------
+    // Toast
+    //
+    // A single shared pill-shaped notice that fades in at the bottom
+    // of the viewport for a couple of seconds. Used for transient
+    // confirmations like "link copied" — anything that demands user
+    // attention should still go through a modal/alert.
+    // -----------------------------------------------------------------
+
+    const toast = (function () {
+        let el = null;
+        let hideTimer = null;
+
+        function ensureEl() {
+            if (el) return el;
+            el = document.createElement('div');
+            el.className = 'toast';
+            el.setAttribute('role', 'status');
+            el.setAttribute('aria-live', 'polite');
+            document.body.appendChild(el);
+            return el;
+        }
+
+        function show(text, ms) {
+            const node = ensureEl();
+            node.textContent = text || '';
+            // Restart the fade so consecutive show() calls reset
+            // their own timer rather than inheriting the previous.
+            node.classList.remove('toast-visible');
+            void node.offsetWidth;
+            node.classList.add('toast-visible');
+            if (hideTimer) clearTimeout(hideTimer);
+            hideTimer = setTimeout(() => {
+                node.classList.remove('toast-visible');
+            }, ms || 1800);
+        }
+
+        return { show };
+    })();
+
     global.PuzzleCommon = {
         storage: { readJSON, writeJSON, storageKey },
         prefs: { get: getPrefs, set: setPrefs },
@@ -934,5 +1087,7 @@
             STRINGS,
         },
         progress,
+        share,
+        toast,
     };
 })(window);

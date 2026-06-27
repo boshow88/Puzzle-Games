@@ -940,12 +940,50 @@
         }
     }
 
+    // URL share state. `urlInitial` is captured at module load, so
+    // refresh / direct nav arrives here with the requested puzzle. We
+    // hand the seed back to startNewGame *once*; subsequent New Game
+    // clicks roll a fresh seed, and the address bar then re-syncs to
+    // whatever just generated.
+    const VALID_SIZES = new Set([6, 8, 10]);
+    const VALID_DIFFS = new Set(['easy', 'medium', 'hard']);
+
+    function readUrlInitial() {
+        if (!PC.share) return null;
+        const raw = PC.share.readParams();
+        if (!VALID_SIZES.has(raw.size)) return null;
+        if (!VALID_DIFFS.has(raw.difficulty)) return null;
+        if (!Number.isInteger(raw.seed)) return null;
+        return { size: raw.size, difficulty: raw.difficulty, seed: raw.seed };
+    }
+
+    const urlInitial = readUrlInitial();
+    let pendingSeed = urlInitial ? urlInitial.seed : null;
+
     async function startNewGame() {
-        const seed = (Date.now() ^ Math.floor(Math.random() * 0xffffffff)) >>> 0;
+        const seed = pendingSeed != null
+            ? pendingSeed
+            : ((Date.now() ^ Math.floor(Math.random() * 0xffffffff)) >>> 0);
+        pendingSeed = null;
         state.puzzle = await generatePuzzle(shell.size, shell.difficulty, seed);
         ensurePlacementsForCurrent();
         renderBoard();
         updateStatusRow();
+        if (PC.share) {
+            PC.share.replaceUrl({
+                size: shell.size,
+                difficulty: shell.difficulty,
+                seed,
+            });
+        }
+    }
+
+    async function onShareClick() {
+        if (!PC.share) return;
+        const ok = await PC.share.copyCurrentUrl();
+        if (PC.toast) {
+            PC.toast.show(PC.i18n.t(ok ? 'shareCopied' : 'shareFailed'));
+        }
     }
 
     function resetPlacements() {
@@ -963,8 +1001,13 @@
     function init() {
         shell = PC.shell.create({
             gameId: 'tango',
-            difficulty: { default: 'medium' },
-            size: { kind: 'segmented', default: 6 },
+            difficulty: {
+                default: urlInitial ? urlInitial.difficulty : 'medium',
+            },
+            size: {
+                kind: 'segmented',
+                default: urlInitial ? urlInitial.size : 6,
+            },
             onNewGame: startNewGame,
             onReset: resetPlacements,
             onReveal: repaintSymbols,
@@ -976,6 +1019,11 @@
         state.hintButton = document.getElementById('hint-btn');
         if (state.hintButton) {
             state.hintButton.addEventListener('click', showHint);
+        }
+
+        const shareBtn = document.getElementById('share-btn');
+        if (shareBtn) {
+            shareBtn.addEventListener('click', onShareClick);
         }
 
         // Re-render the hint banner if the locale flips while a hint
