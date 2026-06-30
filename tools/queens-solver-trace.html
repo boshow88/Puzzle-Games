@@ -1,0 +1,655 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+    <meta charset="utf-8">
+    <title>Queens solver trace</title>
+    <style>
+        :root {
+            --bg: #fafafa;
+            --T1: #2e7d32;
+            --T2: #1565c0;
+            --T3: #6a1b9a;
+            --T4: #ef6c00;
+            --T5: #ad1457;
+            --placed: #c62828;
+            --candidate: #1565c0;
+            --excluded: #aaa;
+            --highlight: #fff176;        /* yellow group */
+            --highlight-strong: #ffd600; /* candidate inside group */
+            --highlight-region-kill: #ff8a65; /* T5 region-kill candidates */
+            --striped: #ce93d8;          /* purple stripes for excluded-by-this-step */
+            --reserved-axis: #ffab91;
+        }
+        body { font-family: system-ui, sans-serif; background: var(--bg);
+               color: #222; padding: 20px; margin: 0; max-width: 1200px; }
+        h1 { font-size: 18px; margin: 0 0 12px; }
+        .row { display: flex; flex-wrap: wrap; gap: 8px;
+               align-items: center; margin-bottom: 12px; }
+        button { font: inherit; padding: 6px 12px; cursor: pointer; }
+        button:disabled { opacity: 0.4; cursor: default; }
+        select, input { font: inherit; padding: 4px 8px; }
+        .layout { display: grid; grid-template-columns: minmax(460px, 1fr) 1fr;
+                  gap: 24px; }
+        .panel { background: white; padding: 12px;
+                 border: 1px solid #ddd; border-radius: 6px; }
+        svg { display: block; }
+        .legend { font-size: 12px; color: #555; margin-top: 8px;
+                  display: flex; flex-wrap: wrap; gap: 12px; row-gap: 4px; }
+        .legend .swatch { display: inline-block; width: 12px; height: 12px;
+                          border-radius: 2px; margin-right: 4px;
+                          vertical-align: middle; }
+        .stats { font-size: 12px; line-height: 1.6; color: #333; margin-top: 8px; }
+        .stats code { background: #f3f3f3; padding: 1px 4px; border-radius: 3px; }
+        .log { max-height: 600px; overflow-y: auto; font-size: 13px; }
+        .step { padding: 10px; margin-bottom: 6px; border-left: 4px solid;
+                background: #fafafa; border-radius: 0 4px 4px 0; cursor: pointer; }
+        .step:hover { background: #f0f0f0; }
+        .step.selected { background: #fff8e1; }
+        .step.tier-T1 { border-color: var(--T1); }
+        .step.tier-T2 { border-color: var(--T2); }
+        .step.tier-T3 { border-color: var(--T3); }
+        .step.tier-T4 { border-color: var(--T4); }
+        .step.tier-T5 { border-color: var(--T5); }
+        .step.tier-stalled { border-color: #999; opacity: 0.7; cursor: default; }
+        .step .head { font-weight: bold; margin-bottom: 4px;
+                      display: flex; gap: 8px; align-items: baseline; }
+        .step .step-num { color: #999; font-weight: normal; font-size: 11px; }
+        .tier-badge { font-size: 11px; padding: 1px 6px;
+                      border-radius: 3px; color: white; font-weight: bold; }
+        .tier-badge.T1 { background: var(--T1); }
+        .tier-badge.T2 { background: var(--T2); }
+        .tier-badge.T3 { background: var(--T3); }
+        .tier-badge.T4 { background: var(--T4); }
+        .tier-badge.T5 { background: var(--T5); }
+        .tier-badge.stalled { background: #999; }
+        .step .explanation { color: #333; line-height: 1.5; }
+        .step .cells { font-size: 11px; color: #666; margin-top: 4px;
+                       font-family: ui-monospace, Menlo, monospace; }
+        .empty-log { color: #999; font-style: italic;
+                     padding: 20px; text-align: center; }
+    </style>
+</head>
+<body>
+    <h1>Queens solver trace — 觀察生成結果與 solver 一步步推論</h1>
+
+    <div class="row">
+        <label>Size:
+            <select id="size">
+                <option>5</option><option>6</option><option>7</option>
+                <option selected>8</option><option>9</option>
+                <option>10</option><option>11</option><option>12</option>
+            </select>
+        </label>
+        <label>Difficulty:
+            <select id="difficulty">
+                <option value="easy">easy (T1+T2)</option>
+                <option value="medium" selected>medium (+T3+T4)</option>
+                <option value="hard">hard (+T5)</option>
+            </select>
+        </label>
+        <label>Seed (hex):
+            <input id="seed" size="10" value="">
+        </label>
+        <button id="random-seed">🎲 Random seed</button>
+        <button id="generate">Generate</button>
+    </div>
+
+    <div class="row">
+        Tracing tactics (難度 easy→hard):
+        <label><input type="checkbox" id="t2" checked> T2 (naked single)</label>
+        <label><input type="checkbox" id="t3" checked> T3 (pigeonhole)</label>
+        <label><input type="checkbox" id="t4" checked> T4 (covering, geom)</label>
+        <label><input type="checkbox" id="t5" checked> T5 (covering, +region)</label>
+        <button id="step">Step</button>
+        <button id="solve">Solve all</button>
+        <button id="reset-solver">Reset solver</button>
+    </div>
+
+    <div class="layout">
+        <div class="panel">
+            <div id="board-wrap"></div>
+            <div class="legend">
+                <span><span class="swatch" style="background: var(--highlight)"></span>group cells</span>
+                <span><span class="swatch" style="background: var(--highlight-strong)"></span>group candidates</span>
+                <span><span class="swatch" style="background: var(--highlight-region-kill)"></span>T5 region-kill candidate</span>
+                <span><span class="swatch" style="background: var(--reserved-axis); opacity: 0.5"></span>reserved row/col</span>
+                <span><span class="swatch" style="background: var(--striped)"></span>this step excluded</span>
+                <span><span class="swatch" style="background: var(--candidate)"></span>candidate</span>
+                <span>♛<sub style="color: var(--placed); font-weight: bold">red</sub> = placed</span>
+                <span>♛<sub style="opacity: 0.45">grey</sub> = true solution</span>
+            </div>
+            <div class="stats" id="stats"></div>
+        </div>
+        <div class="panel log" id="log">
+            <div class="empty-log">Generate a puzzle, then press Step / Solve all.<br>
+                Click any log entry to re-highlight that step's cells.</div>
+        </div>
+    </div>
+
+    <script src="../js/common.js"></script>
+    <script src="../js/generators/queens.js"></script>
+    <script>
+        'use strict';
+
+        const PC = window.PuzzleCommon;
+        const S = window.PuzzleSolvers.queens;
+
+        const REGION_COLORS = [
+            '#FF8888', '#FFB366', '#FFDD33', '#66DD66',
+            '#7799FF', '#BB77DD', '#FF88CC', '#DD8855',
+            '#88DDDD', '#DDAA77', '#99BB99', '#CCAAFF',
+        ];
+
+        const els = {
+            size: document.getElementById('size'),
+            difficulty: document.getElementById('difficulty'),
+            seed: document.getElementById('seed'),
+            randomSeed: document.getElementById('random-seed'),
+            generate: document.getElementById('generate'),
+            t2: document.getElementById('t2'),
+            t3: document.getElementById('t3'),
+            t4: document.getElementById('t4'),
+            t5: document.getElementById('t5'),
+            step: document.getElementById('step'),
+            solve: document.getElementById('solve'),
+            resetSolver: document.getElementById('reset-solver'),
+            boardWrap: document.getElementById('board-wrap'),
+            stats: document.getElementById('stats'),
+            log: document.getElementById('log'),
+        };
+
+        // -----------------------------------------------------------------
+        // App state
+        //
+        // `stepLog` is an array of "displayable step" entries — one per
+        // log row. A single naked single (T2) produces two entries: the
+        // T2 placement itself and the T1 cascade it triggers. T3 / T4 /
+        // T5 each produce one entry.
+        //
+        // `selectedStepIdx` indicates which log row's highlight overlay
+        // is currently painted; clicking a row jumps to it.
+        // -----------------------------------------------------------------
+
+        let puzzle = null;
+        let solverState = null;
+        let stepLog = [];
+        let selectedStepIdx = -1;
+
+        function setRandomSeed() {
+            const seed = (Date.now() ^ Math.floor(Math.random() * 0xffffffff)) >>> 0;
+            els.seed.value = seed.toString(16);
+        }
+        if (!els.seed.value) setRandomSeed();
+
+        els.randomSeed.addEventListener('click', setRandomSeed);
+
+        els.generate.addEventListener('click', async () => {
+            const N = parseInt(els.size.value, 10);
+            const difficulty = els.difficulty.value;
+            const seed = parseInt(els.seed.value, 16) >>> 0;
+            els.generate.disabled = true;
+            els.stats.textContent = 'Generating…';
+            els.boardWrap.innerHTML = '';
+            els.log.innerHTML = '<div class="empty-log">Generating…</div>';
+            try {
+                const t0 = performance.now();
+                puzzle = await window.PuzzleGenerators.queens(N, difficulty, seed);
+                const dt = performance.now() - t0;
+                renderStats(dt);
+                resetSolver();
+            } catch (e) {
+                els.stats.innerHTML = '<span style="color:#c62828">Failed: '
+                    + escapeHtml(e.message) + '</span>';
+                els.log.innerHTML = '';
+                puzzle = null;
+            } finally {
+                els.generate.disabled = false;
+            }
+        });
+
+        els.step.addEventListener('click', stepOnce);
+        els.solve.addEventListener('click', solveAll);
+        els.resetSolver.addEventListener('click', resetSolver);
+
+        function getTactics() {
+            return {
+                T1: true, // always implicit (queen kills) once one is placed
+                T2: els.t2.checked,
+                T3: els.t3.checked,
+                T4: els.t4.checked,
+                T5: els.t5.checked,
+            };
+        }
+
+        function resetSolver() {
+            if (!puzzle) return;
+            solverState = S.makeSolverState(puzzle.regions, puzzle.size);
+            stepLog = [];
+            selectedStepIdx = -1;
+            renderAll();
+        }
+
+        function stepOnce() {
+            if (!solverState) return;
+            if (advanceOne()) {
+                selectedStepIdx = stepLog.length - 1;
+                renderAll();
+            }
+        }
+
+        function solveAll() {
+            if (!solverState) return;
+            let safety = puzzle.size * puzzle.size * 4;
+            while (safety-- > 0) {
+                if (!advanceOne()) break;
+                if (solverState.placedCount === puzzle.size) break;
+                const last = stepLog[stepLog.length - 1];
+                if (last && last.tier === 'stalled') break;
+            }
+            selectedStepIdx = stepLog.length - 1;
+            renderAll();
+        }
+
+        // Advance the solver by ONE atomic explanation step. A T2
+        // (naked single) placement that triggers T1 actually pushes
+        // two entries onto the log — the T2 step then a follow-up T1
+        // step — but they both happen within a single solver mutation.
+        // Returns true when an entry was added, false on stall.
+        function advanceOne() {
+            const tactics = getTactics();
+            const N = puzzle.size;
+            // Match the solver's order: T2 → T4 → T3 → T5. T4 is tried
+            // before T3 because the "region locked to a single row/col"
+            // case surfaces much more cleanly as a single T4-on-region
+            // step than as a multi-region T3 pigeonhole. Trying T4
+            // before T5 is what makes T5 only fire on genuinely
+            // region-dependent exclusions.
+            let result = null;
+            if (tactics.T2) result = S.stepT2(solverState);
+            if (!result && tactics.T4) result = S.stepT4(solverState);
+            if (!result && tactics.T3) result = S.stepT3(solverState);
+            if (!result && tactics.T5) result = S.stepT5(solverState);
+
+            if (!result) {
+                stepLog.push({
+                    tier: 'stalled',
+                    text: `所有允許的招式都推不動了。已放置 ${solverState.placedCount}/${N} 隻皇后。`,
+                });
+                return true;
+            }
+
+            if (result.tier === 'T2') {
+                stepLog.push(makeT2Entry(result));
+                if (result.t1Killed && result.t1Killed.length > 0) {
+                    stepLog.push(makeT1Entry(result));
+                }
+            } else if (result.tier === 'T3') {
+                stepLog.push(makeT3Entry(result));
+            } else if (result.tier === 'T4' || result.tier === 'T5') {
+                stepLog.push(makeCoverEntry(result));
+            }
+            return true;
+        }
+
+        // -----------------------------------------------------------------
+        // Step → log entry. Each entry carries the full set of fields the
+        // board overlay needs:
+        //   text:           natural-language explanation (zh)
+        //   placed:         [r,c] queen placed by this step (T2 only)
+        //   groupCells:     yellow background cells
+        //   groupCands:     darker yellow (subset of groupCells)
+        //   regionKillers:  T5 candidates that kill the excluded cell only
+        //                   via same-region (painted in the darker T5 hue)
+        //   reservedAxis:   rows / cols that are reserved (T3)
+        //   axis:           'row' | 'col' for the reserved axis
+        //   regionIds:      regions involved in T3
+        //   striped:        cells excluded BY this step (purple stripes)
+        // -----------------------------------------------------------------
+
+        // Each entry's `text` follows the player-facing hint wording the
+        // user authored: short, generic, and intentionally free of
+        // (r,c) coordinates — those are conveyed by the board overlay
+        // (highlight / candidate dot / striped fill / queen) and the
+        // separate `cells` detail line below the text.
+
+        function makeT1Entry(s) {
+            const [r, c] = s.placedAt;
+            return {
+                tier: 'T1',
+                text: `此♛把同行、同列、同區域或相鄰位置的格子封死了。排除掉條紋格子。`,
+                placed: [[r, c]],
+                groupCells: [[r, c]],
+                groupCands: [[r, c]],
+                striped: s.t1Killed.slice(),
+            };
+        }
+
+        function makeT2Entry(s) {
+            const [r, c] = s.placedAt;
+            const kind = groupKindStr(s.groupKind);
+            return {
+                tier: 'T2',
+                text: `此${kind}的其他所有格子都被排除了。請將♛放置在醒目標示的格子中。`,
+                groupHint: groupLabel(s.groupKind, s.groupIndex),
+                placed: [[r, c]],
+                groupCells: s.groupCells,
+                groupCands: [[r, c]],
+                striped: [],
+            };
+        }
+
+        function makeT3Entry(s) {
+            const axisName = s.axis === 'row' ? '列' : '行';
+            const regStr = s.regionIds.map(r => '#' + r).join('、');
+            const axisStr = s.reservedAxis.join('、');
+            return {
+                tier: 'T3',
+                text: `每個醒目標示的區域都需要一個♛。這幾${axisName}已經沒有地方放其他區域的♛了。排除掉條紋格子。`,
+                groupHint: `區域 ${regStr} × ${axisName} ${axisStr}`,
+                placed: [],
+                groupCells: s.regionCandidates,
+                groupCands: s.regionCandidates,
+                reservedAxis: s.reservedAxis,
+                axis: s.axis,
+                regionIds: s.regionIds,
+                striped: s.excludedAt,
+            };
+        }
+
+        function makeCoverEntry(s) {
+            // T4 and T5 share the same player-facing wording — the
+            // visual differentiator (badge colour + region-killer
+            // candidate highlight) is what tells them apart in the
+            // trace tool. `excludedAt` is always an array; every cell
+            // the step kicks out shows up as a striped tile at once.
+            const kind = groupKindStr(s.groupKind);
+            const regionKillers = s.regionKillers || [];
+            const rkSuffix = regionKillers.length
+                ? ` · region-kill ${regionKillers.map(cellStr).join('、')}`
+                : '';
+            return {
+                tier: s.tier,
+                text: `醒目標示的${kind}內必須有♛。條紋格子中的♛把此${kind}封死了。排除掉條紋格子。`,
+                groupHint: `${groupLabel(s.groupKind, s.groupIndex)}${rkSuffix}`,
+                placed: [],
+                groupCells: s.groupCells,
+                groupCands: s.groupCandidates,
+                regionKillers,
+                striped: s.excludedAt,
+            };
+        }
+
+        function groupLabel(kind, idx) {
+            if (kind === 'row') return `第 ${idx} 列`;
+            if (kind === 'col') return `第 ${idx} 行`;
+            return `區域 #${idx}`;
+        }
+
+        function groupKindStr(kind) {
+            if (kind === 'row') return '列';
+            if (kind === 'col') return '行';
+            return '區域';
+        }
+
+        function cellStr(rc) { return `(${rc[0]},${rc[1]})`; }
+        function escapeHtml(s) {
+            return String(s).replace(/[&<>"]/g,
+                ch => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'})[ch]);
+        }
+
+        // -----------------------------------------------------------------
+        // Rendering
+        // -----------------------------------------------------------------
+
+        function renderAll() {
+            renderBoard();
+            renderLog();
+        }
+
+        function renderStats(dtMs) {
+            if (!puzzle) return;
+            const s = puzzle.stats || {};
+            els.stats.innerHTML = `
+                <div><strong>${escapeHtml(puzzle.id)}</strong></div>
+                <div>gen ${dtMs.toFixed(0)} ms · attempt ${s.attemptMs ?? '?'} ms
+                     · seedRetries ${s.seedRetries ?? '?'}</div>
+                <div>expandSteps <code>${s.expandSteps ?? '?'}</code>
+                     · verifyCalls <code>${s.verifyCalls ?? '?'}</code>
+                     · verifyRejects <code>${s.verifyRejects ?? '?'}</code>
+                     · backtracks <code>${s.backtracks ?? '?'}</code></div>
+                <div>solution rows → cols:
+                     <code>${puzzle.solution.join(', ')}</code></div>
+            `;
+        }
+
+        function renderBoard() {
+            if (!puzzle) return;
+            const N = puzzle.size;
+            const regions = puzzle.regions;
+            const cs = Math.floor(Math.min(440 / N, 60));
+            const W = cs * N + 4;
+
+            // Overlay data driven by the currently selected step.
+            const sel = selectedStepIdx >= 0 ? stepLog[selectedStepIdx] : null;
+            const groupSet = makeCellSet(sel?.groupCells);
+            const candSet = makeCellSet(sel?.groupCands);
+            const regionKillSet = makeCellSet(sel?.regionKillers);
+            const stripeSet = makeCellSet(sel?.striped);
+            const reservedRows = (sel && sel.axis === 'row') ? new Set(sel.reservedAxis) : new Set();
+            const reservedCols = (sel && sel.axis === 'col') ? new Set(sel.reservedAxis) : new Set();
+            const placedThisStep = makeCellSet(sel?.placed);
+
+            const svg = `
+                <svg width="${W}" height="${W}" viewBox="-2 -2 ${W} ${W}"
+                     xmlns="http://www.w3.org/2000/svg">
+                    <defs>
+                        <pattern id="stripes" patternUnits="userSpaceOnUse"
+                                 width="6" height="6" patternTransform="rotate(45)">
+                            <rect width="6" height="6" fill="var(--striped)" fill-opacity="0.35"/>
+                            <line x1="0" y1="0" x2="0" y2="6" stroke="var(--striped)" stroke-width="3"/>
+                        </pattern>
+                    </defs>
+                    ${cellRects()}
+                    ${reservedAxisOverlay()}
+                    ${highlightOverlay()}
+                    ${stripeOverlay()}
+                    ${borderLines()}
+                    ${candidateDots()}
+                    ${queenSymbols()}
+                </svg>
+            `;
+            els.boardWrap.innerHTML = svg;
+
+            function makeCellSet(arr) {
+                const set = new Set();
+                if (!arr) return set;
+                if (typeof arr[Symbol.iterator] !== 'function') {
+                    console.warn('[trace] makeCellSet got non-iterable arg:', arr);
+                    return set;
+                }
+                for (const item of arr) {
+                    if (!Array.isArray(item) || item.length < 2) {
+                        console.warn('[trace] makeCellSet got non-pair element:', item);
+                        continue;
+                    }
+                    set.add(item[0] * N + item[1]);
+                }
+                return set;
+            }
+            function inSet(set, r, c) { return set.has(r * N + c); }
+
+            function cellRects() {
+                let out = '';
+                for (let r = 0; r < N; r++) {
+                    for (let c = 0; c < N; c++) {
+                        const x = c * cs, y = r * cs;
+                        const fill = REGION_COLORS[regions[r][c] % REGION_COLORS.length];
+                        out += `<rect x="${x}" y="${y}" width="${cs}" height="${cs}"
+                            fill="${fill}" fill-opacity="0.55"/>`;
+                    }
+                }
+                return out;
+            }
+            function reservedAxisOverlay() {
+                let out = '';
+                for (const r of reservedRows) {
+                    out += `<rect x="0" y="${r*cs}" width="${cs*N}" height="${cs}"
+                        fill="var(--reserved-axis)" fill-opacity="0.32"/>`;
+                }
+                for (const c of reservedCols) {
+                    out += `<rect x="${c*cs}" y="0" width="${cs}" height="${cs*N}"
+                        fill="var(--reserved-axis)" fill-opacity="0.32"/>`;
+                }
+                return out;
+            }
+            function highlightOverlay() {
+                let out = '';
+                for (let r = 0; r < N; r++) {
+                    for (let c = 0; c < N; c++) {
+                        const x = c * cs, y = r * cs;
+                        if (inSet(regionKillSet, r, c)) {
+                            // T5 candidate that needs the region rule
+                            // to kill the excluded cell. Painted darker
+                            // than the other group candidates so the
+                            // player can see *which* cells force this
+                            // step into the harder tier.
+                            out += `<rect x="${x}" y="${y}" width="${cs}" height="${cs}"
+                                fill="var(--highlight-region-kill)" fill-opacity="0.7"/>`;
+                        } else if (inSet(candSet, r, c)) {
+                            out += `<rect x="${x}" y="${y}" width="${cs}" height="${cs}"
+                                fill="var(--highlight-strong)" fill-opacity="0.55"/>`;
+                        } else if (inSet(groupSet, r, c)) {
+                            out += `<rect x="${x}" y="${y}" width="${cs}" height="${cs}"
+                                fill="var(--highlight)" fill-opacity="0.45"/>`;
+                        }
+                    }
+                }
+                return out;
+            }
+            function stripeOverlay() {
+                let out = '';
+                for (let r = 0; r < N; r++) {
+                    for (let c = 0; c < N; c++) {
+                        if (!inSet(stripeSet, r, c)) continue;
+                        const x = c * cs, y = r * cs;
+                        out += `<rect x="${x}" y="${y}" width="${cs}" height="${cs}"
+                            fill="url(#stripes)"/>`;
+                    }
+                }
+                return out;
+            }
+            function borderLines() {
+                let out = '';
+                for (let r = 0; r < N; r++) {
+                    for (let c = 0; c < N; c++) {
+                        const rid = regions[r][c];
+                        const x = c * cs, y = r * cs;
+                        if (r === 0 || regions[r-1][c] !== rid) {
+                            out += `<line x1="${x}" y1="${y}" x2="${x+cs}" y2="${y}"
+                                stroke="#222" stroke-width="2"/>`;
+                        }
+                        if (c === 0 || regions[r][c-1] !== rid) {
+                            out += `<line x1="${x}" y1="${y}" x2="${x}" y2="${y+cs}"
+                                stroke="#222" stroke-width="2"/>`;
+                        }
+                        if (r === N-1) {
+                            out += `<line x1="${x}" y1="${y+cs}" x2="${x+cs}" y2="${y+cs}"
+                                stroke="#222" stroke-width="2"/>`;
+                        }
+                        if (c === N-1) {
+                            out += `<line x1="${x+cs}" y1="${y}" x2="${x+cs}" y2="${y+cs}"
+                                stroke="#222" stroke-width="2"/>`;
+                        }
+                    }
+                }
+                return out;
+            }
+            function candidateDots() {
+                if (!solverState) return '';
+                let out = '';
+                for (let r = 0; r < N; r++) {
+                    for (let c = 0; c < N; c++) {
+                        if (solverState.placed[r][c]) continue;
+                        const cx = c * cs + cs / 2, cy = r * cs + cs / 2;
+                        if (solverState.candidate[r][c]) {
+                            out += `<circle cx="${cx}" cy="${cy}" r="${cs*0.11}"
+                                fill="var(--candidate)" fill-opacity="0.75"/>`;
+                        } else if (regions[r][c] !== -1) {
+                            out += `<text x="${cx}" y="${cy + cs*0.10}"
+                                text-anchor="middle" font-size="${cs*0.32}"
+                                fill="var(--excluded)">×</text>`;
+                        }
+                    }
+                }
+                return out;
+            }
+            function queenSymbols() {
+                let out = '';
+                // True solution as faint hint in upper-right corner of each cell.
+                for (let r = 0; r < N; r++) {
+                    const c = puzzle.solution[r];
+                    out += `<text x="${c*cs + cs*0.85}" y="${r*cs + cs*0.30}"
+                        text-anchor="middle" font-size="${cs*0.24}"
+                        fill="#222" opacity="0.45">♛</text>`;
+                }
+                // Placed queens (red, large).
+                if (solverState) {
+                    for (let r = 0; r < N; r++) {
+                        for (let c = 0; c < N; c++) {
+                            if (!solverState.placed[r][c]) continue;
+                            const cx = c * cs + cs / 2, cy = r * cs + cs / 2;
+                            const ring = inSet(placedThisStep, r, c)
+                                ? `<circle cx="${cx}" cy="${cy}" r="${cs*0.40}"
+                                    fill="none" stroke="var(--placed)"
+                                    stroke-width="3" opacity="0.7"/>`
+                                : '';
+                            out += ring;
+                            out += `<text x="${cx}" y="${cy + cs*0.10}"
+                                text-anchor="middle" font-size="${cs*0.55}"
+                                fill="var(--placed)">♛</text>`;
+                        }
+                    }
+                }
+                return out;
+            }
+        }
+
+        function renderLog() {
+            if (!stepLog.length) {
+                els.log.innerHTML = '<div class="empty-log">Solver state initialised.'
+                    + ' Press Step to advance.</div>';
+                return;
+            }
+            let html = '';
+            stepLog.forEach((s, i) => {
+                const sel = i === selectedStepIdx ? ' selected' : '';
+                const cls = `step tier-${s.tier}${sel}`;
+                const badge = `<span class="tier-badge ${s.tier}">${s.tier}</span>`;
+                const parts = [];
+                if (s.groupHint) parts.push(s.groupHint);
+                if (s.placed && s.placed.length) {
+                    parts.push(`placed ${s.placed.map(cellStr).join(', ')}`);
+                }
+                if (s.striped && s.striped.length) {
+                    parts.push(`excluded ${s.striped.length} cell${s.striped.length === 1 ? '' : 's'}`);
+                }
+                const detail = parts.join(' · ');
+                html += `<div class="${cls}" data-idx="${i}">
+                    <div class="head">${badge}<span class="step-num">step ${i+1}</span></div>
+                    <div class="explanation">${escapeHtml(s.text || '')}</div>
+                    ${detail ? `<div class="cells">${escapeHtml(detail)}</div>` : ''}
+                </div>`;
+            });
+            els.log.innerHTML = html;
+            els.log.scrollTop = els.log.scrollHeight;
+            els.log.querySelectorAll('.step[data-idx]').forEach(el => {
+                el.addEventListener('click', () => {
+                    selectedStepIdx = parseInt(el.dataset.idx, 10);
+                    renderBoard();
+                    renderLog();
+                });
+            });
+        }
+    </script>
+</body>
+</html>

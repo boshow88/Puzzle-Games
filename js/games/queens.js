@@ -1,9 +1,10 @@
 /**
- * Queens — gameplay, dummy puzzle generation, and SVG rendering.
+ * Queens — gameplay + SVG rendering.
  *
- * Self-contained for now; depends only on window.PuzzleCommon.
+ * Puzzle generation lives in `js/generators/queens.js` and is exposed
+ * via `window.PuzzleGenerators.queens(size, difficulty, seed, onProgress)`.
  *
- * Puzzle JSON contract (lets us swap the generator out later):
+ * Puzzle JSON shape:
  *   {
  *     id:         string,
  *     game:       'queens',
@@ -11,11 +12,8 @@
  *     difficulty: 'easy' | 'medium' | 'hard',
  *     regions:    int[N][N],          // regions[r][c] ∈ [0, N-1]
  *     solution:   int[N],             // solution[r] = column of queen
+ *     stats?:     { ... },            // generator bookkeeping
  *   }
- *
- * NOTE: This generator is intentionally naive (just enough to drive the UI).
- * It does NOT guarantee a unique solution and uses no "real" difficulty
- * tuning beyond seeding — the proper algorithm will be redesigned later.
  */
 (function () {
     'use strict';
@@ -42,143 +40,22 @@
     const VIOLATION_DELAY_MS = 800;
 
     // -----------------------------------------------------------------
-    // Dummy puzzle generator (placeholder — to be replaced)
+    // Puzzle generation (thin wrapper around the async generator).
+    //
+    // Mirrors Tango's shape: the generator drives a determinate-friendly
+    // progress callback, the game just adapts that into the shared
+    // `PC.progress` UI.
     // -----------------------------------------------------------------
 
-    /**
-     * Place N queens such that:
-     *   - exactly one per row and per column
-     *   - no two queens are 8-neighbors (since one per row, this reduces to
-     *     |solution[r] - solution[r-1]| > 1)
-     * Returns int[N] (column per row) or null if no solution within attempts.
-     */
-    function placeQueens(N, rng) {
-        const cols = new Array(N).fill(-1);
-        const used = new Array(N).fill(false);
-
-        function solve(row) {
-            if (row === N) return true;
-            const candidates = [];
-            for (let c = 0; c < N; c++) {
-                if (used[c]) continue;
-                if (row > 0 && Math.abs(c - cols[row - 1]) <= 1) continue;
-                candidates.push(c);
+    async function generatePuzzle(size, difficulty, seed) {
+        const progress = PC.progress;
+        const onProgress = progress
+            ? async (fraction) => {
+                progress.setFraction(fraction);
+                await progress.waitNextPaint();
             }
-            PC.rng.shuffle(candidates, rng);
-            for (const c of candidates) {
-                cols[row] = c;
-                used[c] = true;
-                if (solve(row + 1)) return true;
-                used[c] = false;
-            }
-            cols[row] = -1;
-            return false;
-        }
-
-        return solve(0) ? cols : null;
-    }
-
-    /**
-     * Grow N color regions, one seeded at each queen, by random 4-neighbor
-     * expansion. Smaller regions get priority so sizes stay roughly balanced.
-     * Returns int[N][N] of region indices.
-     */
-    function growRegions(N, queens, rng) {
-        const regions = Array.from({ length: N }, () => new Array(N).fill(-1));
-        const sizes = new Array(N).fill(1);
-        const frontiers = Array.from({ length: N }, () => []);
-
-        const adjUnowned = (r, c) => {
-            const out = [];
-            if (r > 0 && regions[r - 1][c] === -1) out.push([r - 1, c]);
-            if (r < N - 1 && regions[r + 1][c] === -1) out.push([r + 1, c]);
-            if (c > 0 && regions[r][c - 1] === -1) out.push([r, c - 1]);
-            if (c < N - 1 && regions[r][c + 1] === -1) out.push([r, c + 1]);
-            return out;
-        };
-
-        for (let i = 0; i < N; i++) {
-            const r = i;
-            const c = queens[i];
-            regions[r][c] = i;
-            if (adjUnowned(r, c).length > 0) frontiers[i].push([r, c]);
-        }
-
-        let remaining = N * N - N;
-        let safety = N * N * 8;
-        while (remaining > 0 && safety-- > 0) {
-            // Pick the smallest region with non-empty frontier; random tiebreak.
-            let best = -1;
-            let bestSize = Infinity;
-            for (let i = 0; i < N; i++) {
-                if (frontiers[i].length === 0) continue;
-                if (sizes[i] < bestSize || (sizes[i] === bestSize && rng() < 0.5)) {
-                    best = i;
-                    bestSize = sizes[i];
-                }
-            }
-            if (best === -1) break;
-
-            const f = frontiers[best];
-            let placed = false;
-            while (f.length > 0 && !placed) {
-                const fidx = PC.rng.pickInt(rng, 0, f.length);
-                const [r, c] = f[fidx];
-                const adj = adjUnowned(r, c);
-                if (adj.length === 0) {
-                    f.splice(fidx, 1);
-                    continue;
-                }
-                const [nr, nc] = adj[PC.rng.pickInt(rng, 0, adj.length)];
-                regions[nr][nc] = best;
-                sizes[best]++;
-                remaining--;
-                if (adjUnowned(r, c).length === 0) f.splice(fidx, 1);
-                if (adjUnowned(nr, nc).length > 0) f.push([nr, nc]);
-                placed = true;
-            }
-            if (!placed) {
-                // Region is fully boxed in by other regions; drop it from contention.
-                frontiers[best].length = 0;
-            }
-        }
-
-        // Safety net: assign any orphan cell to a neighbor's region.
-        for (let r = 0; r < N; r++) {
-            for (let c = 0; c < N; c++) {
-                if (regions[r][c] !== -1) continue;
-                let claim = 0;
-                if (r > 0 && regions[r - 1][c] !== -1) claim = regions[r - 1][c];
-                else if (r < N - 1 && regions[r + 1][c] !== -1) claim = regions[r + 1][c];
-                else if (c > 0 && regions[r][c - 1] !== -1) claim = regions[r][c - 1];
-                else if (c < N - 1 && regions[r][c + 1] !== -1) claim = regions[r][c + 1];
-                regions[r][c] = claim;
-            }
-        }
-        return regions;
-    }
-
-    function generatePuzzle(size, difficulty, seed) {
-        const rng = PC.rng.make(seed);
-        let queens = null;
-        // Each placeQueens call is one shuffled DFS; usually succeeds in 1 try.
-        // Try a few different seeds in case we get unlucky on tiny boards.
-        for (let i = 0; i < 8 && !queens; i++) {
-            queens = placeQueens(size, rng);
-        }
-        if (!queens) {
-            // Extremely unlikely but handle anyway — fall back to a known pattern.
-            queens = Array.from({ length: size }, (_, r) => (r * 2) % size);
-        }
-        const regions = growRegions(size, queens, rng);
-        return {
-            id: `queens-${size}x${size}-${difficulty}-${seed.toString(36)}`,
-            game: 'queens',
-            size,
-            difficulty,
-            regions,
-            solution: queens,
-        };
+            : null;
+        return window.PuzzleGenerators.queens(size, difficulty, seed, onProgress);
     }
 
     // -----------------------------------------------------------------
@@ -564,9 +441,9 @@
         cycleCell(r, c);
     }
 
-    function startNewGame() {
+    async function startNewGame() {
         const seed = (Date.now() ^ Math.floor(Math.random() * 0xffffffff)) >>> 0;
-        state.puzzle = generatePuzzle(shell.size, shell.difficulty, seed);
+        state.puzzle = await generatePuzzle(shell.size, shell.difficulty, seed);
         ensurePlacementsForCurrent();
         renderBoard();
         updateStatusRow();
