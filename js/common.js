@@ -563,6 +563,7 @@
             appTitle: 'Puzzle Games',
             appSubtitle: "A collection of logic puzzles inspired by LinkedIn's daily games.",
             playable: 'Playable',
+            wip: 'WIP',
             builtNote: 'Built as a static site — works offline, deployable on GitHub Pages.',
 
             // Queens
@@ -660,6 +661,7 @@
             appTitle: 'Puzzle Games',
             appSubtitle: '一組受 LinkedIn 每日小遊戲啟發的邏輯謎題。',
             playable: '可玩',
+            wip: '開發中',
             builtNote: '純靜態網站 — 可離線使用，也可部署於 GitHub Pages。',
 
             queensName: 'Queens',

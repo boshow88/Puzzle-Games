@@ -9,10 +9,10 @@ Pure static HTML/CSS/JS — deployable on GitHub Pages.
 
 | Game   | Status        | Notes                                          |
 | ------ | ------------- | ---------------------------------------------- |
-| Queens | Playable      | Region-carving generator, tactic-bounded solver |
+| Queens | WIP           | Region-carving generator, tactic-bounded solver |
 | Tango  | Playable      | Dummy in-browser puzzle generator              |
-| Sudoku | Playable      | 6×6 + 9×9, pencil notes, keypad + keyboard     |
-| Zip    | Playable      | Drag-to-draw path, walls + holes, 5×5 – 12×12   |
+| Sudoku | WIP           | 6×6 + 9×9, pencil notes, keypad + keyboard     |
+| Zip    | WIP           | Drag-to-draw path, walls + holes, 5×5 – 12×12   |
 
 Full rule reference: [`docs/rules.md`](docs/rules.md).
 
