@@ -85,6 +85,23 @@
     // The shell owns difficulty / size / revealed / timer.
     let shell = null;
 
+    // Active pointer gesture. Modes:
+    //   'mark'           — started on an empty cell. The starting cell
+    //                      was already flipped to × at pointerdown time
+    //                      (a tap-on-empty does the same thing). Every
+    //                      subsequent empty cell the finger enters also
+    //                      becomes ×.
+    //   'unmark-pending' — started on ×. Ambiguous: could be a tap that
+    //                      wants × → ♛, or a drag that wants to erase ×s.
+    //                      We defer until the pointer leaves the start;
+    //                      the first move commits us into 'unmark'.
+    //   'unmark'         — committed drag-erase. The starting cell has
+    //                      been cleared to empty and every × the finger
+    //                      passes over gets cleared too.
+    //   'tap'            — started on ♛. Pure tap: cycle only if the
+    //                      release lands back on the same cell.
+    let dragState = null;
+
     function emptyViolationGrid(N) {
         return Array.from({ length: N }, () => new Array(N).fill(false));
     }
@@ -402,43 +419,140 @@
     // Event handlers
     // -----------------------------------------------------------------
 
+    // Transition a single cell to the given state. Only ♛ transitions
+    // can create or dissolve a violation / win, so pure × toggles skip
+    // the recompute — that keeps a fast drag-mark from paying the O(N²)
+    // scan on every intermediate cell.
+    function applyCellState(r, c, next) {
+        if (!state.puzzle || state.won) return;
+        const cur = state.placements[r][c];
+        if (cur === next) return;
+        state.placements[r][c] = next;
+
+        const queenInvolved = cur === STATES.QUEEN || next === STATES.QUEEN;
+        if (queenInvolved) {
+            recomputeViolations();
+            if (checkWin() && !state.won) {
+                state.won = true;
+                cancelViolationTimer();
+                state.displayedViolations = emptyViolationGrid(state.puzzle.size);
+                state.displayedPairs = 0;
+                shell.markSolved();
+                repaintSymbols();
+                updateStatusRow();
+                return;
+            }
+            // Show unrelated conflicts immediately; debounce the ones
+            // owned by this toggle for VIOLATION_DELAY_MS so the red
+            // slashes don't flash distractingly while the player is
+            // still cycling through states in the same row / col /
+            // region / neighbourhood.
+            scheduleViolationRefresh(r, c);
+        }
+        repaintSymbols();
+        updateStatusRow();
+    }
+
     function cycleCell(r, c) {
         if (!state.puzzle || state.won) return;
         const cur = state.placements[r][c];
         const idx = STATE_CYCLE.indexOf(cur);
         const next = STATE_CYCLE[(idx + 1) % STATE_CYCLE.length];
-        state.placements[r][c] = next;
-
-        // Recompute truth immediately so win detection stays snappy and
-        // the partial-refresh logic has a fresh group list to work with.
-        recomputeViolations();
-
-        if (checkWin() && !state.won) {
-            state.won = true;
-            cancelViolationTimer();
-            state.displayedViolations = emptyViolationGrid(state.puzzle.size);
-            state.displayedPairs = 0;
-            shell.markSolved();
-            repaintSymbols();
-            updateStatusRow();
-            return;
-        }
-
-        // Show unrelated conflicts immediately; debounce the ones owned
-        // by this toggle for VIOLATION_DELAY_MS so the red slashes don't
-        // flash distractingly while the player is still cycling through
-        // states in the same row / col / region / neighbourhood.
-        scheduleViolationRefresh(r, c);
-        repaintSymbols();
-        updateStatusRow();
+        applyCellState(r, c, next);
     }
 
-    function onBoardClick(ev) {
-        const target = ev.target.closest('rect.cell-hover');
-        if (!target) return;
-        const r = parseInt(target.getAttribute('data-r'), 10);
-        const c = parseInt(target.getAttribute('data-c'), 10);
-        cycleCell(r, c);
+    // Map a pointer event to a board cell using the SVG viewBox math.
+    // Mirrors Zip's helper: the playable area occupies viewBox coords
+    // (0..BOARD_SIZE, 0..BOARD_SIZE) inside a 486×486 SVG with 3px
+    // padding on each side.
+    function eventToCell(ev) {
+        if (!state.puzzle) return null;
+        const N = state.puzzle.size;
+        const rect = board.getBoundingClientRect();
+        if (rect.width === 0 || rect.height === 0) return null;
+        const vbx = (ev.clientX - rect.left) / rect.width * 486 - 3;
+        const vby = (ev.clientY - rect.top) / rect.height * 486 - 3;
+        if (vbx < 0 || vbx >= BOARD_SIZE) return null;
+        if (vby < 0 || vby >= BOARD_SIZE) return null;
+        const cs = BOARD_SIZE / N;
+        return [Math.floor(vby / cs), Math.floor(vbx / cs)];
+    }
+
+    function onPointerDown(ev) {
+        if (!state.puzzle || state.won) return;
+        if (ev.button !== undefined && ev.button !== 0) return;
+        if (dragState) return; // ignore secondary pointers mid-gesture
+        const cell = eventToCell(ev);
+        if (!cell) return;
+        const [r, c] = cell;
+        const cur = state.placements[r][c];
+
+        ev.preventDefault();
+        try { board.setPointerCapture(ev.pointerId); } catch (_) { /* ignore */ }
+
+        let mode;
+        if (cur === STATES.EMPTY) {
+            // Tap-on-empty is already "→ ×" per the cycle, so we can
+            // apply immediately and keep painting subsequent cells.
+            applyCellState(r, c, STATES.MARK);
+            mode = 'mark';
+        } else if (cur === STATES.MARK) {
+            // Ambiguous — could be a tap wanting × → ♛, or a drag
+            // wanting to erase ×s. Defer until the pointer leaves this
+            // cell; see the promotion logic in onPointerMove.
+            mode = 'unmark-pending';
+        } else {
+            // Started on ♛ — behave like a click (cycle only if the
+            // release lands here).
+            mode = 'tap';
+        }
+        dragState = {
+            pointerId: ev.pointerId, mode,
+            startR: r, startC: c, lastR: r, lastC: c,
+        };
+    }
+
+    function onPointerMove(ev) {
+        if (!dragState || ev.pointerId !== dragState.pointerId) return;
+        const cell = eventToCell(ev);
+        if (!cell) return;
+        const [r, c] = cell;
+        if (r === dragState.lastR && c === dragState.lastC) return;
+        dragState.lastR = r; dragState.lastC = c;
+
+        // First move away from the start commits an unmark-pending
+        // gesture into a real drag-erase: clear the starting × and
+        // switch modes so the current cell (and subsequent ones) all
+        // go through the same rule.
+        if (dragState.mode === 'unmark-pending') {
+            applyCellState(dragState.startR, dragState.startC, STATES.EMPTY);
+            dragState.mode = 'unmark';
+        }
+
+        if (dragState.mode === 'mark'
+            && state.placements[r][c] === STATES.EMPTY) {
+            applyCellState(r, c, STATES.MARK);
+        } else if (dragState.mode === 'unmark'
+            && state.placements[r][c] === STATES.MARK) {
+            applyCellState(r, c, STATES.EMPTY);
+        }
+    }
+
+    function onPointerUp(ev) {
+        if (!dragState || ev.pointerId !== dragState.pointerId) return;
+        const cell = eventToCell(ev);
+        const { mode, startR, startC, pointerId } = dragState;
+        dragState = null;
+        try { board.releasePointerCapture(pointerId); } catch (_) { /* ignore */ }
+        // 'tap' (started on ♛) and 'unmark-pending' (started on × but
+        // never left) both resolve as a plain cycle if the release
+        // lands on the starting cell. Everything else has already been
+        // committed by the move handler.
+        const tapLike = mode === 'tap' || mode === 'unmark-pending';
+        if (tapLike
+            && cell && cell[0] === startR && cell[1] === startC) {
+            cycleCell(startR, startC);
+        }
     }
 
     async function startNewGame() {
@@ -471,7 +585,12 @@
             onReveal: repaintSymbols,
         });
         board = shell.dom.board;
-        board.addEventListener('click', onBoardClick);
+        board.classList.add('drag-board');
+        board.addEventListener('pointerdown', onPointerDown);
+        board.addEventListener('pointermove', onPointerMove);
+        board.addEventListener('pointerup', onPointerUp);
+        board.addEventListener('pointercancel', onPointerUp);
+        board.addEventListener('contextmenu', (ev) => ev.preventDefault());
         shell.start();
     }
 

@@ -66,6 +66,13 @@ contains exactly one queen.
   - `×` is a personal "I think no queen goes here" marker. It is
     *not* a rule; the solver ignores it.
   - `♛` is an actual placement.
+- **Drag** to bulk-toggle × marks:
+  - Starting on an empty cell paints × onto every empty cell the
+    pointer passes over (`♛` cells are left alone).
+  - Starting on a × cell clears the × from every × the pointer
+    passes over — including the starting cell. Releasing without
+    ever leaving the starting cell falls back to a normal cycle,
+    so a still tap on × still goes to `♛`.
 - **Reveal (?)** draws a small grey queen in the top-left of every
   empty cell, showing the intended solution.
 
