@@ -578,6 +578,26 @@
                 'Every row, every column, every color region, and every 3×3 neighborhood may contain at most one queen.',
             queensHelp3:
                 'Solve the board by placing exactly N queens — one per row, column, and region — with no two adjacent.',
+            // Queens hint texts. Wording is kept close to the trace-tool
+            // strings so a player who reads the debug view sees the same
+            // reasoning.
+            queensHintKindRow: 'row',
+            queensHintKindCol: 'column',
+            queensHintKindRegion: 'region',
+            queensHintT1:
+                'The highlighted ♛ dominates its row, column, region, and adjacent cells. Rule out the striped cells.',
+            queensHintT2: (kind) =>
+                `Every other cell in the highlighted ${kind} has been ruled out — place ♛ on the marked cell.`,
+            queensHintT3: (axis) =>
+                `Each highlighted region needs one ♛, and those ${axis}s are already spoken for — every other region's cell in them is impossible.`,
+            queensHintCover: (kind) =>
+                `The highlighted ${kind} must contain a ♛. Every candidate here would kill the striped cells, so the striped cells cannot hold a queen.`,
+            queensHintWrongOne:
+                'The highlighted cell is incorrect.',
+            queensHintWrongMany: (n) =>
+                `${n} highlighted cells are incorrect.`,
+            queensHintNoAvail:
+                'No more deductions available right now. You may need to look for a subtler pattern.',
 
             // Tango
             tangoName: 'Tango',
@@ -674,6 +694,23 @@
                 '每個列、每個行、每個色塊區域、每個 3×3 鄰域中，最多只能有一個皇后。',
             queensHelp3:
                 '在不違反規則的情況下放下 N 個皇后即過關 — 每列、每行、每區域各一，且不互相相鄰。',
+            queensHintKindRow: '列',
+            queensHintKindCol: '行',
+            queensHintKindRegion: '區域',
+            queensHintT1:
+                '此♛把同行、同列、同區域或相鄰位置的格子封死了。排除掉條紋格子。',
+            queensHintT2: (kind) =>
+                `此${kind}的其他所有格子都被排除了。請將♛放置在醒目標示的格子中。`,
+            queensHintT3: (axis) =>
+                `每個醒目標示的區域都需要一個♛。這幾${axis}已經沒有地方放其他區域的♛了。排除掉條紋格子。`,
+            queensHintCover: (kind) =>
+                `醒目標示的${kind}內必須有♛。條紋格子中的♛把此${kind}封死了。排除掉條紋格子。`,
+            queensHintWrongOne:
+                '醒目標示的格子不正確。',
+            queensHintWrongMany: (n) =>
+                `醒目標示的 ${n} 格不正確。`,
+            queensHintNoAvail:
+                '目前沒有更進一步可以推論的地方了，可能需要找更細微的線索。',
 
             tangoName: 'Tango',
             tangoTagline: '太陽與月亮的平衡。',

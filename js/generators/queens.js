@@ -855,8 +855,10 @@
         solveWithTactics,
         verifyUniqueUnderTactics,
         expandRegions,
-        // Exposed for the trace tool.
+        // Exposed for the trace tool AND the in-game hint system.
         makeSolverState,
+        placeAt,
+        excludeAt,
         stepT2,
         stepT3,
         stepT4,

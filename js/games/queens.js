@@ -30,6 +30,23 @@
         '#88DDDD', '#DDAA77', '#99BB99', '#CCAAFF',
     ];
 
+    // Multiplicative darken of a `#RRGGBB` hex — used to derive the
+    // in-family stripe colour that a hint's "excluded" cells wear
+    // (region colour × factor). Kept tolerant of `#rgb` shorthand
+    // even though REGION_COLORS is always full-length.
+    function darkenHex(hex, factor) {
+        const h = hex.replace('#', '');
+        const full = h.length === 3
+            ? h.split('').map((c) => c + c).join('')
+            : h;
+        const r = parseInt(full.slice(0, 2), 16);
+        const g = parseInt(full.slice(2, 4), 16);
+        const b = parseInt(full.slice(4, 6), 16);
+        const clamp = (v) => Math.max(0, Math.min(255, Math.round(v)));
+        const toHex = (v) => clamp(v).toString(16).padStart(2, '0');
+        return '#' + toHex(r * factor) + toHex(g * factor) + toHex(b * factor);
+    }
+
     const BOARD_SIZE = 480; // logical board area; SVG viewBox adds padding for outer stroke
     const STATES = { EMPTY: 0, MARK: 1, QUEEN: 2 };
     const STATE_CYCLE = [STATES.EMPTY, STATES.MARK, STATES.QUEEN]; // click order
@@ -80,6 +97,13 @@
         displayedViolations: null,
         displayedPairs: 0,
         violationTimer: null,
+
+        // Active hint. See renderHintBanner / repaintHintOverlay for the
+        // shape. Cleared whenever the player alters a ♛ (× toggles do
+        // not affect the solver, so we leave them alone).
+        hint: null,
+        hintBanner: null,
+        hintButton: null,
     };
 
     // The shell owns difficulty / size / revealed / timer.
@@ -257,6 +281,32 @@
 
         const cs = BOARD_SIZE / N;
 
+        // Layer: <defs> — one stripe pattern per region colour, used by
+        // hint "excluded" cells. Using in-family shades (darkenHex of
+        // the region colour) keeps the striping tonally consistent
+        // with the cell it sits on instead of jarring bright red.
+        // Patterns are namespaced `queens-hint-stripes-<idx>`.
+        const defs = PC.svgEl('defs', {});
+        for (let k = 0; k < REGION_COLORS.length; k++) {
+            // Thin, low-opacity, in-palette stripes. Just enough of a
+            // texture cue to read as "excluded" without competing with
+            // the region colour or the × / ♛ glyphs the player is
+            // trying to focus on.
+            const stripe = darkenHex(REGION_COLORS[k], 0.7);
+            const pat = PC.svgEl('pattern', {
+                id: `queens-hint-stripes-${k}`,
+                patternUnits: 'userSpaceOnUse',
+                width: 8, height: 8,
+                patternTransform: 'rotate(45)',
+            });
+            pat.appendChild(PC.svgEl('line', {
+                x1: 0, y1: 0, x2: 0, y2: 8,
+                stroke: stripe, 'stroke-width': 2, 'stroke-opacity': 0.4,
+            }));
+            defs.appendChild(pat);
+        }
+        svg.appendChild(defs);
+
         // Layer: cell backgrounds (colored by region)
         const bgGroup = PC.svgEl('g', { class: 'cells' });
         for (let r = 0; r < N; r++) {
@@ -271,6 +321,14 @@
             }
         }
         svg.appendChild(bgGroup);
+
+        // Layer: hint FILL — sits above cell backgrounds so its
+        // semi-transparent tints show through the region colours, but
+        // below the region borders so those stay crisp even inside the
+        // highlighted area. Populated / cleared by repaintHintOverlay.
+        const hintFillGroup = PC.svgEl('g', { class: 'hint-fill' });
+        hintFillGroup.setAttribute('id', 'hint-fill');
+        svg.appendChild(hintFillGroup);
 
         // Layer: region borders (thick lines between differing regions and
         // around the outer perimeter — same stroke width everywhere). The
@@ -297,10 +355,26 @@
         }
         svg.appendChild(borderGroup);
 
+        // Layer: hint OUTLINE — bold coloured strokes drawn above the
+        // region borders so they cut through and clearly frame the
+        // hint cells regardless of what region colour they sit on.
+        const hintOutlineGroup = PC.svgEl('g', { class: 'hint-outline' });
+        hintOutlineGroup.setAttribute('id', 'hint-outline');
+        svg.appendChild(hintOutlineGroup);
+
         // Layer: symbols (queen / mark) + violations + reveal overlay
         const symbolGroup = PC.svgEl('g', { class: 'symbols' });
         symbolGroup.setAttribute('id', 'symbols');
         svg.appendChild(symbolGroup);
+
+        // Layer: hint DIM — a per-cell black tint painted over every
+        // NON-hint cell (including its symbols) when a hint is active.
+        // This produces the "spotlight" effect the design calls for:
+        // the important cells stay at full brightness, everything else
+        // fades back. Below the hit layer so pointer events still work.
+        const hintDimGroup = PC.svgEl('g', { class: 'hint-dim' });
+        hintDimGroup.setAttribute('id', 'hint-dim');
+        svg.appendChild(hintDimGroup);
 
         // Layer: invisible click targets (placed last so they capture events)
         const hitGroup = PC.svgEl('g', { class: 'hit' });
@@ -319,6 +393,7 @@
         svg.appendChild(hitGroup);
 
         repaintSymbols();
+        repaintHintOverlay();
     }
 
     function repaintSymbols() {
@@ -423,8 +498,15 @@
     // can create or dissolve a violation / win, so pure × toggles skip
     // the recompute — that keeps a fast drag-mark from paying the O(N²)
     // scan on every intermediate cell.
+    //
+    // While a hint is active, the board is frozen except for the cells
+    // that hint touches — the player is nudged towards completing the
+    // hint before doing anything else. When the hint's requirement is
+    // met the hint auto-dismisses so the player keeps flow without
+    // having to click Hint again.
     function applyCellState(r, c, next) {
         if (!state.puzzle || state.won) return;
+        if (state.hint && !isHintCell(r, c)) return;
         const cur = state.placements[r][c];
         if (cur === next) return;
         state.placements[r][c] = next;
@@ -438,6 +520,7 @@
                 state.displayedViolations = emptyViolationGrid(state.puzzle.size);
                 state.displayedPairs = 0;
                 shell.markSolved();
+                clearHint();
                 repaintSymbols();
                 updateStatusRow();
                 return;
@@ -449,8 +532,76 @@
             // region / neighbourhood.
             scheduleViolationRefresh(r, c);
         }
+        // Hint follow-up:
+        //   • Hint satisfied by this move → clear the whole hint.
+        //   • ♛ changed but hint not satisfied → still clear, since
+        //     the underlying solver state has moved and the hint's
+        //     highlighted cells are stale.
+        //   • × toggle that leaves the hint unsatisfied → leave the
+        //     overlay untouched. The stripes stay put until the last
+        //     violation is handled and the auto-clear kicks in.
+        // When we clear mid-drag we also cancel dragState so the
+        // player's finger doesn't keep painting extra × marks onto
+        // unrelated cells after the hint disappears.
+        if (state.hint && (isHintSatisfied() || queenInvolved)) {
+            clearHint();
+            if (dragState) dragState = null;
+        }
         repaintSymbols();
         updateStatusRow();
+    }
+
+    // Is (r,c) part of the current hint? Used both to gate applyCellState
+    // during a hint (only hint cells are interactive) and to know which
+    // cells to leave un-dimmed in the overlay. Returns true when no hint
+    // is active so the freeze predicate falls open by default.
+    function isHintCell(r, c) {
+        const h = state.hint;
+        if (!h) return true;
+        const inList = (cells) => {
+            if (!cells) return false;
+            for (const [hr, hc] of cells) {
+                if (hr === r && hc === c) return true;
+            }
+            return false;
+        };
+        return inList(h.targetCells)
+            || inList(h.violationCells)
+            || inList(h.contextCells);
+    }
+
+    // Has the player fulfilled the currently-shown hint?
+    //   error mode  — the player's board no longer disagrees with the
+    //                 unique solution (all wrong ♛ / × have been fixed).
+    //   T2 (target) — the target cell now holds ♛. Handled implicitly
+    //                 via the queen-involved auto-clear path but we
+    //                 still check here so the branch is uniform.
+    //   T1/T3/T4/T5 — every violation cell now bears ×.
+    //   noHint      — never "satisfied"; the banner stays until the
+    //                 player toggles the button off.
+    function isHintSatisfied() {
+        const h = state.hint;
+        if (!h || h.mode === 'noHint') return false;
+        if (h.mode === 'error') {
+            return findWrongPlacements().length === 0;
+        }
+        // T2 completion is "place ♛ at target" — even though we also
+        // paint the group's other cells as stripes for the visual
+        // "其他所有格子都被排除了", the semantically-meaningful action
+        // is still the queen placement, so we don't clear the hint
+        // just because the player rubber-stamped the strikes.
+        if (h.tier === 'T2') {
+            const t = h.targetCells && h.targetCells[0];
+            return !!t && state.placements[t[0]][t[1]] === STATES.QUEEN;
+        }
+        // T1 kills + T3 / T4 / T5 covering — completion is "every
+        // violation cell now bears ×".
+        const violations = h.violationCells || [];
+        if (violations.length === 0) return false;
+        for (const [r, c] of violations) {
+            if (state.placements[r][c] !== STATES.MARK) return false;
+        }
+        return true;
     }
 
     function cycleCell(r, c) {
@@ -555,10 +706,359 @@
         }
     }
 
+    // -----------------------------------------------------------------
+    // Hint
+    //
+    // The active hint mirrors Tango's shape closely (single source of
+    // banner + overlay state) so tweaks to the hint UI in future can
+    // stay symmetric across games.
+    //
+    // state.hint shape when active:
+    //   {
+    //     mode:           'error' | 'deduction' | 'noHint',
+    //     textKey:        i18n key for the banner sentence,
+    //     argKey?:        i18n key for a localised noun to splice in
+    //                     ("row" / "column" / "region"); resolved at
+    //                     render time so a locale flip refreshes it,
+    //     textArgRaw?:    numeric arg used by error-mode banners (the
+    //                     count of wrong ♛s),
+    //     targetCells:    [[r,c], ...] — darker amber tint (the
+    //                     placement in T2, or the T5 region-killer
+    //                     candidates),
+    //     contextCells:   [[r,c], ...] — light amber tint (candidates
+    //                     inside the target group),
+    //     violationCells: [[r,c], ...] — striped red overlay (cells
+    //                     the deduction rules out, or the wrong ♛s
+    //                     in error mode).
+    //   }
+    // -----------------------------------------------------------------
+
+    // Build a solver state pre-populated with the player's progress.
+    //   • Correctly-placed ♛ go through placeAt so T1 kills cascade
+    //     into the candidate grid.
+    //   • × marks the player has laid down also get excluded — this
+    //     matters because deduction steps (T2 / T4 / T3 / T5) are
+    //     computed from scratch each hint click and, without this,
+    //     the solver would keep re-suggesting the same excludedAt set
+    //     the player already handled.
+    // Wrong placements are handled by findWrongPlacements and short-
+    // circuit the hint before we get here.
+    function composeSolverStateForHint() {
+        const S = window.PuzzleSolvers && window.PuzzleSolvers.queens;
+        if (!S || typeof S.placeAt !== 'function'
+            || typeof S.makeSolverState !== 'function'
+            || typeof S.excludeAt !== 'function') {
+            console.warn(
+                '[queens] Solver missing expected exports — hard-refresh '
+                + 'the page (Ctrl+F5) to pick up js/generators/queens.js.');
+            return null;
+        }
+        const st = S.makeSolverState(state.puzzle.regions, state.puzzle.size);
+        const N = state.puzzle.size;
+        const sol = state.puzzle.solution;
+        for (let r = 0; r < N; r++) {
+            for (let c = 0; c < N; c++) {
+                if (state.placements[r][c] !== STATES.QUEEN) continue;
+                if (sol[r] !== c) continue;   // wrong ♛ — ignore
+                S.placeAt(st, r, c);
+            }
+        }
+        // Applied AFTER placeAt so × on cells already killed by a ♛ is
+        // just a harmless no-op (candidate was already false).
+        for (let r = 0; r < N; r++) {
+            for (let c = 0; c < N; c++) {
+                if (state.placements[r][c] === STATES.MARK) {
+                    S.excludeAt(st, r, c);
+                }
+            }
+        }
+        return st;
+    }
+
+    // Return the first correctly-placed queen whose "kills" (same row,
+    // column, region, or 8-neighbourhood) contain at least one cell
+    // the player hasn't marked with × yet, along with those unmarked
+    // kill cells. This is the T1 hint — the first thing a player is
+    // supposed to do after placing a queen. Iteration is row-major so
+    // repeated hint clicks walk deterministically through the board.
+    function findUnmarkedKills() {
+        if (!state.puzzle) return null;
+        const N = state.puzzle.size;
+        const sol = state.puzzle.solution;
+        const regions = state.puzzle.regions;
+        for (let qr = 0; qr < N; qr++) {
+            for (let qc = 0; qc < N; qc++) {
+                if (state.placements[qr][qc] !== STATES.QUEEN) continue;
+                if (sol[qr] !== qc) continue;   // wrong ♛ — ignored
+                const kills = [];
+                for (let r = 0; r < N; r++) {
+                    for (let c = 0; c < N; c++) {
+                        if (r === qr && c === qc) continue;
+                        if (state.placements[r][c] !== STATES.EMPTY) continue;
+                        const sameRow = r === qr;
+                        const sameCol = c === qc;
+                        const adj = Math.abs(r - qr) <= 1
+                            && Math.abs(c - qc) <= 1;
+                        const sameRegion =
+                            regions[r][c] === regions[qr][qc];
+                        if (sameRow || sameCol || adj || sameRegion) {
+                            kills.push([r, c]);
+                        }
+                    }
+                }
+                if (kills.length) return { queen: [qr, qc], kills };
+            }
+        }
+        return null;
+    }
+
+    // A placement is "wrong" if it provably disagrees with the puzzle's
+    // unique solution:
+    //   • ♛ on a cell that isn't the solution's queen column for that
+    //     row (subsumes row / adjacency / region conflicts too — any
+    //     of those means at least one queen must be off-solution), or
+    //   • × on a cell that IS the solution's queen column for that
+    //     row (the player ruled out the one place a queen must go).
+    function findWrongPlacements() {
+        const N = state.puzzle.size;
+        const sol = state.puzzle.solution;
+        const out = [];
+        for (let r = 0; r < N; r++) {
+            const solCol = sol[r];
+            for (let c = 0; c < N; c++) {
+                const s = state.placements[r][c];
+                if (s === STATES.QUEEN && solCol !== c) {
+                    out.push([r, c]);
+                } else if (s === STATES.MARK && solCol === c) {
+                    out.push([r, c]);
+                }
+            }
+        }
+        return out;
+    }
+
+    // Convert a solver step into a hint entry (mode='deduction'). The
+    // `argKey` is the i18n key for the {row/column/region} noun the
+    // banner splices in; resolving it at render time (not now) lets a
+    // mid-hint locale flip refresh the sentence.
+    function stepToHint(step) {
+        const kindKey = step.groupKind === 'row' ? 'queensHintKindRow'
+            : step.groupKind === 'col' ? 'queensHintKindCol'
+                : 'queensHintKindRegion';
+
+        if (step.tier === 'T2') {
+            // Only the placement cell stays bright — every other cell
+            // in the row / column / region gets the stripe treatment
+            // so the banner's "其他所有格子都被排除了" reads visually.
+            const [tr, tc] = step.placedAt;
+            const others = (step.groupCells || []).filter(
+                ([r, c]) => !(r === tr && c === tc),
+            );
+            return {
+                mode: 'deduction',
+                tier: 'T2',
+                textKey: 'queensHintT2',
+                argKey: kindKey,
+                targetCells: [step.placedAt],
+                contextCells: [],
+                violationCells: others,
+            };
+        }
+        if (step.tier === 'T3') {
+            return {
+                mode: 'deduction',
+                tier: 'T3',
+                textKey: 'queensHintT3',
+                argKey: step.axis === 'row'
+                    ? 'queensHintKindRow' : 'queensHintKindCol',
+                targetCells: [],
+                contextCells: step.regionCandidates || [],
+                violationCells: step.excludedAt || [],
+            };
+        }
+        // T4 / T5 — covering. Treat the T5 region-killer subset as
+        // additional target cells so the player can spot which
+        // candidates specifically rely on the region-colour framing.
+        return {
+            mode: 'deduction',
+            tier: step.tier,
+            textKey: 'queensHintCover',
+            argKey: kindKey,
+            targetCells: step.regionKillers || [],
+            contextCells: step.groupCandidates || [],
+            violationCells: step.excludedAt || [],
+        };
+    }
+
+    // Run one solver step at the priority the main solver uses:
+    // T2 → T4 → T3 → T5. Higher-tier deductions are always available
+    // to the hint system regardless of difficulty — a player asking
+    // for help gets the easiest currently-applicable reasoning even
+    // if the puzzle was tagged "easy".
+    function computeDeductionHint() {
+        const S = window.PuzzleSolvers && window.PuzzleSolvers.queens;
+        const st = composeSolverStateForHint();
+        if (!st || !S) return null;
+        return S.stepT2(st) || S.stepT4(st) || S.stepT3(st) || S.stepT5(st);
+    }
+
+    function showHint() {
+        if (!state.puzzle || state.won) return;
+        if (state.hint) { clearHint(); return; }
+
+        // Priority 1: any ♛ that disagrees with the unique solution.
+        // Fixing those has to come before any further deduction —
+        // running the solver from a wrong state would either spin or
+        // give misleading advice.
+        const wrong = findWrongPlacements();
+        if (wrong.length > 0) {
+            state.hint = {
+                mode: 'error',
+                textKey: wrong.length === 1
+                    ? 'queensHintWrongOne' : 'queensHintWrongMany',
+                textArgRaw: wrong.length,   // literal arg for i18n(count)
+                // Error highlighting is dim-based: the wrong cells stay
+                // bright while the rest of the board fades. No stripes
+                // — the banner explicitly says these cells are "醒目
+                // 標示 (highlighted)", so the spotlight IS the signal.
+                targetCells: [],
+                contextCells: wrong,
+                violationCells: [],
+            };
+            renderHintBanner();
+            repaintHintOverlay();
+            return;
+        }
+
+        // Priority 2: T1 kills — remind the player to mark the row /
+        // column / region / adjacent cells of a correctly-placed ♛
+        // before we go looking for subtler deductions. This mirrors
+        // LinkedIn's first-line-of-defence hint.
+        const kills = findUnmarkedKills();
+        if (kills) {
+            state.hint = {
+                mode: 'kills',
+                textKey: 'queensHintT1',
+                // Highlight the dominating ♛ as the target so it gets the
+                // amber-fill + orange-outline treatment — the sentence
+                // "此♛把..." then visually points at exactly which queen
+                // it means, even if the player has several on the board.
+                targetCells: [kills.queen],
+                contextCells: [],
+                violationCells: kills.kills,
+            };
+            renderHintBanner();
+            repaintHintOverlay();
+            return;
+        }
+
+        const step = computeDeductionHint();
+        state.hint = step ? stepToHint(step) : {
+            mode: 'noHint',
+            textKey: 'queensHintNoAvail',
+            targetCells: [], contextCells: [], violationCells: [],
+        };
+        renderHintBanner();
+        repaintHintOverlay();
+    }
+
+    function clearHint() {
+        if (!state.hint) return;
+        state.hint = null;
+        renderHintBanner();
+        repaintHintOverlay();
+    }
+
+    function renderHintBanner() {
+        const banner = state.hintBanner;
+        if (!banner) return;
+        const h = state.hint;
+        if (!h) {
+            banner.hidden = true;
+            banner.textContent = '';
+            banner.classList.remove('error');
+            return;
+        }
+        // Deduction hints splice in a localised noun ("row" / "column"
+        // / "region"); error hints splice in a raw integer. Both go
+        // through PC.i18n.t so string or function entries work.
+        const arg = h.argKey ? PC.i18n.t(h.argKey)
+            : (h.textArgRaw != null ? h.textArgRaw : undefined);
+        banner.textContent = arg !== undefined
+            ? PC.i18n.t(h.textKey, arg)
+            : PC.i18n.t(h.textKey);
+        banner.classList.toggle('error', h.mode === 'error');
+        banner.hidden = false;
+    }
+
+    function repaintHintOverlay() {
+        if (!board) return;
+        const fillGroup = board.querySelector('#hint-fill');
+        const outlineGroup = board.querySelector('#hint-outline');
+        const dimGroup = board.querySelector('#hint-dim');
+        if (!fillGroup || !outlineGroup || !dimGroup) return;
+        while (fillGroup.firstChild) fillGroup.removeChild(fillGroup.firstChild);
+        while (outlineGroup.firstChild) {
+            outlineGroup.removeChild(outlineGroup.firstChild);
+        }
+        while (dimGroup.firstChild) dimGroup.removeChild(dimGroup.firstChild);
+        const h = state.hint;
+        if (!h) return;
+
+        const N = state.puzzle.size;
+
+        // The design emphasis is "spotlight the hint, dim everything
+        // else". Non-hint cells are dimmed below; the hint cells wear
+        // only the minimum decoration they need to distinguish role:
+        //   contextCells / targetCells — no decoration. Their region
+        //     colour is enough once the surroundings fade back, and
+        //     the ♛ / × / empty content already tells the player
+        //     which cell is which.
+        //   violationCells — diagonal stripes drawn in a darkened
+        //     shade of the cell's own region colour, so the "excluded"
+        //     signal reads clearly without introducing an out-of-
+        //     palette red.
+        const regions = state.puzzle.regions;
+        for (const [r, c] of h.violationCells || []) {
+            const { x, y, size } = cellRect(N, r, c);
+            const k = regions[r][c] % REGION_COLORS.length;
+            fillGroup.appendChild(PC.svgEl('rect', {
+                x, y, width: size, height: size,
+                fill: `url(#queens-hint-stripes-${k})`,
+            }));
+        }
+
+        // Dim overlay on every non-hint cell. Painted above the symbol
+        // layer so ♛ / × marks on dimmed cells also fade — that's what
+        // makes the highlighted cells visually "pop" without any extra
+        // decoration on them.
+        const hintSet = new Set();
+        const collect = (cells) => {
+            for (const [r, c] of cells || []) hintSet.add(r * N + c);
+        };
+        collect(h.contextCells);
+        collect(h.targetCells);
+        collect(h.violationCells);
+        if (hintSet.size === 0) return;
+        for (let r = 0; r < N; r++) {
+            for (let c = 0; c < N; c++) {
+                if (hintSet.has(r * N + c)) continue;
+                const { x, y, size } = cellRect(N, r, c);
+                dimGroup.appendChild(PC.svgEl('rect', {
+                    x, y, width: size, height: size,
+                    fill: '#000',
+                    'fill-opacity': 0.55,
+                    'pointer-events': 'none',
+                }));
+            }
+        }
+    }
+
     async function startNewGame() {
         const seed = (Date.now() ^ Math.floor(Math.random() * 0xffffffff)) >>> 0;
         state.puzzle = await generatePuzzle(shell.size, shell.difficulty, seed);
         ensurePlacementsForCurrent();
+        clearHint();
         renderBoard();
         updateStatusRow();
     }
@@ -567,6 +1067,7 @@
         if (!state.puzzle) return;
         ensurePlacementsForCurrent();
         state.won = false;
+        clearHint();
         repaintSymbols();
         updateStatusRow();
     }
@@ -591,6 +1092,19 @@
         board.addEventListener('pointerup', onPointerUp);
         board.addEventListener('pointercancel', onPointerUp);
         board.addEventListener('contextmenu', (ev) => ev.preventDefault());
+
+        state.hintBanner = document.getElementById('hint-banner');
+        state.hintButton = document.getElementById('hint-btn');
+        if (state.hintButton) {
+            state.hintButton.addEventListener('click', showHint);
+        }
+        // Rerender the banner if the player flips the locale mid-hint,
+        // so a T4 / T3 / etc. explanation picks up the new language
+        // without needing to re-request the hint.
+        if (PC.i18n && typeof PC.i18n.subscribe === 'function') {
+            PC.i18n.subscribe(() => { if (state.hint) renderHintBanner(); });
+        }
+
         shell.start();
     }
 

@@ -52,6 +52,7 @@
 
         <div class="action-row">
             <button class="btn" id="reset-btn" type="button" data-i18n="reset" data-i18n-title="clearPlacements" title="Clear placements">↻ Reset</button>
+            <button class="btn" id="hint-btn" type="button" data-i18n="hint" data-i18n-title="highlightDeducible" title="Highlight one deducible cell">💡 Hint</button>
             <button class="btn toggle" id="reveal-btn" type="button" aria-pressed="false" data-i18n="reveal" data-i18n-title="showSolution" title="Show solution overlay">? Reveal</button>
         </div>
 
@@ -75,6 +76,8 @@
                  aria-label="Queens puzzle board">
             </svg>
         </div>
+
+        <div class="hint-banner" id="hint-banner" hidden aria-live="polite"></div>
 
         <section class="game-footer">
             <h4 data-i18n="howToPlay">How to play</h4>
