@@ -62,6 +62,10 @@
         .tier-badge.T4 { background: var(--T4); }
         .tier-badge.T5 { background: var(--T5); }
         .tier-badge.stalled { background: #999; }
+        .score-badge { font-size: 11px; padding: 1px 6px;
+                       border-radius: 3px; background: #eee; color: #555;
+                       font-weight: 600; font-family: ui-monospace, Menlo, monospace; }
+        .score-badge[data-zero="1"] { color: #aaa; }
         .step .explanation { color: #333; line-height: 1.5; }
         .step .cells { font-size: 11px; color: #666; margin-top: 4px;
                        font-family: ui-monospace, Menlo, monospace; }
@@ -119,6 +123,7 @@
                 <span>♛<sub style="opacity: 0.45">grey</sub> = true solution</span>
             </div>
             <div class="stats" id="stats"></div>
+            <div class="stats" id="score-summary"></div>
         </div>
         <div class="panel log" id="log">
             <div class="empty-log">Generate a puzzle, then press Step / Solve all.<br>
@@ -155,6 +160,7 @@
             resetSolver: document.getElementById('reset-solver'),
             boardWrap: document.getElementById('board-wrap'),
             stats: document.getElementById('stats'),
+            scoreSummary: document.getElementById('score-summary'),
             log: document.getElementById('log'),
         };
 
@@ -189,6 +195,7 @@
             const seed = parseInt(els.seed.value, 16) >>> 0;
             els.generate.disabled = true;
             els.stats.textContent = 'Generating…';
+            els.scoreSummary.innerHTML = '';
             els.boardWrap.innerHTML = '';
             els.log.innerHTML = '<div class="empty-log">Generating…</div>';
             try {
@@ -312,8 +319,21 @@
         // (highlight / candidate dot / striped fill / queen) and the
         // separate `cells` detail line below the text.
 
+        // Score every entry as it is built. T1 followups are scored
+        // trivially (0) so the running total isn't inflated by the
+        // display-only kill entries — the deduction that placed the
+        // queen already contributed its own score.
+        function scoreFor(step) {
+            const S = window.PuzzleSolvers && window.PuzzleSolvers.queens;
+            if (!S || typeof S.scoreStep !== 'function') {
+                return { score: 0, kind: step?.tier || 'noop' };
+            }
+            return S.scoreStep(step, puzzle && puzzle.regions);
+        }
+
         function makeT1Entry(s) {
             const [r, c] = s.placedAt;
+            const sc = scoreFor({ tier: 'T1' });
             return {
                 tier: 'T1',
                 text: `此♛把同行、同列、同區域或相鄰位置的格子封死了。排除掉條紋格子。`,
@@ -321,12 +341,15 @@
                 groupCells: [[r, c]],
                 groupCands: [[r, c]],
                 striped: s.t1Killed.slice(),
+                score: sc.score,
+                scoreKind: sc.kind,
             };
         }
 
         function makeT2Entry(s) {
             const [r, c] = s.placedAt;
             const kind = groupKindStr(s.groupKind);
+            const sc = scoreFor(s);
             return {
                 tier: 'T2',
                 text: `此${kind}的其他所有格子都被排除了。請將♛放置在醒目標示的格子中。`,
@@ -335,6 +358,8 @@
                 groupCells: s.groupCells,
                 groupCands: [[r, c]],
                 striped: [],
+                score: sc.score,
+                scoreKind: sc.kind,
             };
         }
 
@@ -342,6 +367,7 @@
             const axisName = s.axis === 'row' ? '列' : '行';
             const regStr = s.regionIds.map(r => '#' + r).join('、');
             const axisStr = s.reservedAxis.join('、');
+            const sc = scoreFor(s);
             return {
                 tier: 'T3',
                 text: `每個醒目標示的區域都需要一個♛。這幾${axisName}已經沒有地方放其他區域的♛了。排除掉條紋格子。`,
@@ -353,6 +379,8 @@
                 axis: s.axis,
                 regionIds: s.regionIds,
                 striped: s.excludedAt,
+                score: sc.score,
+                scoreKind: sc.kind,
             };
         }
 
@@ -367,6 +395,7 @@
             const rkSuffix = regionKillers.length
                 ? ` · region-kill ${regionKillers.map(cellStr).join('、')}`
                 : '';
+            const sc = scoreFor(s);
             return {
                 tier: s.tier,
                 text: `醒目標示的${kind}內必須有♛。條紋格子中的♛把此${kind}封死了。排除掉條紋格子。`,
@@ -376,6 +405,8 @@
                 groupCands: s.groupCandidates,
                 regionKillers,
                 striped: s.excludedAt,
+                score: sc.score,
+                scoreKind: sc.kind,
             };
         }
 
@@ -404,11 +435,59 @@
         function renderAll() {
             renderBoard();
             renderLog();
+            renderScoreSummary();
+        }
+
+        // Cumulative difficulty readout for the current log.
+        //   sumScore   — total effort so far (sum of every entry).
+        //   peakScore  — hardest single deduction seen. This is the
+        //                useful cap for generator filtering: "no
+        //                puzzle needs a step > K to reach unique".
+        //   breakdown  — per-tier count so we can eyeball whether a
+        //                seed is T1/T2-heavy vs relying on T3+.
+        function renderScoreSummary() {
+            if (!els.scoreSummary) return;
+            if (!puzzle) { els.scoreSummary.innerHTML = ''; return; }
+            let sum = 0;
+            let peak = 0;
+            const byTier = {};
+            for (const s of stepLog) {
+                if (s.tier === 'stalled') continue;
+                const v = typeof s.score === 'number' ? s.score : 0;
+                sum += v;
+                if (v > peak) peak = v;
+                byTier[s.tier] = (byTier[s.tier] || 0) + 1;
+            }
+            const breakdown = ['T1', 'T2', 'T3', 'T4', 'T5']
+                .filter(t => byTier[t])
+                .map(t => `${t}×${byTier[t]}`)
+                .join(' · ') || '—';
+            els.scoreSummary.innerHTML = `
+                <div><strong>Difficulty score</strong>
+                     · sum <code>${sum}</code>
+                     · peak <code>${peak}</code></div>
+                <div>steps ${stepLog.length} · ${escapeHtml(breakdown)}</div>
+            `;
         }
 
         function renderStats(dtMs) {
             if (!puzzle) return;
             const s = puzzle.stats || {};
+            const qualityNote = s.qualityMissed
+                ? ` <span style="color:#c62828">(quality miss, target ≤${s.qualityTarget})</span>`
+                : '';
+            const budgetSuffix = (s.candidateBudget != null)
+                ? ` / target ${s.candidateBudget}`
+                : '';
+            const retriesSuffix = (s.maxRetries != null)
+                ? ` (retries ≤${s.maxRetries})`
+                : '';
+            const spreadLine = Array.isArray(s.candidateSpread)
+                ? `<div>candidates ${s.candidateCount ?? s.candidateSpread.length}${budgetSuffix}${retriesSuffix}: `
+                    + s.candidateSpread
+                        .map(c => `${c.sumScore}/${c.peakScore}·s${c.singletons}`)
+                        .join(', ') + `</div>`
+                : '';
             els.stats.innerHTML = `
                 <div><strong>${escapeHtml(puzzle.id)}</strong></div>
                 <div>gen ${dtMs.toFixed(0)} ms · attempt ${s.attemptMs ?? '?'} ms
@@ -417,6 +496,14 @@
                      · verifyCalls <code>${s.verifyCalls ?? '?'}</code>
                      · verifyRejects <code>${s.verifyRejects ?? '?'}</code>
                      · backtracks <code>${s.backtracks ?? '?'}</code></div>
+                <div>region sizes
+                     · singletons <code>${s.singletonRegions ?? '?'}</code>${qualityNote}
+                     · min <code>${s.minRegionSize ?? '?'}</code>
+                     · max <code>${s.maxRegionSize ?? '?'}</code></div>
+                <div>gen score
+                     · sum <code>${s.sumScore ?? '?'}</code>
+                     · peak <code>${s.peakScore ?? '?'}</code></div>
+                ${spreadLine}
                 <div>solution rows → cols:
                      <code>${puzzle.solution.join(', ')}</code></div>
             `;
@@ -625,6 +712,16 @@
                 const sel = i === selectedStepIdx ? ' selected' : '';
                 const cls = `step tier-${s.tier}${sel}`;
                 const badge = `<span class="tier-badge ${s.tier}">${s.tier}</span>`;
+                // Score badge sits alongside the tier badge. Even
+                // 0-score entries (T1, stalled) get one so the row
+                // alignment stays consistent — they're just dimmed.
+                const scoreVal = typeof s.score === 'number' ? s.score : 0;
+                const scoreTitle = s.scoreKind
+                    ? `score ${scoreVal} (${s.scoreKind})`
+                    : `score ${scoreVal}`;
+                const scoreBadge = `<span class="score-badge"`
+                    + ` data-zero="${scoreVal === 0 ? 1 : 0}"`
+                    + ` title="${escapeHtml(scoreTitle)}">+${scoreVal}</span>`;
                 const parts = [];
                 if (s.groupHint) parts.push(s.groupHint);
                 if (s.placed && s.placed.length) {
@@ -635,7 +732,7 @@
                 }
                 const detail = parts.join(' · ');
                 html += `<div class="${cls}" data-idx="${i}">
-                    <div class="head">${badge}<span class="step-num">step ${i+1}</span></div>
+                    <div class="head">${badge}${scoreBadge}<span class="step-num">step ${i+1}</span></div>
                     <div class="explanation">${escapeHtml(s.text || '')}</div>
                     ${detail ? `<div class="cells">${escapeHtml(detail)}</div>` : ''}
                 </div>`;

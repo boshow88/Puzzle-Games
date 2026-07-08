@@ -122,7 +122,82 @@
         return 150000;
     }
 
-    const MAX_SEED_RETRIES = 10;
+    // Per-(N, difficulty) hard cap on how many seeds we're willing to
+    // burn before giving up on generation. Always ≥ candidateBudget
+    // with a few extra slots for failed / timed-out expansions so
+    // the pool sampling isn't starved on unlucky seeds. Small boards
+    // can afford a much bigger cap because each expansion finishes
+    // in a fraction of a second.
+    function maxSeedRetries(N, difficulty) {
+        const budget = candidateBudget(N, difficulty);
+        // 4 failed-seed slack for large boards, 6 for small.
+        const slack = N <= 6 ? 6 : 4;
+        return Math.max(10, budget + slack);
+    }
+
+    // Per-difficulty "quality" targets applied to expanded puzzles.
+    //   maxSingletonRegions - a size-1 region is a free T2 "naked
+    //     single" hint (score 1), so puzzles littered with them feel
+    //     trivial regardless of what tactic set the difficulty
+    //     nominally allows. Higher difficulty ⇒ tighter cap. Easy
+    //     imposes no cap since the point of easy is to have plenty of
+    //     these anchors.
+    function qualityTargets(difficulty) {
+        if (difficulty === 'hard')   return { maxSingletonRegions: 0 };
+        if (difficulty === 'medium') return { maxSingletonRegions: 1 };
+        return { maxSingletonRegions: Infinity };
+    }
+
+    // How many candidate puzzles to sample before picking the
+    // hardest one. Mirrors Tango's "generate K, pick best" approach:
+    // more samples → better shot at hitting the top of the
+    // difficulty band, at the cost of wall time.
+    //
+    // Scaled by both N and difficulty:
+    //   * Easy short-circuits to 1 — the point of easy is to be
+    //     quick + gentle, no reason to hunt for the "hardest easy".
+    //   * Smaller boards get much bigger budgets. Each expansion on
+    //     N=5-6 finishes in well under a second, so 10-15 candidates
+    //     is cheap; large boards would blow wall time with the same
+    //     count. Tango uses the same shape (30 → 10 → 5 across N
+    //     tiers) — mirrored here at a lower absolute scale because
+    //     Queens' per-expansion cost is heavier than Tango's carve.
+    //   * Hard gets ~50% more samples than medium so the picker has
+    //     more room to reject the "too easy" seeds a random draw
+    //     will still occasionally produce.
+    function candidateBudget(N, difficulty) {
+        if (difficulty === 'easy') return 1;
+        if (difficulty === 'medium') {
+            if (N <= 6) return 8;
+            if (N <= 8) return 4;
+            return 3;
+        }
+        // hard
+        if (N <= 6) return 12;
+        if (N <= 8) return 6;
+        return 3;
+    }
+
+    // Rank two candidates for "which is a better puzzle at this
+    // difficulty". Higher is better on the primary axis; ties fall
+    // through in order:
+    //   1. Meets quality (singletons ≤ target)         boolean
+    //   2. sumScore                                    total effort
+    //   3. peakScore                                   hardest step
+    //   4. fewer singleton regions                     visual polish
+    // Returns negative if `a` is better, positive if `b` is better.
+    function compareCandidates(a, b, quality) {
+        const aQ = a.stats.singletonRegions <= quality.maxSingletonRegions ? 1 : 0;
+        const bQ = b.stats.singletonRegions <= quality.maxSingletonRegions ? 1 : 0;
+        if (aQ !== bQ) return bQ - aQ;
+        if (a.stats.sumScore !== b.stats.sumScore) {
+            return b.stats.sumScore - a.stats.sumScore;
+        }
+        if (a.stats.peakScore !== b.stats.peakScore) {
+            return b.stats.peakScore - a.stats.peakScore;
+        }
+        return a.stats.singletonRegions - b.stats.singletonRegions;
+    }
 
     // -----------------------------------------------------------------
     // Queens placement — shuffled DFS, one queen per row.
@@ -627,6 +702,136 @@
         return stepCoverInner(state, killsBetween, 'T5', true);
     }
 
+    // -----------------------------------------------------------------
+    // Difficulty scoring.
+    //
+    // scoreStep(step, regions) returns { score, kind } for a single
+    // solver step. The goal is a coarse numeric handle on "how much
+    // work does a human do to spot this deduction" — enough to
+    //   * audit generated puzzles in the trace tool, and
+    //   * (later) let the generator filter seeds into a difficulty
+    //     band by summing / peaking these per-step scores.
+    //
+    // Scores are intentionally chunky, not psychometric:
+    //   T1 → 0          Kills that follow directly from a queen
+    //                   placement. Rule application, not deduction.
+    //   T2 → 1          Naked single. Recognition is trivial; whatever
+    //                   collapsed the group to one candidate already
+    //                   paid for itself on earlier turns.
+    //   T3 → 3 (K=2)    Pigeonhole. Player must union K regions and
+    //         5 (K=3)   notice they only touch K rows / cols. Cost
+    //         8 (K≥4)   scales with K.
+    //   T4 → 3 (line, contiguous)   Covering, geometric-only.
+    //         4 (line, split)        The "line" case is the "1×N region
+    //         6 (general)            / N×1 row/col-of-one-region" shape.
+    //                   Contiguous line — the group's remaining
+    //                   candidates form a solid run of cells on the
+    //                   varying axis — reads instantly as "this region's
+    //                   queen must live in row r, columns 2-5".
+    //                   Split line — same axis but with gaps between
+    //                   candidates — is subtler because the eye can't
+    //                   just latch onto one continuous bar.
+    //                   General case is anything else.
+    //   T5 → 6 (line, contiguous)    Covering that needs region-aware
+    //         7 (line, split)         kills. Same line / split /
+    //         10 (general)            general classification as T4,
+    //                   uniformly harder because the killer excludes
+    //                   the candidate via a same-region neighbour
+    //                   (extra reasoning hop).
+    //
+    // `regions` is optional — it lets us detect the "row/col whose
+    // candidates all live in one region" flavour of the line case
+    // (dual of "region whose candidates are colinear"). Omit it and
+    // that flavour falls through to the general (higher) score.
+    // -----------------------------------------------------------------
+
+    function scoreStep(step, regions) {
+        if (!step || !step.tier) return { score: 0, kind: 'noop' };
+        switch (step.tier) {
+            case 'T1': return { score: 0, kind: 'T1' };
+            case 'T2': return { score: 1, kind: 'T2' };
+            case 'T3': {
+                const k = Array.isArray(step.regionIds)
+                    ? step.regionIds.length : 2;
+                if (k <= 2) return { score: 3, kind: 'T3-K2' };
+                if (k === 3) return { score: 5, kind: 'T3-K3' };
+                return { score: 8, kind: 'T3-Kmany' };
+            }
+            case 'T4':
+            case 'T5': {
+                const shape = coverLineShape(step, regions);
+                if (step.tier === 'T4') {
+                    if (!shape) return { score: 6, kind: 'T4' };
+                    return shape.contiguous
+                        ? { score: 3, kind: 'T4-line' }
+                        : { score: 4, kind: 'T4-line-split' };
+                }
+                if (!shape) return { score: 10, kind: 'T5' };
+                return shape.contiguous
+                    ? { score: 6, kind: 'T5-line' }
+                    : { score: 7, kind: 'T5-line-split' };
+            }
+            default:
+                return { score: 0, kind: String(step.tier) };
+        }
+    }
+
+    // The "1×N line" special case that reads as a single-chain
+    // deduction. Two symmetric flavours:
+    //   * A region whose remaining candidates all sit in one row OR
+    //     one column ("this region's queen must live in row r").
+    //   * A row / col whose remaining candidates all belong to one
+    //     region ("this row's queen must come from region k").
+    //
+    // Returns null if the step isn't a line at all, or
+    // { contiguous: bool } describing whether the line is a solid run
+    // (e.g. cols 3-6) or broken by gaps (e.g. cols 3, 5, 6). Split
+    // lines are visually harder for the player to parse — the eye
+    // can latch onto a solid bar much faster than onto scattered
+    // cells that happen to share an axis — so scoreStep charges a
+    // small premium for them.
+    function coverLineShape(step, regions) {
+        const cands = step.groupCandidates || [];
+        if (cands.length < 2) return null;
+        // Collect the coordinates along the "varying" axis of the
+        // line (col if the line is a row, row if the line is a col).
+        // `vals` becomes that coordinate set, or stays null if the
+        // step isn't a line.
+        let vals = null;
+        if (step.groupKind === 'region') {
+            const rs = new Set();
+            const cs = new Set();
+            for (const [r, c] of cands) { rs.add(r); cs.add(c); }
+            if (rs.size === 1) vals = cs;
+            else if (cs.size === 1) vals = rs;
+        } else if ((step.groupKind === 'row' || step.groupKind === 'col')
+            && regions) {
+            const regs = new Set();
+            for (const [r, c] of cands) {
+                const reg = regions[r] ? regions[r][c] : -1;
+                if (reg === -1) return null;
+                regs.add(reg);
+            }
+            if (regs.size === 1) {
+                vals = new Set();
+                for (const [r, c] of cands) {
+                    vals.add(step.groupKind === 'row' ? c : r);
+                }
+            }
+        }
+        if (!vals) return null;
+        // Contiguous = sorted coordinates form a run with no gaps.
+        // Two-candidate lines are trivially contiguous iff the two
+        // coordinates differ by exactly 1.
+        const sorted = Array.from(vals).sort((a, b) => a - b);
+        for (let i = 1; i < sorted.length; i++) {
+            if (sorted[i] - sorted[i - 1] !== 1) {
+                return { contiguous: false };
+            }
+        }
+        return { contiguous: true };
+    }
+
     // Main solver loop — loops the allowed steps until no tactic in
     // the allowed set makes progress.
     //
@@ -663,6 +868,40 @@
         return state.placedCount === N;
     }
 
+    // Full-solve difficulty replay. Same order as solveWithTactics
+    // (T2 → T4 → T3 → T5) but records each firing so the generator
+    // can rank candidate puzzles by
+    //   sumScore  — total scoreStep across every deduction step,
+    //   peakScore — hardest single step, and
+    //   stepCounts — tier histogram, useful for debugging odd puzzles.
+    // T1 kills are implicit in placeAt so they don't get their own
+    // scoring turn (scoreStep charges 0 for T1 anyway).
+    function scoreSolve(regions, N, tactics) {
+        const state = makeSolverState(regions, N);
+        let sumScore = 0;
+        let peakScore = 0;
+        const stepCounts = { T2: 0, T3: 0, T4: 0, T5: 0 };
+        let safety = N * N * 4;
+        while (safety-- > 0) {
+            let result = null;
+            if (tactics.T2) result = stepT2(state);
+            if (!result && tactics.T4) result = stepT4(state);
+            if (!result && tactics.T3) result = stepT3(state);
+            if (!result && tactics.T5) result = stepT5(state);
+            if (!result) break;
+            const { score } = scoreStep(result, regions);
+            sumScore += score;
+            if (score > peakScore) peakScore = score;
+            stepCounts[result.tier] = (stepCounts[result.tier] || 0) + 1;
+        }
+        return {
+            sumScore,
+            peakScore,
+            stepCounts,
+            solved: state.placedCount === N,
+        };
+    }
+
     // -----------------------------------------------------------------
     // Region expansion — DFS with MRV cell ordering, random region
     // choice, full backtrack. Verifies each tentative assignment
@@ -684,6 +923,11 @@
         for (let r = 0; r < N; r++) {
             regions[r][queens[r]] = r;
         }
+        // Region ID matches its seed row, so `regionSize[i]` tracks the
+        // current cell count of region i. Starts at 1 (the seed queen).
+        // Kept in sync with `regions[][]` mutation so the branch-order
+        // heuristic below can consult it in O(1).
+        const regionSize = new Array(N).fill(1);
         let unassigned = N * N - N;
         let steps = 0;          // total `step()` invocations
         let verifyCalls = 0;    // total tactic-bounded solver runs
@@ -726,11 +970,23 @@
                 return null;
             }
 
+            // Order branches by current region size ascending, ties
+            // broken by the seeded shuffle. This "grow the smallest
+            // region first" heuristic pushes region sizes toward
+            // parity, which in turn makes it much less likely that
+            // some region ends up stuck at size 1 (a trivial T2
+            // "region is a singleton → queen forced here" hint that
+            // makes puzzles feel too easy). Sort is stable in ES2019+
+            // so the shuffled tie order is preserved. Correctness of
+            // the DFS is unaffected — it's still a full backtrack, we
+            // only try smaller-first on each level.
             const shuffled = bestOptions.slice();
             PC.rng.shuffle(shuffled, rng);
+            shuffled.sort((a, b) => regionSize[a] - regionSize[b]);
 
             for (const reg of shuffled) {
                 regions[bestR][bestC] = reg;
+                regionSize[reg] += 1;
                 unassigned -= 1;
                 verifyCalls += 1;
                 if (verifyUniqueUnderTactics(regions, N, tactics)) {
@@ -741,12 +997,26 @@
                     verifyRejects += 1;
                 }
                 regions[bestR][bestC] = -1;
+                regionSize[reg] -= 1;
                 unassigned += 1;
             }
             return null;
         }
 
         const result = step();
+        // Post-run region-size summary — used by the seed retry loop
+        // to prefer puzzles with few singleton regions on higher
+        // difficulties, and surfaced in stats for the trace tool.
+        let singletonRegions = 0;
+        let minRegionSize = result ? Infinity : 0;
+        let maxRegionSize = 0;
+        if (result) {
+            for (const s of regionSize) {
+                if (s === 1) singletonRegions += 1;
+                if (s < minRegionSize) minRegionSize = s;
+                if (s > maxRegionSize) maxRegionSize = s;
+            }
+        }
         return {
             regions: result,
             steps,
@@ -754,6 +1024,10 @@
             verifyRejects,
             backtracks,
             isolatedDeadEnds,
+            regionSize: regionSize.slice(),
+            singletonRegions,
+            minRegionSize,
+            maxRegionSize,
         };
     }
 
@@ -785,14 +1059,29 @@
     async function generate(size, difficulty, seed, onProgress) {
         const N = size;
         const tactics = TACTICS_BY_DIFFICULTY[difficulty] || TACTICS_BY_DIFFICULTY.medium;
+        const quality = qualityTargets(difficulty);
+        const targetCandidates = candidateBudget(N, difficulty);
+        const maxRetries = maxSeedRetries(N, difficulty);
         const tStart = Date.now();
         const timeout = attemptTimeoutMs(N);
-        dbg('generate', { N, difficulty, seed: seed.toString(16), timeout });
+        dbg('generate', {
+            N, difficulty, seed: seed.toString(16),
+            timeout, quality, targetCandidates, maxRetries,
+        });
 
         let lastFailReason = 'no-attempt';
-        for (let retry = 0; retry < MAX_SEED_RETRIES; retry++) {
+        // Collected candidate puzzles across seed retries. Each one
+        // is an already-verified, uniquely-solvable puzzle scored
+        // under the difficulty's tactic set. Sorted at the end by
+        // compareCandidates — quality-first, then hardness — and
+        // the winner is returned. Easy sets targetCandidates=1 so
+        // it short-circuits on the first quality pass; medium/hard
+        // sample multiple to steer for higher difficulty scores.
+        const candidates = [];
+
+        for (let retry = 0; retry < maxRetries; retry++) {
             if (onProgress) {
-                await onProgress(retry / MAX_SEED_RETRIES);
+                await onProgress(retry / maxRetries);
             }
             const retrySeed = (seed ^ ((retry + 1) * 0x9e3779b9)) >>> 0;
             const rng = PC.rng.make(retrySeed);
@@ -803,42 +1092,85 @@
             const deadline = tAttempt + timeout;
             const expand = expandRegions(N, queens, tactics, rng, deadline);
             const dt = Date.now() - tAttempt;
-            dbg('attempt', retry + 1, {
-                queens: queens.join(','),
-                steps: expand.steps,
-                verifyCalls: expand.verifyCalls,
-                ms: dt,
-                ok: !!expand.regions,
-                timedOut: Date.now() > deadline,
-            });
-
-            if (expand.regions) {
-                const stats = {
-                    seedRetries: retry + 1,
-                    expandSteps: expand.steps,
-                    verifyCalls: expand.verifyCalls,
-                    verifyRejects: expand.verifyRejects,
-                    backtracks: expand.backtracks,
-                    isolatedDeadEnds: expand.isolatedDeadEnds,
-                    genMs: Date.now() - tStart,
-                    attemptMs: dt,
-                    timeoutMs: timeout,
-                };
-                if (onProgress) await onProgress(1);
-                return buildPuzzle(N, difficulty, seed, queens, expand.regions, stats);
+            if (!expand.regions) {
+                lastFailReason = Date.now() > deadline ? 'timeout' : 'exhausted';
+                dbg('attempt', retry + 1, {
+                    queens: queens.join(','),
+                    steps: expand.steps,
+                    ms: dt,
+                    ok: false,
+                    timedOut: Date.now() > deadline,
+                });
+                continue;
             }
 
-            lastFailReason = Date.now() > deadline ? 'timeout' : 'exhausted';
+            const score = scoreSolve(expand.regions, N, tactics);
+            const stats = {
+                seedRetries: retry + 1,
+                expandSteps: expand.steps,
+                verifyCalls: expand.verifyCalls,
+                verifyRejects: expand.verifyRejects,
+                backtracks: expand.backtracks,
+                isolatedDeadEnds: expand.isolatedDeadEnds,
+                singletonRegions: expand.singletonRegions,
+                minRegionSize: expand.minRegionSize,
+                maxRegionSize: expand.maxRegionSize,
+                sumScore: score.sumScore,
+                peakScore: score.peakScore,
+                stepCounts: score.stepCounts,
+                genMs: Date.now() - tStart,
+                attemptMs: dt,
+                timeoutMs: timeout,
+            };
+            dbg('attempt', retry + 1, {
+                queens: queens.join(','),
+                singletons: stats.singletonRegions,
+                sumScore: stats.sumScore,
+                peakScore: stats.peakScore,
+                ms: dt,
+                ok: true,
+            });
+
+            candidates.push({ queens, regions: expand.regions, stats });
+
+            // We've collected enough quality-passing samples — stop
+            // early. Sampling extra retries beyond this would just
+            // spend wall time for a marginal chance at a harder seed.
+            const qualityPassCount = candidates.reduce((n, c) =>
+                n + (c.stats.singletonRegions <= quality.maxSingletonRegions
+                    ? 1 : 0), 0);
+            if (qualityPassCount >= targetCandidates) break;
         }
 
-        // All retries failed. Throw so the caller can decide whether to
-        // surface an error or fall back. The placeholder generator that
-        // used to live in js/games/queens.js had no failure mode at
-        // all, so this is a behavioural change worth being loud about.
-        throw new Error(
-            `queens generator: ${MAX_SEED_RETRIES} retries exhausted ` +
-            `(last reason: ${lastFailReason}, N=${N}, difficulty=${difficulty})`,
-        );
+        if (candidates.length === 0) {
+            // Every retry failed to expand. Same behaviour as before:
+            // fall back to throwing so the caller notices.
+            throw new Error(
+                `queens generator: ${maxRetries} retries exhausted ` +
+                `(last reason: ${lastFailReason}, N=${N}, difficulty=${difficulty})`,
+            );
+        }
+
+        candidates.sort((a, b) => compareCandidates(a, b, quality));
+        const winner = candidates[0];
+        winner.stats.candidateCount = candidates.length;
+        winner.stats.candidateBudget = targetCandidates;
+        winner.stats.maxRetries = maxRetries;
+        // Debug breadcrumb — how many candidates we sampled and what
+        // the score spread looked like, so trace-tool users can tell
+        // whether the picker had any meaningful room to choose.
+        winner.stats.candidateSpread = candidates.map(c => ({
+            sumScore: c.stats.sumScore,
+            peakScore: c.stats.peakScore,
+            singletons: c.stats.singletonRegions,
+        }));
+        if (winner.stats.singletonRegions > quality.maxSingletonRegions) {
+            winner.stats.qualityMissed = true;
+            winner.stats.qualityTarget = quality.maxSingletonRegions;
+        }
+        if (onProgress) await onProgress(1);
+        return buildPuzzle(N, difficulty, seed, winner.queens,
+            winner.regions, winner.stats);
     }
 
     // -----------------------------------------------------------------
@@ -863,5 +1195,7 @@
         stepT3,
         stepT4,
         stepT5,
+        scoreStep,
+        scoreSolve,
     };
 })(window);
