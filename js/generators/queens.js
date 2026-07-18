@@ -166,33 +166,38 @@
             && stats.tinyRegions <= quality.maxTinyRegions;
     }
 
-    // How many candidate puzzles to sample before picking the
-    // hardest one. Mirrors Tango's "generate K, pick best" approach:
-    // more samples → better shot at hitting the top of the
-    // difficulty band, at the cost of wall time.
+    // How many quality-passing candidate puzzles to collect before
+    // picking the hardest one. Mirrors Tango's "generate K, pick
+    // best" approach: more samples → better shot at hitting the top
+    // of the difficulty band, at the cost of wall time.
     //
-    // Scaled by both N and difficulty:
+    // Flat across board size (the user found even N=12 generation
+    // fast enough at these counts, and larger boards actually have
+    // MORE headroom for hard deductions, so there's no reason to
+    // starve them of samples). Scaled only by difficulty:
     //   * Easy short-circuits to 1 — the point of easy is to be
     //     quick + gentle, no reason to hunt for the "hardest easy".
-    //   * Smaller boards get much bigger budgets. Each expansion on
-    //     N=5-6 finishes in well under a second, so 10-15 candidates
-    //     is cheap; large boards would blow wall time with the same
-    //     count. Tango uses the same shape (30 → 10 → 5 across N
-    //     tiers) — mirrored here at a lower absolute scale because
-    //     Queens' per-expansion cost is heavier than Tango's carve.
-    //   * Hard gets ~50% more samples than medium so the picker has
-    //     more room to reject the "too easy" seeds a random draw
-    //     will still occasionally produce.
+    //   * Medium / hard sample a big pool so the picker can reject
+    //     the "too easy" layouts a random draw still produces.
+    // Note this is the OUTER budget; each seed also yields up to
+    // innerSearchDepth layouts, so the real pool the picker sees is
+    // larger than this number.
     function candidateBudget(N, difficulty) {
         if (difficulty === 'easy') return 1;
-        if (difficulty === 'medium') {
-            if (N <= 6) return 8;
-            if (N <= 8) return 4;
-            return 3;
-        }
-        // hard
-        if (N <= 6) return 12;
-        if (N <= 8) return 6;
+        if (difficulty === 'medium') return 16;
+        return 36; // hard
+    }
+
+    // Inner search depth for expandRegions — after finding the first
+    // valid layout for a given queens placement, keep the DFS running
+    // past the base case and collect up to this many layouts total.
+    // Each additional layout shares most of the "forced corridor"
+    // work already spent, so the extra cost per layout is much
+    // cheaper than starting a fresh seed. Amplifies the candidate
+    // pool by roughly this factor without extra placeQueens calls.
+    function innerSearchDepth(N, difficulty) {
+        if (difficulty === 'easy') return 1;
+        if (difficulty === 'medium') return 2;
         return 3;
     }
 
@@ -1009,7 +1014,7 @@
         return Array.from(set);
     }
 
-    function expandRegions(N, queens, tactics, rng, deadline) {
+    function expandRegions(N, queens, tactics, rng, deadline, maxLayouts) {
         const regions = Array.from({ length: N }, () => new Array(N).fill(-1));
         for (let r = 0; r < N; r++) {
             regions[r][queens[r]] = r;
@@ -1025,13 +1030,37 @@
         let verifyRejects = 0;  // verify said "not unique under tier"
         let backtracks = 0;     // recursed past verify but the subtree dead-ended
         let isolatedDeadEnds = 0; // unassigned cells with no frontier path
+        let timedOut = false;
 
+        // All valid, uniquely-solvable layouts collected on this
+        // placeQueens. Each entry is a deep-copied snapshot of
+        // `regions` at the moment DFS reached unassigned=0 with the
+        // tactic-bounded solver confirming uniqueness. We keep
+        // pushing until either `maxLayouts` are found (early-exit via
+        // returning `true` up the recursion) or the DFS naturally
+        // exhausts every branch, whichever comes first.
+        const layouts = [];
+        const cap = Math.max(1, maxLayouts || 1);
+
+        // step() now returns a boolean:
+        //   true  = stop climbing (either we hit maxLayouts or the
+        //           deadline; either way, unwind cleanly).
+        //   false = keep exploring more branches at this level.
+        // The old "return regions" idiom is replaced by pushing into
+        // `layouts` inside the base case.
         function step() {
             steps += 1;
-            if ((steps & 0xff) === 0 && Date.now() > deadline) return null;
+            if ((steps & 0xff) === 0 && Date.now() > deadline) {
+                timedOut = true;
+                return true;
+            }
             if (unassigned === 0) {
                 verifyCalls += 1;
-                return verifyUniqueUnderTactics(regions, N, tactics) ? regions : null;
+                if (verifyUniqueUnderTactics(regions, N, tactics)) {
+                    layouts.push(regions.map(row => row.slice()));
+                    if (layouts.length >= cap) return true;
+                }
+                return false; // continue backtracking to find more
             }
 
             // Build frontier: unassigned cells with ≥1 assigned 4-neighbour.
@@ -1058,7 +1087,7 @@
                 // No frontier — there are unassigned cells but none touch
                 // any assigned region. Can't preserve 4-connectivity.
                 isolatedDeadEnds += 1;
-                return null;
+                return false;
             }
 
             // Order branches by current region size ascending, ties
@@ -1080,47 +1109,60 @@
                 regionSize[reg] += 1;
                 unassigned -= 1;
                 verifyCalls += 1;
+                let stop = false;
                 if (verifyUniqueUnderTactics(regions, N, tactics)) {
-                    const result = step();
-                    if (result) return result;
-                    backtracks += 1;
+                    stop = step();
+                    if (!stop) backtracks += 1;
                 } else {
                     verifyRejects += 1;
                 }
                 regions[bestR][bestC] = -1;
                 regionSize[reg] -= 1;
                 unassigned += 1;
+                if (stop) return true;
             }
-            return null;
+            return false;
         }
 
-        const result = step();
-        // Post-run region-size summary — used by the seed retry loop
-        // to prefer puzzles with few singleton regions on higher
-        // difficulties, and surfaced in stats for the trace tool.
-        let singletonRegions = 0;
-        let tinyRegions = 0;
-        let minRegionSize = result ? Infinity : 0;
-        let maxRegionSize = 0;
-        if (result) {
-            for (const s of regionSize) {
-                if (s === 1) singletonRegions += 1;
-                if (s <= 2) tinyRegions += 1;
-                if (s < minRegionSize) minRegionSize = s;
-                if (s > maxRegionSize) maxRegionSize = s;
-            }
-        }
+        step();
         return {
-            regions: result,
+            layouts,
             steps,
             verifyCalls,
             verifyRejects,
             backtracks,
             isolatedDeadEnds,
-            regionSize: regionSize.slice(),
+            timedOut,
+            maxLayouts: cap,
+        };
+    }
+
+    // Post-hoc region-size summary for a single layout snapshot.
+    // Pulled out of expandRegions because the multi-layout mode
+    // hands back several snapshots and each needs its own stats.
+    function layoutRegionStats(layout, N) {
+        const sizes = new Array(N).fill(0);
+        for (let r = 0; r < N; r++) {
+            for (let c = 0; c < N; c++) {
+                const k = layout[r][c];
+                if (k !== -1) sizes[k] += 1;
+            }
+        }
+        let singletonRegions = 0;
+        let tinyRegions = 0;
+        let minRegionSize = Infinity;
+        let maxRegionSize = 0;
+        for (const s of sizes) {
+            if (s === 1) singletonRegions += 1;
+            if (s <= 2) tinyRegions += 1;
+            if (s < minRegionSize) minRegionSize = s;
+            if (s > maxRegionSize) maxRegionSize = s;
+        }
+        return {
+            regionSize: sizes,
             singletonRegions,
             tinyRegions,
-            minRegionSize,
+            minRegionSize: minRegionSize === Infinity ? 0 : minRegionSize,
             maxRegionSize,
         };
     }
@@ -1156,11 +1198,16 @@
         const quality = qualityTargets(N, difficulty);
         const targetCandidates = candidateBudget(N, difficulty);
         const maxRetries = maxSeedRetries(N, difficulty);
+        const innerDepth = innerSearchDepth(N, difficulty);
         const tStart = Date.now();
-        const timeout = attemptTimeoutMs(N);
+        // Timeout scaled by innerDepth — collecting K layouts per
+        // seed does roughly K× the DFS work of the original one-shot,
+        // and we don't want the deadline to cut us off before the
+        // extra layouts get a chance.
+        const timeout = attemptTimeoutMs(N) * Math.max(1, innerDepth);
         dbg('generate', {
             N, difficulty, seed: seed.toString(16),
-            timeout, quality, targetCandidates, maxRetries,
+            timeout, quality, targetCandidates, maxRetries, innerDepth,
         });
 
         let lastFailReason = 'no-attempt';
@@ -1184,50 +1231,58 @@
             if (!queens) { lastFailReason = 'placeQueens-failed'; continue; }
 
             const deadline = tAttempt + timeout;
-            const expand = expandRegions(N, queens, tactics, rng, deadline);
+            const expand = expandRegions(N, queens, tactics, rng, deadline,
+                innerDepth);
             const dt = Date.now() - tAttempt;
-            if (!expand.regions) {
-                lastFailReason = Date.now() > deadline ? 'timeout' : 'exhausted';
+            if (!expand.layouts.length) {
+                lastFailReason = expand.timedOut ? 'timeout' : 'exhausted';
                 dbg('attempt', retry + 1, {
                     queens: queens.join(','),
                     steps: expand.steps,
                     ms: dt,
                     ok: false,
-                    timedOut: Date.now() > deadline,
+                    timedOut: expand.timedOut,
                 });
                 continue;
             }
 
-            const score = scoreSolve(expand.regions, N, tactics);
-            const stats = {
-                seedRetries: retry + 1,
-                expandSteps: expand.steps,
-                verifyCalls: expand.verifyCalls,
-                verifyRejects: expand.verifyRejects,
-                backtracks: expand.backtracks,
-                isolatedDeadEnds: expand.isolatedDeadEnds,
-                singletonRegions: expand.singletonRegions,
-                tinyRegions: expand.tinyRegions,
-                minRegionSize: expand.minRegionSize,
-                maxRegionSize: expand.maxRegionSize,
-                sumScore: score.sumScore,
-                peakScore: score.peakScore,
-                stepCounts: score.stepCounts,
-                genMs: Date.now() - tStart,
-                attemptMs: dt,
-                timeoutMs: timeout,
-            };
             dbg('attempt', retry + 1, {
                 queens: queens.join(','),
-                singletons: stats.singletonRegions,
-                tinies: stats.tinyRegions,
-                sumScore: stats.sumScore,
-                peakScore: stats.peakScore,
+                layouts: expand.layouts.length,
                 ms: dt,
                 ok: true,
+                timedOut: expand.timedOut,
             });
 
-            candidates.push({ queens, regions: expand.regions, stats });
+            // Every layout out of this seed is scored independently
+            // and added as its own candidate. This is what makes B
+            // (inner search depth) work: one seed can now feed
+            // several distinct region layouts into the picker.
+            for (const layout of expand.layouts) {
+                const regionStats = layoutRegionStats(layout, N);
+                const score = scoreSolve(layout, N, tactics);
+                const stats = {
+                    seedRetries: retry + 1,
+                    innerDepth,
+                    layoutsThisSeed: expand.layouts.length,
+                    expandSteps: expand.steps,
+                    verifyCalls: expand.verifyCalls,
+                    verifyRejects: expand.verifyRejects,
+                    backtracks: expand.backtracks,
+                    isolatedDeadEnds: expand.isolatedDeadEnds,
+                    singletonRegions: regionStats.singletonRegions,
+                    tinyRegions: regionStats.tinyRegions,
+                    minRegionSize: regionStats.minRegionSize,
+                    maxRegionSize: regionStats.maxRegionSize,
+                    sumScore: score.sumScore,
+                    peakScore: score.peakScore,
+                    stepCounts: score.stepCounts,
+                    genMs: Date.now() - tStart,
+                    attemptMs: dt,
+                    timeoutMs: timeout,
+                };
+                candidates.push({ queens, regions: layout, stats });
+            }
 
             // We've collected enough quality-passing samples — stop
             // early. Sampling extra retries beyond this would just

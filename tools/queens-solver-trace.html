@@ -510,7 +510,7 @@
                 ? ` / target ${s.candidateBudget}`
                 : '';
             const retriesSuffix = (s.maxRetries != null)
-                ? ` (retries ≤${s.maxRetries})`
+                ? ` (retries ≤${s.maxRetries}, inner ≤${s.innerDepth ?? 1})`
                 : '';
             const spreadLine = Array.isArray(s.candidateSpread)
                 ? `<div>candidates ${s.candidateCount ?? s.candidateSpread.length}${budgetSuffix}${retriesSuffix}: `
