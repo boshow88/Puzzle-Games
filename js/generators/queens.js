@@ -135,17 +135,35 @@
         return Math.max(10, budget + slack);
     }
 
-    // Per-difficulty "quality" targets applied to expanded puzzles.
-    //   maxSingletonRegions - a size-1 region is a free T2 "naked
-    //     single" hint (score 1), so puzzles littered with them feel
-    //     trivial regardless of what tactic set the difficulty
-    //     nominally allows. Higher difficulty ⇒ tighter cap. Easy
-    //     imposes no cap since the point of easy is to have plenty of
-    //     these anchors.
-    function qualityTargets(difficulty) {
-        if (difficulty === 'hard')   return { maxSingletonRegions: 0 };
-        if (difficulty === 'medium') return { maxSingletonRegions: 1 };
-        return { maxSingletonRegions: Infinity };
+    // Per-(N, difficulty) "quality" targets applied to expanded
+    // puzzles. Two axes, both caps on how many cheap regions we
+    // tolerate:
+    //   maxSingletonRegions - regions of size 1. Free naked-single
+    //     hint (score 1), player barely thinks.
+    //   maxTinyRegions      - regions of size ≤ 2. A size-2 region
+    //     usually collapses immediately via T4-line-contiguous
+    //     (score 3) or by having its second candidate killed by
+    //     another queen's t1 — either way it plays as free progress.
+    //     A "tiny" count also includes singletons, so this is the
+    //     broader dimension.
+    // Easy imposes no cap on either — the point of easy is plenty
+    // of anchors. Medium / hard tighten both.
+    function qualityTargets(N, difficulty) {
+        if (difficulty === 'hard') {
+            return { maxSingletonRegions: 0, maxTinyRegions: 1 };
+        }
+        if (difficulty === 'medium') {
+            return {
+                maxSingletonRegions: 1,
+                maxTinyRegions: Math.max(1, Math.floor(N / 4)),
+            };
+        }
+        return { maxSingletonRegions: Infinity, maxTinyRegions: Infinity };
+    }
+
+    function meetsQuality(stats, quality) {
+        return stats.singletonRegions <= quality.maxSingletonRegions
+            && stats.tinyRegions <= quality.maxTinyRegions;
     }
 
     // How many candidate puzzles to sample before picking the
@@ -181,20 +199,24 @@
     // Rank two candidates for "which is a better puzzle at this
     // difficulty". Higher is better on the primary axis; ties fall
     // through in order:
-    //   1. Meets quality (singletons ≤ target)         boolean
-    //   2. sumScore                                    total effort
-    //   3. peakScore                                   hardest step
-    //   4. fewer singleton regions                     visual polish
+    //   1. Meets quality (singletons AND tinies ≤ target)  boolean
+    //   2. sumScore                                        total effort
+    //   3. peakScore                                       hardest step
+    //   4. fewer tiny regions                              visual polish
+    //   5. fewer singleton regions                         tie-break
     // Returns negative if `a` is better, positive if `b` is better.
     function compareCandidates(a, b, quality) {
-        const aQ = a.stats.singletonRegions <= quality.maxSingletonRegions ? 1 : 0;
-        const bQ = b.stats.singletonRegions <= quality.maxSingletonRegions ? 1 : 0;
+        const aQ = meetsQuality(a.stats, quality) ? 1 : 0;
+        const bQ = meetsQuality(b.stats, quality) ? 1 : 0;
         if (aQ !== bQ) return bQ - aQ;
         if (a.stats.sumScore !== b.stats.sumScore) {
             return b.stats.sumScore - a.stats.sumScore;
         }
         if (a.stats.peakScore !== b.stats.peakScore) {
             return b.stats.peakScore - a.stats.peakScore;
+        }
+        if (a.stats.tinyRegions !== b.stats.tinyRegions) {
+            return a.stats.tinyRegions - b.stats.tinyRegions;
         }
         return a.stats.singletonRegions - b.stats.singletonRegions;
     }
@@ -745,7 +767,33 @@
     // that flavour falls through to the general (higher) score.
     // -----------------------------------------------------------------
 
-    function scoreStep(step, regions) {
+    function scoreStep(step, regions, context) {
+        const staticScore = staticScoreStep(step, regions);
+        if (!context) return staticScore;
+        const boost = contextBoost(context.poolBefore, context.excludedThis,
+            context.N);
+        // adjusted = base + (base - 1) × boost.
+        //
+        // Preserves T2's static baseline of 1 no matter the context —
+        // there is no such thing as a "hard naked single", the entire
+        // point of T2 is that only one candidate remains. Higher tiers
+        // scale up to at most 2× when boost hits 1 (dense pool with
+        // stingy progress), which is roughly what the user asked for
+        // with the [1, 2] multiplier option, applied only to the
+        // "hardness above baseline" component.
+        const base = staticScore.score;
+        const adjusted = base + (base - 1) * boost;
+        return {
+            score: Math.round(adjusted * 100) / 100,
+            kind: staticScore.kind,
+            base,
+            boost: Math.round(boost * 100) / 100,
+        };
+    }
+
+    // The static, context-free tier score. Kept as a helper so the
+    // contextual wrapper can call it once and then re-shape.
+    function staticScoreStep(step, regions) {
         if (!step || !step.tier) return { score: 0, kind: 'noop' };
         switch (step.tier) {
             case 'T1': return { score: 0, kind: 'T1' };
@@ -774,6 +822,38 @@
             default:
                 return { score: 0, kind: String(step.tier) };
         }
+    }
+
+    // Context boost — [0, 1] scalar summarising "how hard was the
+    // player working when this step fired?". Two components:
+    //   density    = poolBefore / N²
+    //     Fraction of the board still in play. Early moves in a full
+    //     board are harder to spot than late moves in an almost-empty
+    //     one; the same T3 in state {40 candidates left} vs state {8
+    //     candidates left} is really two different mental efforts.
+    //   stinginess = N / (N + excludedThis)
+    //     "How small was the progress?" ~1 when the step barely
+    //     moved the needle (excludedThis ≤ 1), fading toward 0 as
+    //     the step wipes out chunks. A puzzle where every step
+    //     nibbles one cell at a time is a puzzle the player has to
+    //     re-scan constantly.
+    // Averaged so boost stays comfortably in [0, 1] regardless of
+    // N or state.
+    function contextBoost(poolBefore, excludedThis, N) {
+        const density = Math.max(0, Math.min(1, poolBefore / (N * N)));
+        const stinginess = N / (N + Math.max(0, excludedThis));
+        return (density + stinginess) / 2;
+    }
+
+    // How many candidates a step "consumed" — cells that transitioned
+    // out of the solver's candidate pool. For T2 that's the placed
+    // cell itself plus its t1 kills; for T3/T4/T5 it's excludedAt.
+    function progressSizeOf(step) {
+        if (!step) return 0;
+        if (step.tier === 'T2') {
+            return 1 + (step.t1Killed ? step.t1Killed.length : 0);
+        }
+        return step.excludedAt ? step.excludedAt.length : 0;
     }
 
     // The "1×N line" special case that reads as a single-chain
@@ -883,20 +963,31 @@
         const stepCounts = { T2: 0, T3: 0, T4: 0, T5: 0 };
         let safety = N * N * 4;
         while (safety-- > 0) {
+            // Snapshot the candidate pool BEFORE this step so scoreStep
+            // can adjust by "how much of the board was still in play"
+            // at the moment the deduction fired.
+            let poolBefore = 0;
+            for (let r = 0; r < N; r++) {
+                for (let c = 0; c < N; c++) {
+                    if (state.candidate[r][c]) poolBefore += 1;
+                }
+            }
             let result = null;
             if (tactics.T2) result = stepT2(state);
             if (!result && tactics.T4) result = stepT4(state);
             if (!result && tactics.T3) result = stepT3(state);
             if (!result && tactics.T5) result = stepT5(state);
             if (!result) break;
-            const { score } = scoreStep(result, regions);
+            const excludedThis = progressSizeOf(result);
+            const { score } = scoreStep(result, regions,
+                { poolBefore, excludedThis, N });
             sumScore += score;
             if (score > peakScore) peakScore = score;
             stepCounts[result.tier] = (stepCounts[result.tier] || 0) + 1;
         }
         return {
-            sumScore,
-            peakScore,
+            sumScore: Math.round(sumScore * 100) / 100,
+            peakScore: Math.round(peakScore * 100) / 100,
             stepCounts,
             solved: state.placedCount === N,
         };
@@ -1008,11 +1099,13 @@
         // to prefer puzzles with few singleton regions on higher
         // difficulties, and surfaced in stats for the trace tool.
         let singletonRegions = 0;
+        let tinyRegions = 0;
         let minRegionSize = result ? Infinity : 0;
         let maxRegionSize = 0;
         if (result) {
             for (const s of regionSize) {
                 if (s === 1) singletonRegions += 1;
+                if (s <= 2) tinyRegions += 1;
                 if (s < minRegionSize) minRegionSize = s;
                 if (s > maxRegionSize) maxRegionSize = s;
             }
@@ -1026,6 +1119,7 @@
             isolatedDeadEnds,
             regionSize: regionSize.slice(),
             singletonRegions,
+            tinyRegions,
             minRegionSize,
             maxRegionSize,
         };
@@ -1059,7 +1153,7 @@
     async function generate(size, difficulty, seed, onProgress) {
         const N = size;
         const tactics = TACTICS_BY_DIFFICULTY[difficulty] || TACTICS_BY_DIFFICULTY.medium;
-        const quality = qualityTargets(difficulty);
+        const quality = qualityTargets(N, difficulty);
         const targetCandidates = candidateBudget(N, difficulty);
         const maxRetries = maxSeedRetries(N, difficulty);
         const tStart = Date.now();
@@ -1113,6 +1207,7 @@
                 backtracks: expand.backtracks,
                 isolatedDeadEnds: expand.isolatedDeadEnds,
                 singletonRegions: expand.singletonRegions,
+                tinyRegions: expand.tinyRegions,
                 minRegionSize: expand.minRegionSize,
                 maxRegionSize: expand.maxRegionSize,
                 sumScore: score.sumScore,
@@ -1125,6 +1220,7 @@
             dbg('attempt', retry + 1, {
                 queens: queens.join(','),
                 singletons: stats.singletonRegions,
+                tinies: stats.tinyRegions,
                 sumScore: stats.sumScore,
                 peakScore: stats.peakScore,
                 ms: dt,
@@ -1137,8 +1233,7 @@
             // early. Sampling extra retries beyond this would just
             // spend wall time for a marginal chance at a harder seed.
             const qualityPassCount = candidates.reduce((n, c) =>
-                n + (c.stats.singletonRegions <= quality.maxSingletonRegions
-                    ? 1 : 0), 0);
+                n + (meetsQuality(c.stats, quality) ? 1 : 0), 0);
             if (qualityPassCount >= targetCandidates) break;
         }
 
@@ -1163,10 +1258,14 @@
             sumScore: c.stats.sumScore,
             peakScore: c.stats.peakScore,
             singletons: c.stats.singletonRegions,
+            tinies: c.stats.tinyRegions,
         }));
-        if (winner.stats.singletonRegions > quality.maxSingletonRegions) {
+        if (!meetsQuality(winner.stats, quality)) {
             winner.stats.qualityMissed = true;
-            winner.stats.qualityTarget = quality.maxSingletonRegions;
+            winner.stats.qualityTarget = {
+                maxSingletonRegions: quality.maxSingletonRegions,
+                maxTinyRegions: quality.maxTinyRegions,
+            };
         }
         if (onProgress) await onProgress(1);
         return buildPuzzle(N, difficulty, seed, winner.queens,

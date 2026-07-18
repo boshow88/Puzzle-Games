@@ -265,6 +265,17 @@
         function advanceOne() {
             const tactics = getTactics();
             const N = puzzle.size;
+            // Snapshot the candidate pool BEFORE trying any tactic —
+            // scoreStep uses this to boost the score for deductions
+            // that fired in a dense state ("many cells still in
+            // play" is harder to reason about than "only a few
+            // candidates left"). Cheap: N² booleans to sum.
+            let poolBefore = 0;
+            for (let r = 0; r < N; r++) {
+                for (let c = 0; c < N; c++) {
+                    if (solverState.candidate[r][c]) poolBefore += 1;
+                }
+            }
             // Match the solver's order: T2 → T4 → T3 → T5. T4 is tried
             // before T3 because the "region locked to a single row/col"
             // case surfaces much more cleanly as a single T4-on-region
@@ -285,15 +296,22 @@
                 return true;
             }
 
+            // Compose the context the generator uses so trace scores
+            // match generator's sumScore/peakScore exactly.
+            const excludedThis = result.tier === 'T2'
+                ? 1 + (result.t1Killed ? result.t1Killed.length : 0)
+                : (result.excludedAt ? result.excludedAt.length : 0);
+            const context = { poolBefore, excludedThis, N };
+
             if (result.tier === 'T2') {
-                stepLog.push(makeT2Entry(result));
+                stepLog.push(makeT2Entry(result, context));
                 if (result.t1Killed && result.t1Killed.length > 0) {
                     stepLog.push(makeT1Entry(result));
                 }
             } else if (result.tier === 'T3') {
-                stepLog.push(makeT3Entry(result));
+                stepLog.push(makeT3Entry(result, context));
             } else if (result.tier === 'T4' || result.tier === 'T5') {
-                stepLog.push(makeCoverEntry(result));
+                stepLog.push(makeCoverEntry(result, context));
             }
             return true;
         }
@@ -323,34 +341,44 @@
         // trivially (0) so the running total isn't inflated by the
         // display-only kill entries — the deduction that placed the
         // queen already contributed its own score.
-        function scoreFor(step) {
+        function scoreFor(step, context) {
             const S = window.PuzzleSolvers && window.PuzzleSolvers.queens;
             if (!S || typeof S.scoreStep !== 'function') {
                 return { score: 0, kind: step?.tier || 'noop' };
             }
-            return S.scoreStep(step, puzzle && puzzle.regions);
+            return S.scoreStep(step, puzzle && puzzle.regions, context);
+        }
+
+        // Extract the score-relevant fields from a scoreStep result
+        // onto a log entry. `base` / `boost` are only present when
+        // scoreStep was called with a context, so a T1 followup (no
+        // context) just gets score+kind.
+        function attachScore(entry, sc) {
+            entry.score = sc.score;
+            entry.scoreKind = sc.kind;
+            if (sc.base != null) entry.scoreBase = sc.base;
+            if (sc.boost != null) entry.scoreBoost = sc.boost;
+            return entry;
         }
 
         function makeT1Entry(s) {
             const [r, c] = s.placedAt;
             const sc = scoreFor({ tier: 'T1' });
-            return {
+            return attachScore({
                 tier: 'T1',
                 text: `此♛把同行、同列、同區域或相鄰位置的格子封死了。排除掉條紋格子。`,
                 placed: [[r, c]],
                 groupCells: [[r, c]],
                 groupCands: [[r, c]],
                 striped: s.t1Killed.slice(),
-                score: sc.score,
-                scoreKind: sc.kind,
-            };
+            }, sc);
         }
 
-        function makeT2Entry(s) {
+        function makeT2Entry(s, context) {
             const [r, c] = s.placedAt;
             const kind = groupKindStr(s.groupKind);
-            const sc = scoreFor(s);
-            return {
+            const sc = scoreFor(s, context);
+            return attachScore({
                 tier: 'T2',
                 text: `此${kind}的其他所有格子都被排除了。請將♛放置在醒目標示的格子中。`,
                 groupHint: groupLabel(s.groupKind, s.groupIndex),
@@ -358,17 +386,15 @@
                 groupCells: s.groupCells,
                 groupCands: [[r, c]],
                 striped: [],
-                score: sc.score,
-                scoreKind: sc.kind,
-            };
+            }, sc);
         }
 
-        function makeT3Entry(s) {
+        function makeT3Entry(s, context) {
             const axisName = s.axis === 'row' ? '列' : '行';
             const regStr = s.regionIds.map(r => '#' + r).join('、');
             const axisStr = s.reservedAxis.join('、');
-            const sc = scoreFor(s);
-            return {
+            const sc = scoreFor(s, context);
+            return attachScore({
                 tier: 'T3',
                 text: `每個醒目標示的區域都需要一個♛。這幾${axisName}已經沒有地方放其他區域的♛了。排除掉條紋格子。`,
                 groupHint: `區域 ${regStr} × ${axisName} ${axisStr}`,
@@ -379,12 +405,10 @@
                 axis: s.axis,
                 regionIds: s.regionIds,
                 striped: s.excludedAt,
-                score: sc.score,
-                scoreKind: sc.kind,
-            };
+            }, sc);
         }
 
-        function makeCoverEntry(s) {
+        function makeCoverEntry(s, context) {
             // T4 and T5 share the same player-facing wording — the
             // visual differentiator (badge colour + region-killer
             // candidate highlight) is what tells them apart in the
@@ -395,8 +419,8 @@
             const rkSuffix = regionKillers.length
                 ? ` · region-kill ${regionKillers.map(cellStr).join('、')}`
                 : '';
-            const sc = scoreFor(s);
-            return {
+            const sc = scoreFor(s, context);
+            return attachScore({
                 tier: s.tier,
                 text: `醒目標示的${kind}內必須有♛。條紋格子中的♛把此${kind}封死了。排除掉條紋格子。`,
                 groupHint: `${groupLabel(s.groupKind, s.groupIndex)}${rkSuffix}`,
@@ -405,9 +429,7 @@
                 groupCands: s.groupCandidates,
                 regionKillers,
                 striped: s.excludedAt,
-                score: sc.score,
-                scoreKind: sc.kind,
-            };
+            }, sc);
         }
 
         function groupLabel(kind, idx) {
@@ -462,10 +484,13 @@
                 .filter(t => byTier[t])
                 .map(t => `${t}×${byTier[t]}`)
                 .join(' · ') || '—';
+            const fmt = v => (Number.isInteger(v)
+                ? String(v)
+                : v.toFixed(2).replace(/\.?0+$/, ''));
             els.scoreSummary.innerHTML = `
                 <div><strong>Difficulty score</strong>
-                     · sum <code>${sum}</code>
-                     · peak <code>${peak}</code></div>
+                     · sum <code>${fmt(sum)}</code>
+                     · peak <code>${fmt(peak)}</code></div>
                 <div>steps ${stepLog.length} · ${escapeHtml(breakdown)}</div>
             `;
         }
@@ -473,8 +498,13 @@
         function renderStats(dtMs) {
             if (!puzzle) return;
             const s = puzzle.stats || {};
+            const qt = s.qualityTarget;
             const qualityNote = s.qualityMissed
-                ? ` <span style="color:#c62828">(quality miss, target ≤${s.qualityTarget})</span>`
+                ? ` <span style="color:#c62828">(quality miss`
+                    + (qt && typeof qt === 'object'
+                        ? `, s≤${qt.maxSingletonRegions}·t≤${qt.maxTinyRegions}`
+                        : (qt != null ? `, target ≤${qt}` : ''))
+                    + `)</span>`
                 : '';
             const budgetSuffix = (s.candidateBudget != null)
                 ? ` / target ${s.candidateBudget}`
@@ -485,7 +515,7 @@
             const spreadLine = Array.isArray(s.candidateSpread)
                 ? `<div>candidates ${s.candidateCount ?? s.candidateSpread.length}${budgetSuffix}${retriesSuffix}: `
                     + s.candidateSpread
-                        .map(c => `${c.sumScore}/${c.peakScore}·s${c.singletons}`)
+                        .map(c => `${c.sumScore}/${c.peakScore}·s${c.singletons}/t${c.tinies ?? '?'}`)
                         .join(', ') + `</div>`
                 : '';
             els.stats.innerHTML = `
@@ -497,7 +527,8 @@
                      · verifyRejects <code>${s.verifyRejects ?? '?'}</code>
                      · backtracks <code>${s.backtracks ?? '?'}</code></div>
                 <div>region sizes
-                     · singletons <code>${s.singletonRegions ?? '?'}</code>${qualityNote}
+                     · singletons <code>${s.singletonRegions ?? '?'}</code>
+                     · tinies (≤2) <code>${s.tinyRegions ?? '?'}</code>${qualityNote}
                      · min <code>${s.minRegionSize ?? '?'}</code>
                      · max <code>${s.maxRegionSize ?? '?'}</code></div>
                 <div>gen score
@@ -716,12 +747,21 @@
                 // 0-score entries (T1, stalled) get one so the row
                 // alignment stays consistent — they're just dimmed.
                 const scoreVal = typeof s.score === 'number' ? s.score : 0;
-                const scoreTitle = s.scoreKind
-                    ? `score ${scoreVal} (${s.scoreKind})`
-                    : `score ${scoreVal}`;
+                const scoreLabel = Number.isInteger(scoreVal)
+                    ? String(scoreVal)
+                    : scoreVal.toFixed(2).replace(/\.?0+$/, '');
+                // Tooltip breaks down base + context boost so it's
+                // clear WHY a T3 in one puzzle scored 3 but another
+                // scored 5. If we only have the static kind (T1
+                // followup), just show that.
+                let scoreTitle = `score ${scoreLabel}`;
+                if (s.scoreKind) scoreTitle += ` (${s.scoreKind})`;
+                if (s.scoreBase != null && s.scoreBoost != null) {
+                    scoreTitle += ` · base ${s.scoreBase} + boost ${s.scoreBoost}`;
+                }
                 const scoreBadge = `<span class="score-badge"`
                     + ` data-zero="${scoreVal === 0 ? 1 : 0}"`
-                    + ` title="${escapeHtml(scoreTitle)}">+${scoreVal}</span>`;
+                    + ` title="${escapeHtml(scoreTitle)}">+${scoreLabel}</span>`;
                 const parts = [];
                 if (s.groupHint) parts.push(s.groupHint);
                 if (s.placed && s.placed.length) {
