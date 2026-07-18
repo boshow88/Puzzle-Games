@@ -14,9 +14,12 @@
 <body>
     <div class="game-shell">
         <header class="game-topbar">
-            <a class="back-link" href="../index.html" data-i18n="menu">← Menu</a>
+            <a class="back-link" href="../index.html">
+                <span data-icon="arrow-left" aria-hidden="true"></span>
+                <span data-i18n="menu">Menu</span>
+            </a>
             <div class="game-title">
-                <span class="game-icon" aria-hidden="true">♛</span>
+                <span class="game-icon" data-icon="crown" aria-hidden="true"></span>
                 <span data-i18n="queensName">Queens</span>
             </div>
             <div class="lang-toggle" id="lang-toggle" role="radiogroup" data-i18n-aria-label="language">
@@ -51,10 +54,22 @@
         </section>
 
         <div class="action-row">
-            <button class="btn" id="reset-btn" type="button" data-i18n="reset" data-i18n-title="clearPlacements" title="Clear placements">↻ Reset</button>
-            <button class="btn" id="hint-btn" type="button" data-i18n="hint" data-i18n-title="highlightDeducible" title="Highlight one deducible cell">💡 Hint</button>
-            <button class="btn toggle" id="reveal-btn" type="button" aria-pressed="false" data-i18n="reveal" data-i18n-title="showSolution" title="Show solution overlay">? Reveal</button>
-            <button class="btn" id="share-btn" type="button" data-i18n="share" data-i18n-title="shareTitle" title="Copy a link to this puzzle">🔗 Share</button>
+            <button class="btn" id="reset-btn" type="button" data-i18n-title="clearPlacements" title="Clear placements">
+                <span data-icon="rotate-ccw" aria-hidden="true"></span>
+                <span data-i18n="reset">Reset</span>
+            </button>
+            <button class="btn" id="hint-btn" type="button" data-i18n-title="highlightDeducible" title="Highlight one deducible cell">
+                <span data-icon="lightbulb" aria-hidden="true"></span>
+                <span data-i18n="hint">Hint</span>
+            </button>
+            <button class="btn toggle" id="reveal-btn" type="button" aria-pressed="false" data-i18n-title="showSolution" title="Show solution overlay">
+                <span data-icon="eye" aria-hidden="true"></span>
+                <span data-i18n="reveal">Reveal</span>
+            </button>
+            <button class="btn" id="share-btn" type="button" data-i18n-title="shareTitle" title="Copy a link to this puzzle">
+                <span data-icon="share" aria-hidden="true"></span>
+                <span data-i18n="share">Share</span>
+            </button>
         </div>
 
         <div class="status-row" aria-live="polite">
@@ -62,9 +77,13 @@
                 <span class="timer" id="timer">00:00</span>
             </span>
             <span class="status-item violations" id="violations" hidden>
+                <span data-icon="triangle-alert" aria-hidden="true"></span>
                 <span id="violations-text"></span>
             </span>
-            <span class="status-item win-message" id="win-message" hidden data-i18n="winMessage">You Win! ✨</span>
+            <span class="status-item win-message" id="win-message" hidden>
+                <span data-icon="sparkles" aria-hidden="true"></span>
+                <span data-i18n="winMessage">You Win!</span>
+            </span>
         </div>
 
         <div class="board-wrap">

@@ -690,14 +690,17 @@
         keypad.appendChild(digits);
 
         const actions = PC.el('div', { class: 'keypad-actions' });
+        // Icon + label as separate children: the label span carries
+        // data-i18n so translateNode can re-localise it on a language
+        // flip without wiping the injected SVG icon.
         notesBtn = PC.el('button', {
             type: 'button',
             class: 'keypad-btn notes-toggle',
             'aria-pressed': 'false',
             'aria-label': 'Toggle pencil-mark notes mode',
             title: 'Toggle pencil-mark notes (N)',
-            'data-i18n': 'sudokuNotes',
-        }, PC.i18n.t('sudokuNotes'));
+        }, PC.icon('pencil'),
+            PC.el('span', { 'data-i18n': 'sudokuNotes' }, PC.i18n.t('sudokuNotes')));
         notesBtn.addEventListener('click', toggleNotesMode);
         actions.appendChild(notesBtn);
 
@@ -705,11 +708,11 @@
             type: 'button',
             class: 'keypad-btn erase',
             'aria-label': 'Erase',
-            'data-i18n': 'sudokuErase',
             'data-i18n-aria-label': 'sudokuEraseAria',
             'data-i18n-title': 'sudokuEraseTitle',
             title: PC.i18n.t('sudokuEraseTitle'),
-        }, PC.i18n.t('sudokuErase'));
+        }, PC.icon('eraser'),
+            PC.el('span', { 'data-i18n': 'sudokuErase' }, PC.i18n.t('sudokuErase')));
         eraseBtn.addEventListener('click', eraseSelected);
         actions.appendChild(eraseBtn);
 

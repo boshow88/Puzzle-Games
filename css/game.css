@@ -214,6 +214,10 @@
 
 .btn {
     appearance: none;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.4em;
     border: 1px solid var(--border-strong);
     background: var(--bg-secondary);
     color: var(--text-primary);
@@ -696,6 +700,10 @@
 .keypad-btn.notes-toggle {
     color: var(--text-secondary);
     font-weight: 500;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.4em;
 }
 
 /* Active Notes toggle: filled green so it reads like a sticky mode

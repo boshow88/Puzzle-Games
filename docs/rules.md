@@ -18,9 +18,9 @@ so the rule sections below only mention game-specific deviations.
   section). Changing size always starts a fresh puzzle.
 - **New Game**: regenerates a puzzle at the current difficulty and
   size, clearing the timer.
-- **Reset (↻)**: clears everything the player has placed / drawn, but
+- **Reset**: clears everything the player has placed / drawn, but
   keeps the same puzzle.
-- **Reveal (?)**: toggles a faint overlay of the intended solution.
+- **Reveal**: toggles a faint overlay of the intended solution.
   In the cell-toggle games (Queens, Tango, Sudoku) it shows a small
   hint glyph in the corner of each editable cell; in Zip it draws the
   canonical path under the player's line.

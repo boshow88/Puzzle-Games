@@ -232,8 +232,18 @@ button {
     margin-top: var(--space-xs);
 }
 
+/* Inline Lucide icons (injected by PuzzleCommon.icons.render). They
+   inherit colour via stroke: currentColor and scale with font-size
+   (width/height set to 1em on the <svg>). */
+.icon {
+    flex: none;
+    width: 1em;
+    height: 1em;
+    vertical-align: -0.125em;
+}
+
 .game-icon {
-    font-size: 2rem;
+    font-size: 1.75rem;
     line-height: 1;
     width: 48px;
     height: 48px;

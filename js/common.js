@@ -196,6 +196,88 @@
     }
 
     // -----------------------------------------------------------------
+    // Icons — a tiny self-contained subset of Lucide (lucide.dev, ISC).
+    // Kept inline so the site stays dependency-free / offline-capable
+    // (no CDN). Each entry is the inner markup of a 24×24 stroke icon;
+    // `icon(name)` wraps it in an <svg> that inherits colour via
+    // `stroke: currentColor` and scales with font-size (width/height
+    // 1em). `renderIcons(root)` fills every `[data-icon]` placeholder,
+    // so static HTML can just write `<span data-icon="crown"></span>`.
+    // -----------------------------------------------------------------
+
+    const ICONS = {
+        'rotate-ccw':
+            '<path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/>'
+            + '<path d="M3 3v5h5"/>',
+        lightbulb:
+            '<path d="M15 14c.2-1 .7-1.7 1.5-2.5 1-.9 1.5-2.2 1.5-3.5A6 6 0 0 0 6 8c0 1 .2 2.2 1.5 3.5.7.7 1.3 1.5 1.5 2.5"/>'
+            + '<path d="M9 18h6"/><path d="M10 22h4"/>',
+        eye:
+            '<path d="M2.062 12.348a1 1 0 0 1 0-.696 10.75 10.75 0 0 1 19.876 0 1 1 0 0 1 0 .696 10.75 10.75 0 0 1-19.876 0"/>'
+            + '<circle cx="12" cy="12" r="3"/>',
+        share:
+            '<path d="M9 17H7A5 5 0 0 1 7 7h2"/>'
+            + '<path d="M15 7h2a5 5 0 1 1 0 10h-2"/>'
+            + '<line x1="8" x2="16" y1="12" y2="12"/>',
+        pencil:
+            '<path d="M21.174 6.812a1 1 0 0 0-3.986-3.987L3.842 16.174a2 2 0 0 0-.5.83l-1.321 4.352a.5.5 0 0 0 .623.622l4.353-1.32a2 2 0 0 0 .83-.497z"/>'
+            + '<path d="m15 5 4 4"/>',
+        eraser:
+            '<path d="M21 21H8a2 2 0 0 1-1.42-.587l-3.994-3.999a2 2 0 0 1 0-2.828l10-10a2 2 0 0 1 2.829 0l5.999 6a2 2 0 0 1 0 2.828L12.834 21"/>'
+            + '<path d="m5.082 11.09 8.828 8.828"/>',
+        'arrow-left':
+            '<path d="m12 19-7-7 7-7"/><path d="M19 12H5"/>',
+        sparkles:
+            '<path d="M11.017 2.814a1 1 0 0 1 1.966 0l1.051 5.558a2 2 0 0 0 1.594 1.594l5.558 1.051a1 1 0 0 1 0 1.966l-5.558 1.051a2 2 0 0 0-1.594 1.594l-1.051 5.558a1 1 0 0 1-1.966 0l-1.051-5.558a2 2 0 0 0-1.594-1.594l-5.558-1.051a1 1 0 0 1 0-1.966l5.558-1.051a2 2 0 0 0 1.594-1.594z"/>'
+            + '<path d="M20 2v4"/><path d="M22 4h-4"/><circle cx="4" cy="20" r="2"/>',
+        'triangle-alert':
+            '<path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3"/>'
+            + '<path d="M12 9v4"/><path d="M12 17h.01"/>',
+        crown:
+            '<path d="M11.562 3.266a.5.5 0 0 1 .876 0L15.39 8.87a1 1 0 0 0 1.516.294L21.183 5.5a.5.5 0 0 1 .798.519l-2.834 10.246a1 1 0 0 1-.956.734H5.81a1 1 0 0 1-.957-.734L2.02 6.02a.5.5 0 0 1 .798-.519l4.276 3.664a1 1 0 0 0 1.516-.294z"/>'
+            + '<path d="M5 21h14"/>',
+        sun:
+            '<circle cx="12" cy="12" r="4"/>'
+            + '<path d="M12 2v2"/><path d="M12 20v2"/>'
+            + '<path d="m4.93 4.93 1.41 1.41"/><path d="m17.66 17.66 1.41 1.41"/>'
+            + '<path d="M2 12h2"/><path d="M20 12h2"/>'
+            + '<path d="m6.34 17.66-1.41 1.41"/><path d="m19.07 4.93-1.41 1.41"/>',
+        'grid-3x3':
+            '<rect width="18" height="18" x="3" y="3" rx="2"/>'
+            + '<path d="M3 9h18"/><path d="M3 15h18"/>'
+            + '<path d="M9 3v18"/><path d="M15 3v18"/>',
+        route:
+            '<circle cx="6" cy="19" r="3"/>'
+            + '<path d="M9 19h8.5a3.5 3.5 0 0 0 0-7h-11a3.5 3.5 0 0 1 0-7H15"/>'
+            + '<circle cx="18" cy="5" r="3"/>',
+    };
+
+    function icon(name, opts) {
+        const inner = ICONS[name];
+        if (!inner) return null;
+        const cls = 'icon' + (opts && opts.className ? ' ' + opts.className : '');
+        const markup = `<svg class="${cls}" viewBox="0 0 24 24"`
+            + ' width="1em" height="1em" fill="none" stroke="currentColor"'
+            + ' stroke-width="2" stroke-linecap="round" stroke-linejoin="round"'
+            + ' aria-hidden="true">' + inner + '</svg>';
+        const tmp = document.createElement('div');
+        tmp.innerHTML = markup;
+        return tmp.firstElementChild;
+    }
+
+    function renderIcons(root) {
+        const scope = root || document;
+        const nodes = scope.querySelectorAll('[data-icon]');
+        for (const node of nodes) {
+            if (node.getAttribute('data-icon-done') === '1') continue;
+            const svg = icon(node.getAttribute('data-icon'));
+            if (!svg) continue;
+            node.insertBefore(svg, node.firstChild);
+            node.setAttribute('data-icon-done', '1');
+        }
+    }
+
+    // -----------------------------------------------------------------
     // Game shell
     //
     // Every game page shares the same chrome: a difficulty segmented
@@ -533,7 +615,7 @@
     const STRINGS = {
         en: {
             // Shared topbar / toolbar / actions
-            menu: '← Menu',
+            menu: 'Menu',
             language: 'Language',
             generatingPuzzle: 'Generating puzzle…',
             difficulty: 'Difficulty',
@@ -543,16 +625,16 @@
             boardSize: 'Board size',
             gameSettings: 'Game settings',
             newGame: 'New Game',
-            reset: '↻ Reset',
-            hint: '💡 Hint',
-            reveal: '? Reveal',
-            share: '🔗 Share',
+            reset: 'Reset',
+            hint: 'Hint',
+            reveal: 'Reveal',
+            share: 'Share',
             shareTitle: 'Copy a link to this puzzle',
             shareCopied: 'Link copied!',
             shareFailed: 'Copy failed — copy from the address bar instead.',
-            winMessage: 'You Win! ✨',
+            winMessage: 'You Win!',
             howToPlay: 'How to play',
-            conflict: (n) => `⚠ ${n} conflict${n === 1 ? '' : 's'}`,
+            conflict: (n) => `${n} conflict${n === 1 ? '' : 's'}`,
             clearPlacements: 'Clear placements',
             clearPath: 'Clear path',
             highlightDeducible: 'Highlight one deducible cell',
@@ -620,15 +702,15 @@
                 'Fill the grid so every row, column and box contains each digit exactly once.',
             sudokuBoardAria: 'Sudoku puzzle board',
             sudokuNumPadAria: 'Number pad',
-            sudokuNotes: '✎ Notes',
-            sudokuErase: '⌫ Erase',
+            sudokuNotes: 'Notes',
+            sudokuErase: 'Erase',
             sudokuEraseAria: 'Erase',
             sudokuEraseTitle: 'Erase (Backspace / Delete / 0)',
             sudokuHelp1: 'Click a cell to select it. Pre-filled (locked) cells stay grey.',
             sudokuHelp2:
                 'Fill a digit with the on-screen keypad or your keyboard. The same key again clears that digit.',
             sudokuHelp3Html:
-                'Toggle <strong>✎ Notes</strong> (or press <kbd>N</kbd>) to write small candidate marks instead of a full digit.',
+                'Toggle <strong>Notes</strong> (or press <kbd>N</kbd>) to write small candidate marks instead of a full digit.',
             sudokuHelp4Html:
                 'Each <strong>row</strong>, <strong>column</strong> and <strong>box</strong> must contain every digit exactly once.',
             sudokuHelp5Html:
@@ -669,7 +751,7 @@
                 'Solved when the path covers every white cell with checkpoints in the right order.',
         },
         zh: {
-            menu: '← 選單',
+            menu: '選單',
             language: '語言',
             generatingPuzzle: '正在產生關卡…',
             difficulty: '難度',
@@ -679,16 +761,16 @@
             boardSize: '盤面大小',
             gameSettings: '遊戲設定',
             newGame: '新局',
-            reset: '↻ 重設',
-            hint: '💡 提示',
-            reveal: '? 解答',
-            share: '🔗 分享',
+            reset: '重設',
+            hint: '提示',
+            reveal: '解答',
+            share: '分享',
             shareTitle: '複製本關卡的連結',
             shareCopied: '連結已複製！',
             shareFailed: '複製失敗 — 請從網址列手動複製。',
-            winMessage: '你贏了！ ✨',
+            winMessage: '你贏了！',
             howToPlay: '遊玩方式',
-            conflict: (n) => `⚠ ${n} 個衝突`,
+            conflict: (n) => `${n} 個衝突`,
             clearPlacements: '清除目前的標記',
             clearPath: '清除路徑',
             highlightDeducible: '標出一格可推論的位置',
@@ -748,15 +830,15 @@
                 '填滿盤面，使每列、每行、每宮都恰好包含 1 至 N 各一次。',
             sudokuBoardAria: 'Sudoku 盤面',
             sudokuNumPadAria: '數字鍵盤',
-            sudokuNotes: '✎ 便箋',
-            sudokuErase: '⌫ 清除',
+            sudokuNotes: '便箋',
+            sudokuErase: '清除',
             sudokuEraseAria: '清除',
             sudokuEraseTitle: '清除（Backspace / Delete / 0）',
             sudokuHelp1: '點擊格子選取它。預填（鎖定）的格子為灰色。',
             sudokuHelp2:
                 '用螢幕鍵盤或實體鍵盤輸入數字。再按一次同一個鍵會清除該數字。',
             sudokuHelp3Html:
-                '切換 <strong>✎ 便箋</strong>（或按 <kbd>N</kbd>）可寫入小型候選數字，而非正式數字。',
+                '切換 <strong>便箋</strong>（或按 <kbd>N</kbd>）可寫入小型候選數字，而非正式數字。',
             sudokuHelp4Html:
                 '每個 <strong>列</strong>、<strong>行</strong>、<strong>宮</strong> 都必須恰好包含每個數字各一次。',
             sudokuHelp5Html:
@@ -874,6 +956,7 @@
     function bootstrapI18n() {
         document.documentElement.lang = currentLocale === 'zh' ? 'zh-Hant' : 'en';
         translateNode(document);
+        renderIcons(document);
         wireLangToggle();
     }
 
@@ -1162,6 +1245,8 @@
         clamp,
         el,
         svgEl,
+        icon,
+        icons: { render: renderIcons },
         i18n: {
             get locale() { return currentLocale; },
             setLocale,
