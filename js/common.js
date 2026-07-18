@@ -934,11 +934,25 @@
             if (!overlay) return;
             const fillEl = overlay.querySelector('.puzzle-progress-bar-fill');
             if (!fillEl) return;
-            if (!overlay.classList.contains('is-determinate')) {
-                overlay.classList.add('is-determinate');
-            }
             const f = Math.max(0, Math.min(1, fraction));
-            fillEl.style.width = (f * 100).toFixed(2) + '%';
+            const pct = (f * 100).toFixed(2) + '%';
+            if (!overlay.classList.contains('is-determinate')) {
+                // First determinate frame: snap the width in place with
+                // the CSS transition suppressed. Otherwise the bar
+                // animates from the indeterminate 40% slide down to the
+                // real fraction — and if the generator then blocks the
+                // main thread mid-transition, that width freezes around
+                // the middle (while the compositor-driven fade still
+                // reveals the overlay), so the bar appears to start
+                // "in the middle" before snapping to the first cell.
+                fillEl.style.transition = 'none';
+                overlay.classList.add('is-determinate');
+                fillEl.style.width = pct;
+                void fillEl.offsetWidth; // commit without transition
+                fillEl.style.transition = '';
+                return;
+            }
+            fillEl.style.width = pct;
         }
 
         function finish() {
