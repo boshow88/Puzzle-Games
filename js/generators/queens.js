@@ -1219,10 +1219,23 @@
         // it short-circuits on the first quality pass; medium/hard
         // sample multiple to steer for higher difficulty scores.
         const candidates = [];
+        // Running count of candidates that clear the quality bar.
+        // Drives both the early-exit and the progress bar so the bar
+        // reflects "how close are we to the target pool" rather than
+        // "how many seeds have we burned".
+        let qualityPassCount = 0;
 
         for (let retry = 0; retry < maxRetries; retry++) {
             if (onProgress) {
-                await onProgress(retry / maxRetries);
+                // Primary signal: fraction of the target pool filled.
+                // Floor it with the retry fraction so the bar still
+                // creeps forward in the pathological case where no
+                // seed ever clears the quality bar (qualityPassCount
+                // stuck at 0) — maxRetries > targetCandidates, so in
+                // the normal case the quality fraction dominates.
+                const qFrac = qualityPassCount / targetCandidates;
+                const rFrac = retry / maxRetries;
+                await onProgress(Math.min(1, Math.max(qFrac, rFrac)));
             }
             const retrySeed = (seed ^ ((retry + 1) * 0x9e3779b9)) >>> 0;
             const rng = PC.rng.make(retrySeed);
@@ -1282,13 +1295,12 @@
                     timeoutMs: timeout,
                 };
                 candidates.push({ queens, regions: layout, stats });
+                if (meetsQuality(stats, quality)) qualityPassCount += 1;
             }
 
             // We've collected enough quality-passing samples — stop
             // early. Sampling extra retries beyond this would just
             // spend wall time for a marginal chance at a harder seed.
-            const qualityPassCount = candidates.reduce((n, c) =>
-                n + (meetsQuality(c.stats, quality) ? 1 : 0), 0);
             if (qualityPassCount >= targetCandidates) break;
         }
 
