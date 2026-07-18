@@ -30,11 +30,6 @@
     const STATES = { EMPTY: 0, SUN: 1, MOON: 2 };
     const STATE_CYCLE = [STATES.EMPTY, STATES.SUN, STATES.MOON];
 
-    const SYMBOL = {
-        [STATES.SUN]: '☀',
-        [STATES.MOON]: '☾',
-    };
-
     const VIOLATION_DELAY_MS = 800;
 
     async function generatePuzzle(size, difficulty, seed) {
@@ -426,13 +421,29 @@
         applyHintHighlights();
     }
 
+    // Build a nested Lucide icon <svg> for a board symbol, centred at
+    // (cx, cy) and scaled to `size`. Overrides the default `icon` class
+    // (so the 1em sizing rule doesn't fight our width/height) with a
+    // `board-icon` class that strokes in the sun/moon colour.
+    function symbolIcon(kind, cx, cy, size, extraClass) {
+        const svg = PC.icon(kind);
+        if (!svg) return null;
+        svg.setAttribute('x', cx - size / 2);
+        svg.setAttribute('y', cy - size / 2);
+        svg.setAttribute('width', size);
+        svg.setAttribute('height', size);
+        svg.setAttribute('class',
+            `board-icon ${kind}${extraClass ? ' ' + extraClass : ''}`);
+        return svg;
+    }
+
     function repaintSymbols() {
         const N = state.puzzle.size;
         const cs = BOARD_SIZE / N;
         const group = board.querySelector('#symbols');
         while (group.firstChild) group.removeChild(group.firstChild);
 
-        const symbolFont = Math.max(16, Math.floor(cs * 0.55));
+        const symbolSize = Math.max(18, Math.floor(cs * 0.6));
 
         // Symbols (prefilled + player)
         for (let r = 0; r < N; r++) {
@@ -442,17 +453,9 @@
                 const cx = c * cs + cs / 2;
                 const cy = r * cs + cs / 2;
                 const symbolKind = v === STATES.SUN ? 'sun' : 'moon';
-                const lockedClass = isPrefilled(r, c) ? ' prefilled' : '';
-                const text = PC.svgEl('text', {
-                    class: `symbol ${symbolKind}${lockedClass}`,
-                    x: cx, y: cy,
-                    'text-anchor': 'middle',
-                    'dominant-baseline': 'middle',
-                    dy: '0.12em',
-                    'font-size': symbolFont,
-                });
-                text.textContent = SYMBOL[v];
-                group.appendChild(text);
+                const lockedClass = isPrefilled(r, c) ? 'prefilled' : '';
+                group.appendChild(
+                    symbolIcon(symbolKind, cx, cy, symbolSize, lockedClass));
             }
         }
 
@@ -473,16 +476,8 @@
                 const cx = c * cs + cs / 2;
                 const cy = r * cs + cs / 2;
                 const symbolKind = value === STATES.SUN ? 'sun' : 'moon';
-                const ghost = PC.svgEl('text', {
-                    class: `symbol ${symbolKind} hint-ghost`,
-                    x: cx, y: cy,
-                    'text-anchor': 'middle',
-                    'dominant-baseline': 'middle',
-                    dy: '0.12em',
-                    'font-size': symbolFont,
-                });
-                ghost.textContent = SYMBOL[value];
-                group.appendChild(ghost);
+                group.appendChild(
+                    symbolIcon(symbolKind, cx, cy, symbolSize, 'hint-ghost'));
 
                 // Step-order badge (top-right corner).
                 const stepLabel = PC.svgEl('text', {
@@ -526,21 +521,17 @@
         // correct answer, so they don't need the hint.
         if (shell.revealed && state.puzzle && state.puzzle.solution) {
             const sol = state.puzzle.solution;
-            const hintFont = Math.max(9, Math.floor(cs * 0.22));
+            const revealSize = Math.max(11, Math.floor(cs * 0.34));
             for (let r = 0; r < N; r++) {
                 for (let c = 0; c < N; c++) {
                     if (isPrefilled(r, c)) continue;
-                    const text = PC.svgEl('text', {
-                        class: 'symbol reveal-hint',
-                        x: c * cs + cs * 0.16,
-                        y: r * cs + cs * 0.18,
-                        'text-anchor': 'middle',
-                        'dominant-baseline': 'middle',
-                        dy: '0.12em',
-                        'font-size': hintFont,
-                    });
-                    text.textContent = SYMBOL[sol[r][c]];
-                    group.appendChild(text);
+                    const kind = sol[r][c] === STATES.SUN ? 'sun' : 'moon';
+                    group.appendChild(symbolIcon(
+                        kind,
+                        c * cs + cs * 0.24,
+                        r * cs + cs * 0.26,
+                        revealSize,
+                        'reveal'));
                 }
             }
         }

@@ -511,9 +511,20 @@
 
 /* ---- Tango-specific ---- */
 
-/* Sun / moon use the same text mechanism as Queens' ♛ but coloured. */
-.symbol.sun  { fill: #f5a623; }
-.symbol.moon { fill: #4a6fa5; }
+/* Sun / moon are inline Lucide icons (stroke style). fill:none keeps
+   them as clean outlines; the sun/moon colour comes through
+   stroke: currentColor via the `color` property. Slightly bolder
+   stroke than the chrome icons so they carry as the board's main
+   content. */
+.board-icon {
+    fill: none;
+    stroke-width: 2.5;
+    pointer-events: none;
+}
+.board-icon.sun  { color: #f5a623; }
+.board-icon.moon { color: #4a6fa5; }
+.board-icon.hint-ghost { color: #e57373; }
+.board-icon.reveal { opacity: 0.5; }
 
 /* Pre-filled cells: slightly darker background so the player can tell at
    a glance which cells are locked. The symbol itself stays the same weight
