@@ -28,6 +28,7 @@
         '#FF8888', '#FFB366', '#FFDD33', '#66DD66',
         '#7799FF', '#BB77DD', '#FF88CC', '#DD8855',
         '#88DDDD', '#DDAA77', '#99BB99', '#CCAAFF',
+        '#6FCF97', '#EB6F92', '#9A8CFF', '#E0B050',
     ];
 
     // Multiplicative darken of a `#RRGGBB` hex — used to derive the
@@ -1059,7 +1060,7 @@
     // arrives here with the requested puzzle. We hand the seed to
     // startNewGame *once*; subsequent New Game clicks roll a fresh
     // seed and the address bar re-syncs to whatever just generated.
-    const VALID_SIZES = new Set([5, 6, 7, 8, 9, 10, 11, 12]);
+    const VALID_SIZES = new Set([5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15]);
     const VALID_DIFFS = new Set(['easy', 'medium', 'hard']);
 
     function readUrlInitial() {
@@ -1121,7 +1122,7 @@
                 default: urlInitial ? urlInitial.difficulty : 'medium',
             },
             size: {
-                kind: 'slider', min: 5, max: 12,
+                kind: 'slider', min: 5, max: 15,
                 default: urlInitial ? urlInitial.size : 8,
             },
             onNewGame: startNewGame,

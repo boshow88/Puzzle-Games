@@ -119,7 +119,8 @@
         if (N <= 6) return 10000;
         if (N <= 8) return 30000;
         if (N <= 10) return 90000;
-        return 150000;
+        if (N <= 12) return 150000;
+        return 240000; // 13×13 and up
     }
 
     // Per-(N, difficulty) hard cap on how many seeds we're willing to

@@ -44,7 +44,7 @@ contains exactly one queen.
 
 ### Board
 
-- N×N grid, with N from **5×5** to **12×12**.
+- N×N grid, with N from **5×5** to **15×15**.
 - The board is partitioned into **N coloured regions** — irregular
   connected shapes that tile the whole board. Region colours are
   just labels; they have no other meaning.
