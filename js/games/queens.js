@@ -24,11 +24,14 @@
     // Constants
     // -----------------------------------------------------------------
 
+    // Soft, low-saturation region palette. Kept light so the dark
+    // queen glyph and the near-black × read cleanly on every region.
+    // 16 entries so boards up to 16×16 give each region its own hue.
     const REGION_COLORS = [
-        '#FF8888', '#FFB366', '#FFDD33', '#66DD66',
-        '#7799FF', '#BB77DD', '#FF88CC', '#DD8855',
-        '#88DDDD', '#DDAA77', '#99BB99', '#CCAAFF',
-        '#6FCF97', '#EB6F92', '#9A8CFF', '#E0B050',
+        '#F79C9C', '#FABD80', '#F6DC60', '#88D986',
+        '#92AFF6', '#C496E2', '#F8A1D3', '#DA9E71',
+        '#98DADA', '#DEBB8F', '#A6C4A8', '#CFB8F7',
+        '#8CD8AF', '#EC91AC', '#ACA6F7', '#E1BF72',
     ];
 
     // Multiplicative darken of a `#RRGGBB` hex — used to derive the

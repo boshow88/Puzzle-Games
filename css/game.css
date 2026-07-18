@@ -548,10 +548,28 @@
 
 .symbol.queen.victory {
     fill: #d4a017;
+    /* Dark outline drawn behind the fill (paint-order: stroke) so the
+       gold queen stays legible on any region — including yellow-ish
+       ones where fill-only gold would vanish. */
+    stroke: #3d2b00;
+    stroke-width: 1.5px;
+    paint-order: stroke;
+    /* One-shot celebratory pop. transform-box: fill-box pins the
+       origin to each glyph's own centre so the scale pivots in place. */
+    transform-box: fill-box;
+    transform-origin: center;
+    animation: queen-victory-pop 720ms ease-out;
+}
+
+@keyframes queen-victory-pop {
+    0%   { transform: scale(1); }
+    40%  { transform: scale(1.32); }
+    68%  { transform: scale(0.96); }
+    100% { transform: scale(1); }
 }
 
 .symbol.mark {
-    fill: #6c757d;
+    fill: #1a1a1a;
 }
 
 /* Violation slash */
