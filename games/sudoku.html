@@ -54,6 +54,7 @@
 
         <div class="action-row">
             <button class="btn" id="reset-btn" type="button" data-i18n="reset" data-i18n-title="clearPlacements" title="Clear placements">↻ Reset</button>
+            <button class="btn" id="hint-btn" type="button" data-i18n="hint" data-i18n-title="highlightDeducible" title="Highlight one deducible cell">💡 Hint</button>
             <button class="btn toggle" id="reveal-btn" type="button" aria-pressed="false" data-i18n="reveal" data-i18n-title="showSolution" title="Show solution overlay">? Reveal</button>
         </div>
 
@@ -78,6 +79,8 @@
             </svg>
         </div>
 
+        <div class="hint-banner" id="hint-banner" hidden aria-live="polite"></div>
+
         <div class="keypad" id="keypad" data-i18n-aria-label="sudokuNumPadAria" aria-label="Number pad">
             <!-- Digit buttons populated by JS based on board size. -->
         </div>
@@ -95,6 +98,7 @@
     </div>
 
     <script src="../js/common.js"></script>
+    <script src="../js/generators/sudoku.js"></script>
     <script src="../js/games/sudoku.js"></script>
 </body>
 </html>

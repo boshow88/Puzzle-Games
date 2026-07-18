@@ -1,9 +1,15 @@
 /**
- * Sudoku — gameplay, dummy puzzle generation, and SVG rendering.
+ * Sudoku — gameplay + SVG rendering.
  *
- * Same architectural shape as queens.js / tango.js (deliberately, so the
- * shared parts can be refactored after all four games settle). Only
- * depends on window.PuzzleCommon.
+ * Puzzle generation lives in `js/generators/sudoku.js` and is exposed
+ * via `window.PuzzleGenerators.sudoku(size, difficulty, seed)`. The
+ * generator builds a full solution, then digs holes while a
+ * technique-bounded solver confirms the puzzle stays uniquely solvable,
+ * so every delivered board has a single solution reachable by the
+ * difficulty's allowed techniques.
+ *
+ * Same architectural shape as queens.js / tango.js. Only depends on
+ * window.PuzzleCommon (+ the generator above).
  *
  * Puzzle JSON contract:
  *   {
@@ -15,13 +21,8 @@
  *     boxCols:    int,               // width of a single box  (3)
  *     prefilled:  int[N][N],         // 0 empty, 1..N for given digits (locked)
  *     solution:   int[N][N],         // always fully populated
+ *     stats:      { clues, emptyCells, techniqueCounts }
  *   }
- *
- * The current generator is intentionally simple: it produces a random
- * legal solution via row/col/box-constrained backtracking, then keeps a
- * fraction of cells as clues. It does NOT guarantee a unique solution
- * and has no proper difficulty calibration; difficulty only controls
- * the clue count.
  */
 (function () {
     'use strict';
@@ -35,131 +36,12 @@
     const BOARD_SIZE = 480;
     const VIOLATION_DELAY_MS = 800;
 
-    /** Box dimensions per board size (rows × cols of a single box). */
-    const BOX_SHAPE = {
-        6: { rows: 2, cols: 3 },
-        9: { rows: 3, cols: 3 },
-    };
-
-    /**
-     * Fraction of cells to keep as clues, indexed by size then difficulty.
-     * Tuned by eyeballing — proper difficulty modelling will arrive with
-     * the real generator.
-     */
-    const CLUE_FRACTION = {
-        6: { easy: 0.62, medium: 0.46, hard: 0.36 },
-        9: { easy: 0.50, medium: 0.40, hard: 0.32 },
-    };
-
     // -----------------------------------------------------------------
-    // Dummy puzzle generator
+    // Puzzle generation (thin wrapper around the external generator).
     // -----------------------------------------------------------------
-
-    /**
-     * Build a random valid Sudoku solution grid via randomised
-     * backtracking with row / column / box constraints. Returns
-     * int[N][N] of 1..N, or null if the search ran out of room.
-     */
-    function placeValidGrid(N, boxRows, boxCols, rng) {
-        const grid = Array.from({ length: N }, () => new Array(N).fill(0));
-        const rowMask = new Array(N).fill(0);
-        const colMask = new Array(N).fill(0);
-        const boxMask = new Array(N).fill(0);
-
-        function boxIndex(r, c) {
-            return Math.floor(r / boxRows) * Math.floor(N / boxCols)
-                 + Math.floor(c / boxCols);
-        }
-
-        function bit(d) { return 1 << (d - 1); }
-
-        function digitsForCell(r, c) {
-            const used = rowMask[r] | colMask[c] | boxMask[boxIndex(r, c)];
-            const out = [];
-            for (let d = 1; d <= N; d++) {
-                if ((used & bit(d)) === 0) out.push(d);
-            }
-            return PC.rng.shuffle(out, rng);
-        }
-
-        function solve(idx) {
-            if (idx === N * N) return true;
-            const r = Math.floor(idx / N);
-            const c = idx % N;
-            const b = boxIndex(r, c);
-            for (const d of digitsForCell(r, c)) {
-                grid[r][c] = d;
-                const m = bit(d);
-                rowMask[r] |= m; colMask[c] |= m; boxMask[b] |= m;
-                if (solve(idx + 1)) return true;
-                grid[r][c] = 0;
-                rowMask[r] &= ~m; colMask[c] &= ~m; boxMask[b] &= ~m;
-            }
-            return false;
-        }
-
-        return solve(0) ? grid : null;
-    }
-
-    /**
-     * Keep ~fraction of cells as clues. The remaining cells start empty.
-     * Returns int[N][N] (0 / digit). Always keeps at least 1 clue per
-     * row to avoid totally empty rows visually.
-     */
-    function chooseClues(N, solution, fraction, rng) {
-        const out = Array.from({ length: N }, () => new Array(N).fill(0));
-        const all = [];
-        for (let r = 0; r < N; r++) {
-            for (let c = 0; c < N; c++) all.push([r, c]);
-        }
-        PC.rng.shuffle(all, rng);
-        const take = Math.max(N, Math.round(all.length * fraction));
-        for (let i = 0; i < take; i++) {
-            const [r, c] = all[i];
-            out[r][c] = solution[r][c];
-        }
-        return out;
-    }
 
     function generatePuzzle(size, difficulty, seed) {
-        const rng = PC.rng.make(seed);
-        const { rows: boxRows, cols: boxCols } = BOX_SHAPE[size];
-
-        let solution = null;
-        for (let i = 0; i < 8 && !solution; i++) {
-            solution = placeValidGrid(size, boxRows, boxCols, rng);
-        }
-        if (!solution) {
-            // Vanishingly rare with these sizes; fall back to a trivial
-            // shifted grid that still satisfies the constraints.
-            solution = fallbackGrid(size, boxRows, boxCols);
-        }
-
-        const fractionTable = CLUE_FRACTION[size] || CLUE_FRACTION[9];
-        const fraction = fractionTable[difficulty] || fractionTable.medium;
-        const prefilled = chooseClues(size, solution, fraction, rng);
-
-        return {
-            id: `sudoku-${size}x${size}-${difficulty}-${seed.toString(36)}`,
-            game: 'sudoku',
-            size,
-            difficulty,
-            boxRows,
-            boxCols,
-            prefilled,
-            solution,
-        };
-    }
-
-    /** Build a trivially valid Sudoku grid (rotated row scheme). */
-    function fallbackGrid(N, boxRows, boxCols) {
-        const grid = Array.from({ length: N }, () => new Array(N).fill(0));
-        for (let r = 0; r < N; r++) {
-            for (let c = 0; c < N; c++) {
-                grid[r][c] = ((boxCols * (r % boxRows) + Math.floor(r / boxRows) + c) % N) + 1;
-            }
-        }
-        return grid;
+        return window.PuzzleGenerators.sudoku(size, difficulty, seed);
     }
 
     // -----------------------------------------------------------------
@@ -180,6 +62,9 @@
         displayedViolations: null,
         displayedPairs: 0,
         violationTimer: null,
+
+        hint: null,               // current hint descriptor, or null
+        hintBanner: null,         // #hint-banner element
     };
 
     let shell = null;
@@ -204,6 +89,7 @@
         state.displayedViolations = emptyViolationGrid(N);
         state.displayedPairs = 0;
         cancelViolationTimer();
+        state.hint = null;
         state.won = false;
         // Keep current selection if it still fits the board; otherwise drop.
         if (state.selected && (state.selected.r >= N || state.selected.c >= N)) {
@@ -382,6 +268,13 @@
         selectGroup.setAttribute('id', 'select');
         svg.appendChild(selectGroup);
 
+        // Layer: hint highlights (target + context / violation tints).
+        // Sits above the selection tint but below the box borders and
+        // symbols, so digits stay readable on top of the highlight.
+        const hintGroup = PC.svgEl('g', { class: 'hint' });
+        hintGroup.setAttribute('id', 'hint');
+        svg.appendChild(hintGroup);
+
         // Layer: box borders (thick lines between Sudoku boxes) + outer
         // frame. All use the shared `.region-border` style so the visual
         // weight matches Queens and Tango.
@@ -428,6 +321,7 @@
         svg.appendChild(hitGroup);
 
         repaintSelection();
+        repaintHint();
         repaintSymbols();
     }
 
@@ -569,6 +463,201 @@
     function updateStatusRow() {
         shell.setViolationCount(state.displayedPairs);
         shell.setWin(state.won);
+    }
+
+    // -----------------------------------------------------------------
+    // Hint
+    //
+    // Surfaces what the tactic-bounded solver would do next, so the
+    // player can see the reasoning. Priority:
+    //   1. If the player has a wrong digit (differs from the unique
+    //      solution): flag it. If it forms an actual duplicate we name
+    //      the offending unit ("too many Xs"); otherwise a generic
+    //      "this cell is incorrect".
+    //   2. Otherwise the next forced deduction (fullHouse → naked
+    //      single → hidden single), highlighting the target cell and
+    //      the unit / peers the deduction reads from.
+    // -----------------------------------------------------------------
+
+    function unitName(kind) {
+        if (kind === 'row') return PC.i18n.t('sudokuHintUnitRow');
+        if (kind === 'col') return PC.i18n.t('sudokuHintUnitCol');
+        return PC.i18n.t('sudokuHintUnitBox');
+    }
+
+    /** Cells belonging to a given unit (row/col/box index). */
+    function unitCells(kind, index) {
+        const N = state.puzzle.size;
+        const out = [];
+        if (kind === 'row') {
+            for (let c = 0; c < N; c++) out.push([index, c]);
+        } else if (kind === 'col') {
+            for (let r = 0; r < N; r++) out.push([r, index]);
+        } else {
+            for (let r = 0; r < N; r++) {
+                for (let c = 0; c < N; c++) {
+                    if (boxIndexOf(r, c) === index) out.push([r, c]);
+                }
+            }
+        }
+        return out;
+    }
+
+    /** Row + column + box peers of a cell (used for naked-single context). */
+    function peerCells(r0, c0) {
+        const N = state.puzzle.size;
+        const box0 = boxIndexOf(r0, c0);
+        const out = [];
+        for (let r = 0; r < N; r++) {
+            for (let c = 0; c < N; c++) {
+                if (r === r0 && c === c0) continue;
+                if (r === r0 || c === c0 || boxIndexOf(r, c) === box0) {
+                    out.push([r, c]);
+                }
+            }
+        }
+        return out;
+    }
+
+    function effectiveGrid() {
+        const N = state.puzzle.size;
+        const grid = [];
+        for (let r = 0; r < N; r++) {
+            const row = [];
+            for (let c = 0; c < N; c++) row.push(effective(r, c));
+            grid.push(row);
+        }
+        return grid;
+    }
+
+    function computeHint() {
+        const N = state.puzzle.size;
+        const { boxRows, boxCols, solution } = state.puzzle;
+        const S = window.PuzzleSolvers && window.PuzzleSolvers.sudoku;
+        if (!S) return { kind: 'none' };
+        const grid = effectiveGrid();
+
+        // 1. Wrong player entries (differ from the unique solution).
+        const wrong = [];
+        for (let r = 0; r < N; r++) {
+            for (let c = 0; c < N; c++) {
+                if (isPrefilled(r, c)) continue;
+                const v = state.placements[r][c];
+                if (v !== 0 && v !== solution[r][c]) wrong.push([r, c]);
+            }
+        }
+        if (wrong.length) {
+            const contra = S.findContradiction(grid, N, boxRows, boxCols);
+            if (contra) {
+                return {
+                    kind: 'error', variant: 'contradiction',
+                    cells: contra.cells,
+                    unitKind: contra.unitKind, value: contra.value,
+                };
+            }
+            return { kind: 'error', variant: 'wrong', cells: wrong };
+        }
+
+        // 2. Next forced deduction from the current (correct) board.
+        const techniques = S.TECHNIQUES_BY_DIFFICULTY[state.puzzle.difficulty];
+        const solverState = S.makeState(grid, N, boxRows, boxCols);
+        const step = S.nextStep(solverState, techniques);
+        if (step) return { kind: 'step', step };
+
+        return { kind: 'none' };
+    }
+
+    function showHint() {
+        if (!state.puzzle || state.won) return;
+        state.hint = computeHint();
+        renderHintBanner();
+        repaintHint();
+    }
+
+    function clearHint() {
+        state.hint = null;
+        renderHintBanner();
+        repaintHint();
+    }
+
+    /** Redraw the hint highlight layer from state.hint. */
+    function repaintHint() {
+        const group = board && board.querySelector('#hint');
+        if (!group) return;
+        while (group.firstChild) group.removeChild(group.firstChild);
+        const h = state.hint;
+        if (!h) return;
+        const N = state.puzzle.size;
+        const cs = BOARD_SIZE / N;
+
+        const tint = (r, c, fill, opacity) => {
+            group.appendChild(PC.svgEl('rect', {
+                x: c * cs, y: r * cs, width: cs, height: cs,
+                fill, 'fill-opacity': opacity,
+            }));
+        };
+
+        if (h.kind === 'error') {
+            for (const [r, c] of h.cells) tint(r, c, '#ef5350', 0.5);
+            return;
+        }
+        if (h.kind === 'step') {
+            const s = h.step;
+            // Context cells first (soft amber), then the target on top.
+            let context = [];
+            if (s.technique === 'nakedSingle') {
+                context = peerCells(s.r, s.c);
+            } else if (s.unitKind != null) {
+                context = unitCells(s.unitKind, s.unitIndex);
+            }
+            for (const [r, c] of context) {
+                if (r === s.r && c === s.c) continue;
+                tint(r, c, '#ffd54f', 0.22);
+            }
+            tint(s.r, s.c, '#ffd54f', 0.95);
+        }
+    }
+
+    function renderHintBanner() {
+        const el = state.hintBanner;
+        if (!el) return;
+        const h = state.hint;
+        if (!h) { el.hidden = true; el.innerHTML = ''; el.classList.remove('error'); return; }
+
+        const t = (key, ...args) => PC.i18n.t(key, ...args);
+        let isError = false;
+        let text = '';
+
+        if (h.kind === 'error') {
+            isError = true;
+            if (h.variant === 'contradiction') {
+                text = t('sudokuHintContradiction',
+                    unitName(h.unitKind), h.value, state.puzzle.size);
+            } else {
+                text = t('sudokuHintWrong');
+            }
+        } else if (h.kind === 'step') {
+            const s = h.step;
+            if (s.technique === 'fullHouse') {
+                text = t('sudokuHintFullHouse', unitName(s.unitKind), s.value);
+            } else if (s.technique === 'nakedSingle') {
+                text = t('sudokuHintNaked', s.value);
+            } else {
+                text = t('sudokuHintHidden', unitName(s.unitKind), s.value);
+            }
+        } else {
+            text = t('sudokuHintNoAvail');
+        }
+
+        const tierLabel = isError
+            ? t('sudokuHintTierError') : t('sudokuHintTierStep');
+        el.classList.toggle('error', isError);
+        el.innerHTML = '';
+        const badge = PC.el('span',
+            { class: 'hint-tier' + (isError ? ' err' : '') }, tierLabel);
+        el.appendChild(badge);
+        el.appendChild(document.createTextNode(text));
+        el.hidden = false;
     }
 
     // -----------------------------------------------------------------
@@ -718,6 +807,7 @@
         } else {
             // Notes don't participate in violation checks, so we can skip
             // the recompute entirely and just repaint the symbol layer.
+            clearHint();
             repaintSymbols();
         }
     }
@@ -744,6 +834,9 @@
      * logic knows which conflict groups to debounce.
      */
     function afterPlacementChange(r, c) {
+        // Any edit invalidates the shown hint (the board it described
+        // has changed), so drop it before recomputing.
+        clearHint();
         recomputeViolations();
         if (checkWin() && !state.won) {
             state.won = true;
@@ -821,6 +914,7 @@
         ensurePlacementsForCurrent();
         renderBoard();
         buildKeypad();
+        clearHint();
         updateStatusRow();
     }
 
@@ -828,6 +922,7 @@
         if (!state.puzzle) return;
         ensurePlacementsForCurrent();
         state.won = false;
+        clearHint();
         repaintSelection();
         repaintSymbols();
         updateStatusRow();
@@ -849,6 +944,17 @@
         board = shell.dom.board;
         keypad = document.getElementById('keypad');
         board.addEventListener('click', onBoardClick);
+
+        state.hintBanner = document.getElementById('hint-banner');
+        const hintBtn = document.getElementById('hint-btn');
+        if (hintBtn) hintBtn.addEventListener('click', showHint);
+
+        // Re-render the hint banner if the locale flips while a hint is
+        // on screen, so the technique wording follows the language.
+        if (PC.i18n && typeof PC.i18n.subscribe === 'function') {
+            PC.i18n.subscribe(() => { if (state.hint) renderHintBanner(); });
+        }
+
         // Keyboard input is captured globally; we don't require the SVG
         // to be focused because it's awkward to focus a `<svg>` reliably
         // across browsers.

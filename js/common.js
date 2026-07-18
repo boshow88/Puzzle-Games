@@ -633,6 +633,23 @@
                 'Each <strong>row</strong>, <strong>column</strong> and <strong>box</strong> must contain every digit exactly once.',
             sudokuHelp5Html:
                 '<kbd>Backspace</kbd> / <kbd>Delete</kbd> / <kbd>0</kbd> clears the cell. Arrow keys move the selection.',
+            // Sudoku hint texts (unit names + one string per solver step).
+            sudokuHintUnitRow: 'row',
+            sudokuHintUnitCol: 'column',
+            sudokuHintUnitBox: 'box',
+            sudokuHintFullHouse: (unit, v) =>
+                `This ${unit} has only ${v} left as an option.`,
+            sudokuHintNaked: (v) =>
+                `Given its row, column and box, this cell can only be ${v}.`,
+            sudokuHintHidden: (unit, v) =>
+                `Every other cell in this ${unit} is blocked by another ${v}, so ${v} can only go here.`,
+            sudokuHintContradiction: (unit, v, n) =>
+                `This ${unit} has too many ${v}s. Every ${unit} must contain the digits 1–${n} without repeats.`,
+            sudokuHintWrong: 'The highlighted cell is incorrect.',
+            sudokuHintNoAvail:
+                'No simple next step found from the current board.',
+            sudokuHintTierStep: 'STEP',
+            sudokuHintTierError: 'ERROR',
 
             // Zip
             zipName: 'Zip',
@@ -744,6 +761,21 @@
                 '每個 <strong>列</strong>、<strong>行</strong>、<strong>宮</strong> 都必須恰好包含每個數字各一次。',
             sudokuHelp5Html:
                 '<kbd>Backspace</kbd> / <kbd>Delete</kbd> / <kbd>0</kbd> 清除格子；方向鍵移動選取。',
+            sudokuHintUnitRow: '列',
+            sudokuHintUnitCol: '行',
+            sudokuHintUnitBox: '區塊',
+            sudokuHintFullHouse: (unit, v) =>
+                `此${unit}只剩下 ${v} 這個選項。`,
+            sudokuHintNaked: (v) =>
+                `根據其所屬行、列、區塊的情況，這格只剩下 ${v} 這個選項。`,
+            sudokuHintHidden: (unit, v) =>
+                `此${unit}其餘所有格子都因為其他 ${v} 的存在而無法再放置，所以 ${v} 只能放在這一格。`,
+            sudokuHintContradiction: (unit, v, n) =>
+                `此${unit}有太多 ${v} 了。每${unit}都必須包含數字 1–${n}，不得重複。`,
+            sudokuHintWrong: '醒目標示的格子不正確。',
+            sudokuHintNoAvail: '從目前的盤面找不到簡單的下一步。',
+            sudokuHintTierStep: '步驟',
+            sudokuHintTierError: '錯誤',
 
             zipName: 'Zip',
             zipTagline: '一條路徑，貫穿每格。',
