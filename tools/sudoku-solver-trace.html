@@ -1,0 +1,431 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+    <meta charset="utf-8">
+    <title>Sudoku solver trace</title>
+    <style>
+        :root {
+            --bg: #fafafa;
+            --pattern: #ffd54f;      /* amber — the technique's pattern cells */
+            --elim: #ef5350;         /* red — candidates this step removes */
+            --placed: #2e7d32;       /* green — a digit this step places */
+            --given: #e6e8ee;        /* prefilled clue tint */
+        }
+        body { font-family: system-ui, sans-serif; background: var(--bg);
+               color: #222; padding: 20px; margin: 0; max-width: 1200px; }
+        h1 { font-size: 18px; margin: 0 0 12px; }
+        .row { display: flex; flex-wrap: wrap; gap: 8px;
+               align-items: center; margin-bottom: 12px; }
+        button { font: inherit; padding: 6px 12px; cursor: pointer; }
+        button:disabled { opacity: 0.4; cursor: default; }
+        select, input { font: inherit; padding: 4px 8px; }
+        .layout { display: grid; grid-template-columns: minmax(420px, 1fr) 1fr;
+                  gap: 24px; }
+        .panel { background: white; padding: 12px;
+                 border: 1px solid #ddd; border-radius: 6px; }
+        svg { display: block; }
+        .stats { font-size: 12px; line-height: 1.6; color: #333; margin-top: 8px; }
+        .stats code { background: #f3f3f3; padding: 1px 4px; border-radius: 3px; }
+        .log { max-height: 640px; overflow-y: auto; font-size: 13px; }
+        .step { padding: 8px 10px; margin-bottom: 6px; border-left: 4px solid #bbb;
+                background: #fafafa; border-radius: 0 4px 4px 0; cursor: pointer; }
+        .step:hover { background: #f0f0f0; }
+        .step.selected { background: #fff8e1; }
+        .step.placement { border-color: var(--placed); }
+        .step.elimination { border-color: var(--elim); }
+        .step.stalled { border-color: #999; opacity: 0.7; cursor: default; }
+        .step .head { font-weight: bold; margin-bottom: 3px;
+                      display: flex; gap: 8px; align-items: baseline; }
+        .step .tech { font-size: 11px; padding: 1px 6px; border-radius: 3px;
+                      background: #455a64; color: white; font-weight: bold; }
+        .step .num { color: #999; font-weight: normal; font-size: 11px; }
+        .step .desc { color: #333; line-height: 1.45; }
+        .empty-log { color: #999; font-style: italic; padding: 20px;
+                     text-align: center; }
+        .legend { font-size: 12px; color: #555; margin-top: 8px;
+                  display: flex; flex-wrap: wrap; gap: 12px; }
+        .legend .sw { display: inline-block; width: 12px; height: 12px;
+                      border-radius: 2px; margin-right: 4px; vertical-align: middle; }
+    </style>
+</head>
+<body>
+    <h1>Sudoku solver trace — 觀察 solver 一步步推論（含進階技巧提示）</h1>
+
+    <div class="row">
+        <label>Size:
+            <select id="size"><option>6</option><option selected>9</option></select>
+        </label>
+        <label>Difficulty:
+            <select id="difficulty">
+                <option>easy</option><option>medium</option>
+                <option selected>hard</option>
+            </select>
+        </label>
+        <label>Seed (hex):
+            <input id="seed" type="text" value="1" size="10">
+        </label>
+        <label><input id="random-seed" type="checkbox" checked> random</label>
+        <button id="generate">Generate</button>
+        <label>Lang:
+            <select id="lang"><option value="zh" selected>中文</option>
+                <option value="en">English</option></select>
+        </label>
+    </div>
+
+    <div class="row">
+        <button id="step" disabled>Step ▶</button>
+        <button id="solve" disabled>Solve all ⏭</button>
+        <button id="reset-solver" disabled>Reset solver</button>
+    </div>
+
+    <div class="layout">
+        <div class="panel">
+            <div id="board-wrap"></div>
+            <div class="legend">
+                <span><span class="sw" style="background: var(--pattern)"></span>pattern</span>
+                <span><span class="sw" style="background: var(--elim)"></span>eliminated candidate</span>
+                <span><span class="sw" style="background: var(--placed)"></span>placed digit</span>
+            </div>
+            <div class="stats" id="stats"></div>
+        </div>
+        <div class="panel log" id="log">
+            <div class="empty-log">Generate a puzzle, then press Step / Solve all.</div>
+        </div>
+    </div>
+
+    <script src="../js/common.js"></script>
+    <script src="../js/generators/sudoku.js"></script>
+    <script>
+        'use strict';
+        const PC = window.PuzzleCommon;
+        const S = window.PuzzleSolvers.sudoku;
+
+        const els = {
+            size: document.getElementById('size'),
+            difficulty: document.getElementById('difficulty'),
+            seed: document.getElementById('seed'),
+            randomSeed: document.getElementById('random-seed'),
+            generate: document.getElementById('generate'),
+            lang: document.getElementById('lang'),
+            step: document.getElementById('step'),
+            solve: document.getElementById('solve'),
+            resetSolver: document.getElementById('reset-solver'),
+            boardWrap: document.getElementById('board-wrap'),
+            stats: document.getElementById('stats'),
+            log: document.getElementById('log'),
+        };
+
+        // Reflect the locale the shared common.js already booted with.
+        els.lang.value = (PC.i18n && PC.i18n.locale) || 'zh';
+
+        let puzzle = null;
+        let solverState = null;
+        let stepLog = [];       // { step, grid, cands } snapshots (pre-apply)
+        let selected = -1;
+
+        // ---- helpers ----
+        function copyGrid(g) { return g.map((row) => row.slice()); }
+        function bitsOf(mask) {
+            const out = [];
+            let d = 1;
+            while (mask) { if (mask & 1) out.push(d); mask >>>= 1; d += 1; }
+            return out;
+        }
+        function unitName(kind) {
+            if (kind === 'row') return PC.i18n.t('sudokuHintUnitRow');
+            if (kind === 'col') return PC.i18n.t('sudokuHintUnitCol');
+            return PC.i18n.t('sudokuHintUnitBox');
+        }
+
+        // Player-facing hint text — the exact same i18n the game shows.
+        function describeStep(step) {
+            const u = step.unit ? unitName(step.unit.kind) : '';
+            const d0 = step.digits[0];
+            const dstr = step.digits.join('、');
+            const t = (k, ...a) => PC.i18n.t(k, ...a);
+            switch (step.technique) {
+                case 'fullHouse': return t('sudokuHintFullHouse', u, d0);
+                case 'nakedSingle': return t('sudokuHintNaked', d0);
+                case 'hiddenSingle': return t('sudokuHintHidden', u, d0);
+                case 'lockedPointing': return t('sudokuHintLockedPointing', u, dstr);
+                case 'lockedClaiming': return t('sudokuHintLockedClaiming', u, dstr);
+                case 'nakedPair': return t('sudokuHintNakedPair', u, dstr);
+                case 'hiddenPair': return t('sudokuHintHiddenPair', u, dstr);
+                case 'nakedTriple': return t('sudokuHintNakedTriple', u, dstr);
+                case 'hiddenTriple': return t('sudokuHintHiddenTriple', u, dstr);
+                case 'xWing': return t('sudokuHintXWing', dstr);
+                case 'xyWing': return t('sudokuHintXYWing', dstr);
+                default: return step.technique;
+            }
+        }
+
+        // ---- generate ----
+        els.generate.addEventListener('click', () => {
+            const N = parseInt(els.size.value, 10);
+            const difficulty = els.difficulty.value;
+            if (els.randomSeed.checked) {
+                els.seed.value = ((Math.random() * 0xffffffff) >>> 0).toString(16);
+            }
+            const seed = parseInt(els.seed.value, 16) >>> 0;
+            const t0 = performance.now();
+            puzzle = window.PuzzleGenerators.sudoku(N, difficulty, seed);
+            const dt = performance.now() - t0;
+            renderStats(dt);
+            resetSolver();
+            els.step.disabled = false;
+            els.solve.disabled = false;
+            els.resetSolver.disabled = false;
+        });
+
+        els.lang.addEventListener('change', () => {
+            PC.i18n.setLocale(els.lang.value);
+            renderLog();
+        });
+
+        els.step.addEventListener('click', stepOnce);
+        els.solve.addEventListener('click', solveAll);
+        els.resetSolver.addEventListener('click', resetSolver);
+
+        function techniques() {
+            return S.TECHNIQUES_BY_DIFFICULTY[puzzle.difficulty]
+                || S.TECHNIQUES_BY_DIFFICULTY.hard;
+        }
+
+        function resetSolver() {
+            if (!puzzle) return;
+            solverState = S.makeState(puzzle.prefilled, puzzle.size,
+                puzzle.boxRows, puzzle.boxCols);
+            stepLog = [];
+            selected = -1;
+            renderAll();
+        }
+
+        function stepOnce() {
+            if (!solverState) return;
+            const step = S.nextStep(solverState, techniques());
+            if (!step) {
+                if (!stepLog.length || stepLog[stepLog.length - 1].step) {
+                    stepLog.push({ step: null,
+                        grid: copyGrid(solverState.grid),
+                        cands: copyGrid(solverState.cands),
+                        solved: solverState.filled === puzzle.size * puzzle.size });
+                    selected = stepLog.length - 1;
+                    renderAll();
+                }
+                return;
+            }
+            // Snapshot the pre-apply state so the pattern shows in context.
+            stepLog.push({
+                step,
+                grid: copyGrid(solverState.grid),
+                cands: copyGrid(solverState.cands),
+            });
+            S.applyStep(solverState, step);
+            selected = stepLog.length - 1;
+            renderAll();
+        }
+
+        function solveAll() {
+            if (!solverState) return;
+            let guard = puzzle.size * puzzle.size * puzzle.size + 100;
+            while (guard-- > 0) {
+                const step = S.nextStep(solverState, techniques());
+                if (!step) break;
+                stepLog.push({
+                    step,
+                    grid: copyGrid(solverState.grid),
+                    cands: copyGrid(solverState.cands),
+                });
+                S.applyStep(solverState, step);
+            }
+            stepLog.push({ step: null,
+                grid: copyGrid(solverState.grid),
+                cands: copyGrid(solverState.cands),
+                solved: solverState.filled === puzzle.size * puzzle.size });
+            selected = stepLog.length - 1;
+            renderAll();
+        }
+
+        function renderAll() { renderBoard(); renderLog(); }
+
+        function renderStats(dtMs) {
+            if (!puzzle) return;
+            const s = puzzle.stats || {};
+            const tc = s.techniqueCounts || {};
+            const order = ['fullHouse', 'nakedSingle', 'hiddenSingle',
+                'lockedPointing', 'lockedClaiming', 'nakedPair', 'hiddenPair',
+                'nakedTriple', 'hiddenTriple', 'xWing', 'xyWing'];
+            const mix = order.filter((k) => tc[k])
+                .map((k) => `${k}×${tc[k]}`).join(' · ') || '—';
+            els.stats.innerHTML = `
+                <div><strong>${puzzle.id}</strong></div>
+                <div>gen ${dtMs.toFixed(0)} ms · clues <code>${s.clues}</code>
+                     · empties <code>${s.emptyCells}</code></div>
+                <div>canonical solve mix: ${mix}</div>`;
+        }
+
+        function renderBoard() {
+            if (!puzzle) return;
+            const N = puzzle.size;
+            const { boxRows, boxCols } = puzzle;
+            const cs = Math.floor(Math.min(432 / N, 52));
+            const W = cs * N;
+            const snap = selected >= 0 ? stepLog[selected] : null;
+            const grid = snap ? snap.grid : (solverState ? solverState.grid : null);
+            const cands = snap ? snap.cands : (solverState ? solverState.cands : null);
+            const step = snap ? snap.step : null;
+
+            const NS = 'http://www.w3.org/2000/svg';
+            const svg = document.createElementNS(NS, 'svg');
+            svg.setAttribute('viewBox', `-2 -2 ${W + 4} ${W + 4}`);
+            svg.setAttribute('width', W + 4);
+            svg.setAttribute('height', W + 4);
+
+            const el = (tag, attrs, text) => {
+                const n = document.createElementNS(NS, tag);
+                for (const k in attrs) n.setAttribute(k, attrs[k]);
+                if (text != null) n.textContent = text;
+                return n;
+            };
+
+            // highlight sets
+            const patternKeys = new Set();
+            const placeMap = new Map();       // key -> value
+            const elimMap = new Map();        // key -> Set(digit)
+            if (step) {
+                for (const [r, c] of (step.cells || [])) patternKeys.add(r * N + c);
+                for (const p of step.placements) placeMap.set(p.r * N + p.c, p.value);
+                for (const e of step.eliminations) {
+                    const k = e.r * N + e.c;
+                    if (!elimMap.has(k)) elimMap.set(k, new Set());
+                    elimMap.get(k).add(e.d);
+                }
+            }
+
+            // cell backgrounds
+            for (let r = 0; r < N; r++) {
+                for (let c = 0; c < N; c++) {
+                    const key = r * N + c;
+                    let fill = '#ffffff';
+                    if (puzzle.prefilled[r][c] !== 0) fill = 'var(--given)';
+                    if (patternKeys.has(key)) fill = 'var(--pattern)';
+                    if (placeMap.has(key)) fill = '#c8e6c9';
+                    svg.appendChild(el('rect', {
+                        x: c * cs, y: r * cs, width: cs, height: cs,
+                        fill, stroke: '#ccc', 'stroke-width': 1,
+                    }));
+                }
+            }
+
+            // digits + candidates
+            for (let r = 0; r < N; r++) {
+                for (let c = 0; c < N; c++) {
+                    const key = r * N + c;
+                    const v = grid[r][c];
+                    if (v !== 0) {
+                        const given = puzzle.prefilled[r][c] !== 0;
+                        svg.appendChild(el('text', {
+                            x: c * cs + cs / 2, y: r * cs + cs / 2,
+                            'text-anchor': 'middle', 'dominant-baseline': 'central',
+                            'font-size': Math.floor(cs * 0.6),
+                            'font-weight': given ? 700 : 500,
+                            fill: given ? '#111827' : '#1d4ed8',
+                        }, String(v)));
+                    } else if (cands) {
+                        const cm = cands[r][c];
+                        const placeVal = placeMap.get(key);
+                        const elimSet = elimMap.get(key);
+                        if (placeVal) {
+                            svg.appendChild(el('text', {
+                                x: c * cs + cs / 2, y: r * cs + cs / 2,
+                                'text-anchor': 'middle', 'dominant-baseline': 'central',
+                                'font-size': Math.floor(cs * 0.6), 'font-weight': 700,
+                                fill: 'var(--placed)',
+                            }, String(placeVal)));
+                            continue;
+                        }
+                        for (const d of bitsOf(cm)) {
+                            const nr = Math.floor((d - 1) / boxCols);
+                            const nc = (d - 1) % boxCols;
+                            const nx = c * cs + cs * (nc + 0.5) / boxCols;
+                            const ny = r * cs + cs * (nr + 0.5) / boxRows;
+                            const isElim = elimSet && elimSet.has(d);
+                            svg.appendChild(el('text', {
+                                x: nx, y: ny,
+                                'text-anchor': 'middle', 'dominant-baseline': 'central',
+                                'font-size': Math.floor(cs * 0.2),
+                                fill: isElim ? 'var(--elim)' : '#888',
+                                'font-weight': isElim ? 700 : 400,
+                                'text-decoration': isElim ? 'line-through' : 'none',
+                            }, String(d)));
+                        }
+                    }
+                }
+            }
+
+            // box borders
+            for (let i = 0; i <= N; i++) {
+                const thickR = i % boxRows === 0;
+                const thickC = i % boxCols === 0;
+                svg.appendChild(el('line', {
+                    x1: 0, y1: i * cs, x2: W, y2: i * cs,
+                    stroke: thickR ? '#222' : '#bbb',
+                    'stroke-width': thickR ? 2.5 : 1,
+                }));
+                svg.appendChild(el('line', {
+                    x1: i * cs, y1: 0, x2: i * cs, y2: W,
+                    stroke: thickC ? '#222' : '#bbb',
+                    'stroke-width': thickC ? 2.5 : 1,
+                }));
+            }
+
+            els.boardWrap.innerHTML = '';
+            els.boardWrap.appendChild(svg);
+        }
+
+        function renderLog() {
+            if (!stepLog.length) {
+                els.log.innerHTML = '<div class="empty-log">Solver ready. '
+                    + 'Press Step to advance.</div>';
+                return;
+            }
+            let html = '';
+            stepLog.forEach((entry, i) => {
+                const sel = i === selected ? ' selected' : '';
+                if (!entry.step) {
+                    const msg = entry.solved
+                        ? 'Solved — all cells filled.'
+                        : 'Stalled — no allowed technique applies.';
+                    html += `<div class="step stalled${sel}" data-idx="${i}">
+                        <div class="head"><span class="num">step ${i + 1}</span></div>
+                        <div class="desc">${msg}</div></div>`;
+                    return;
+                }
+                const st = entry.step;
+                const cls = st.placements.length ? 'placement' : 'elimination';
+                const detail = st.placements.length
+                    ? `place ${st.placements.map((p) => `${p.value}@(${p.r},${p.c})`).join(', ')}`
+                    : `−${st.eliminations.length} candidate(s)`;
+                html += `<div class="step ${cls}${sel}" data-idx="${i}">
+                    <div class="head"><span class="tech">${st.technique}</span>
+                        <span class="num">step ${i + 1}</span></div>
+                    <div class="desc">${escapeHtml(describeStep(st))}</div>
+                    <div class="num">${escapeHtml(detail)}</div></div>`;
+            });
+            els.log.innerHTML = html;
+            els.log.querySelectorAll('.step[data-idx]').forEach((node) => {
+                node.addEventListener('click', () => {
+                    selected = parseInt(node.dataset.idx, 10);
+                    renderBoard(); renderLog();
+                });
+            });
+        }
+
+        function escapeHtml(s) {
+            return String(s).replace(/[&<>"]/g, (ch) => ({
+                '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;',
+            }[ch]));
+        }
+    </script>
+</body>
+</html>
