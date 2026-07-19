@@ -400,13 +400,43 @@
         repaintHintOverlay();
     }
 
+    // Nested Lucide crown for a queen. Wrapped in two groups:
+    //   outer <g translate(cx,cy)>  — positioning (SVG attribute)
+    //     inner <g class="queen-pop">— animation target; a CSS scale
+    //         here pivots around this group's local origin (0,0), which
+    //         the outer translate has placed at the cell centre. That
+    //         avoids `transform-box: fill-box` (unreliable on nested
+    //         <svg>), which otherwise scales every queen around the
+    //         board origin and makes them lurch toward the corner.
+    //   <svg x=-s/2 y=-s/2 ...>      — the crown, centred on that origin
+    function queenIcon(cx, cy, size, opts) {
+        const victory = !!(opts && opts.victory);
+        const reveal = !!(opts && opts.reveal);
+        const svg = PC.icon('crown');
+        if (!svg) return null;
+        svg.setAttribute('x', -size / 2);
+        svg.setAttribute('y', -size / 2);
+        svg.setAttribute('width', size);
+        svg.setAttribute('height', size);
+        let cls = 'board-icon queen';
+        if (victory) cls += ' victory';
+        if (reveal) cls += ' reveal';
+        svg.setAttribute('class', cls);
+        const animG = PC.svgEl('g',
+            { class: 'queen-pop' + (victory ? ' pop' : '') });
+        animG.appendChild(svg);
+        const posG = PC.svgEl('g', { transform: `translate(${cx}, ${cy})` });
+        posG.appendChild(animG);
+        return posG;
+    }
+
     function repaintSymbols() {
         const N = state.puzzle.size;
         const cs = BOARD_SIZE / N;
         const group = board.querySelector('#symbols');
         while (group.firstChild) group.removeChild(group.firstChild);
 
-        const symbolFont = Math.max(14, Math.floor(cs * 0.55));
+        const queenSize = Math.max(16, Math.floor(cs * 0.62));
         const markFont = Math.max(12, Math.floor(cs * 0.45));
 
         // Player symbols
@@ -417,17 +447,8 @@
                 const cx = c * cs + cs / 2;
                 const cy = r * cs + cs / 2;
                 if (s === STATES.QUEEN) {
-                    const cls = 'symbol queen' + (state.won ? ' victory' : '');
-                    const text = PC.svgEl('text', {
-                        class: cls,
-                        x: cx, y: cy,
-                        'text-anchor': 'middle',
-                        'dominant-baseline': 'middle',
-                        dy: '0.10em',
-                        'font-size': symbolFont,
-                    });
-                    text.textContent = '♛';
-                    group.appendChild(text);
+                    group.appendChild(
+                        queenIcon(cx, cy, queenSize, { victory: state.won }));
                 } else if (s === STATES.MARK) {
                     const text = PC.svgEl('text', {
                         class: 'symbol mark',
@@ -471,20 +492,14 @@
         // collides with the player's main symbol (which is centered).
         if (shell.revealed && state.puzzle && state.puzzle.solution) {
             const sol = state.puzzle.solution;
-            const hintFont = Math.max(9, Math.floor(cs * 0.24));
+            const revealSize = Math.max(11, Math.floor(cs * 0.34));
             for (let r = 0; r < N; r++) {
                 const c = sol[r];
-                const text = PC.svgEl('text', {
-                    class: 'symbol reveal-hint',
-                    x: c * cs + cs * 0.15,
-                    y: r * cs + cs * 0.18,
-                    'text-anchor': 'middle',
-                    'dominant-baseline': 'middle',
-                    dy: '0.10em',
-                    'font-size': hintFont,
-                });
-                text.textContent = '♛';
-                group.appendChild(text);
+                group.appendChild(queenIcon(
+                    c * cs + cs * 0.24,
+                    r * cs + cs * 0.26,
+                    revealSize,
+                    { reveal: true }));
             }
         }
     }

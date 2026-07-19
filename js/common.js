@@ -657,11 +657,11 @@
                 'Place N queens so that every row, column, color region and 8-neighborhood contains exactly one.',
             queensBoardAria: 'Queens puzzle board',
             queensHelp1Html:
-                'Click a cell to cycle through <strong>empty → × → ♛</strong> (× is just a personal "no" marker).',
-            queensHelp2:
-                'Every row, every column, every color region, and every 3×3 neighborhood may contain at most one queen.',
-            queensHelp3:
-                'Solve the board by placing exactly N queens — one per row, column, and region — with no two adjacent.',
+                'Click a cell to cycle through <strong>empty → × → <span class="inline-icon queen" data-icon="crown"></span></strong> (× is just a personal "no" marker).',
+            queensHelp2Html:
+                'Every row, every column, every color region, and every 3×3 neighborhood may contain at most one <span class="inline-icon queen" data-icon="crown"></span>.',
+            queensHelp3Html:
+                'Solve the board by placing exactly N <span class="inline-icon queen" data-icon="crown"></span> — one per row, column, and region — with no two adjacent.',
             // Queens hint texts. Wording is kept close to the trace-tool
             // strings so a player who reads the debug view sees the same
             // reasoning.
@@ -690,9 +690,9 @@
                 'Fill the grid with suns and moons — half of each per row and column, no three in a row, respect the walls.',
             tangoBoardAria: 'Tango puzzle board',
             tangoHelp1Html:
-                'Click a cell to cycle through <strong>empty → ☀ → ☾</strong>. Pre-filled cells are locked.',
+                'Click a cell to cycle through <strong>empty → <span class="inline-icon sun" data-icon="sun"></span> → <span class="inline-icon moon" data-icon="moon"></span></strong>. Pre-filled cells are locked.',
             tangoHelp2Html:
-                'Each row and column must contain <strong>half suns and half moons</strong>, and never three of the same in a row.',
+                'Each row and column must contain <strong>half <span class="inline-icon sun" data-icon="sun"></span> and half <span class="inline-icon moon" data-icon="moon"></span></strong>, and never three of the same in a row.',
             tangoHelp3Html:
                 'The badges between cells are constraints: <strong>=</strong> means the two neighbours must match, <strong>×</strong> means they must differ.',
             tangoHelp4: 'The puzzle is solved when every cell is filled and no rule is broken.',
@@ -790,11 +790,11 @@
             queensCardBody: '在每個列、行、色塊區域與 8 鄰域中各放一個皇后。',
             queensBoardAria: 'Queens 盤面',
             queensHelp1Html:
-                '點擊格子在 <strong>空 → × → ♛</strong> 之間循環（× 為個人「不放這」的標記）。',
-            queensHelp2:
-                '每個列、每個行、每個色塊區域、每個 3×3 鄰域中，最多只能有一個皇后。',
-            queensHelp3:
-                '在不違反規則的情況下放下 N 個皇后即過關 — 每列、每行、每區域各一，且不互相相鄰。',
+                '點擊格子在 <strong>空 → × → <span class="inline-icon queen" data-icon="crown"></span></strong> 之間循環（× 為個人「不放這」的標記）。',
+            queensHelp2Html:
+                '每個列、每個行、每個色塊區域、每個 3×3 鄰域中，最多只能有一個 <span class="inline-icon queen" data-icon="crown"></span>。',
+            queensHelp3Html:
+                '在不違反規則的情況下放下 N 個 <span class="inline-icon queen" data-icon="crown"></span> 即過關 — 每列、每行、每區域各一，且不互相相鄰。',
             queensHintKindRow: '列',
             queensHintKindCol: '行',
             queensHintKindRegion: '區域',
@@ -819,9 +819,9 @@
                 '用太陽和月亮填滿盤面 — 每列每行各半，不能連續三個相同，並遵循牆的限制。',
             tangoBoardAria: 'Tango 盤面',
             tangoHelp1Html:
-                '點擊格子在 <strong>空 → ☀ → ☾</strong> 之間循環。預填的格子是鎖定的。',
+                '點擊格子在 <strong>空 → <span class="inline-icon sun" data-icon="sun"></span> → <span class="inline-icon moon" data-icon="moon"></span></strong> 之間循環。預填的格子是鎖定的。',
             tangoHelp2Html:
-                '每列、每行必須是<strong>半數太陽、半數月亮</strong>，且不能連續三個相同。',
+                '每列、每行必須是<strong>半數 <span class="inline-icon sun" data-icon="sun"></span>、半數 <span class="inline-icon moon" data-icon="moon"></span></strong>，且不能連續三個相同。',
             tangoHelp3Html:
                 '格子間的標記是限制：<strong>=</strong> 表示兩格相同，<strong>×</strong> 表示兩格相異。',
             tangoHelp4: '所有格子都填滿、且無違規時即過關。',
@@ -914,6 +914,10 @@
         for (const el of ariaNodes) {
             el.setAttribute('aria-label', t(el.getAttribute('data-i18n-aria-label')));
         }
+        // HTML i18n strings can embed [data-icon] placeholders (e.g. the
+        // help text). Re-injecting the string wipes any previously
+        // rendered icon, so re-render after every translate.
+        renderIcons(rootEl);
     }
 
     function setLocale(newLoc) {
@@ -957,8 +961,7 @@
 
     function bootstrapI18n() {
         document.documentElement.lang = currentLocale === 'zh' ? 'zh-Hant' : 'en';
-        translateNode(document);
-        renderIcons(document);
+        translateNode(document); // also renders [data-icon] placeholders
         wireLangToggle();
     }
 

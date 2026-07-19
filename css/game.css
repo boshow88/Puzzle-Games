@@ -557,22 +557,28 @@
     fill: #1f2937;
 }
 
-.symbol.queen {
-    fill: #111827;
+/* Queen = inline Lucide crown (stroke style). Normal = dark hollow
+   crown; victory fills it gold with a dark outline so it stays legible
+   on any region (including yellow-ish ones). */
+.board-icon.queen {
+    color: #111827;
 }
 
-.symbol.queen.victory {
+.board-icon.queen.victory {
     fill: #d4a017;
-    /* Dark outline drawn behind the fill (paint-order: stroke) so the
-       gold queen stays legible on any region — including yellow-ish
-       ones where fill-only gold would vanish. */
     stroke: #3d2b00;
-    stroke-width: 1.5px;
-    paint-order: stroke;
-    /* One-shot celebratory pop. transform-box: fill-box pins the
-       origin to each glyph's own centre so the scale pivots in place. */
-    transform-box: fill-box;
-    transform-origin: center;
+}
+
+.board-icon.queen.reveal {
+    color: #198754;
+    opacity: 0.7;
+}
+
+/* Victory pop. The animation lives on the .queen-pop wrapper group
+   (not the icon) so scale() pivots around that group's local origin,
+   which the per-cell translate has already placed at the cell centre —
+   no transform-box needed, and every crown pops in place. */
+.queen-pop.pop {
     animation: queen-victory-pop 720ms ease-out;
 }
 
@@ -586,6 +592,11 @@
 .symbol.mark {
     fill: #1a1a1a;
 }
+
+/* Inline help-text icons (crown / sun / moon inside "How to play"). */
+.inline-icon.queen { color: #111827; }
+.inline-icon.sun   { color: #f5a623; }
+.inline-icon.moon  { color: #4a6fa5; }
 
 /* Violation slash */
 .violation-line {
