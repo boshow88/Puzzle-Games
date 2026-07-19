@@ -660,17 +660,34 @@
         return out;
     }
 
+    // Cells currently breaking a rule, read from the live violation grid
+    // (recomputed on every edit). Flagged before the solution-derived
+    // "wrong cell" hint so a visible rule break is what we point at first.
+    function findConflictCells() {
+        const N = state.puzzle.size;
+        const out = [];
+        if (!state.violations) return out;
+        for (let r = 0; r < N; r++) {
+            for (let c = 0; c < N; c++) {
+                if (state.violations[r][c]) out.push([r, c]);
+            }
+        }
+        return out;
+    }
+
     // Hint-banner UI strings. English is the active locale; Chinese
     // strings are preserved so a future commit can wire a UI toggle
     // that flips PuzzleCommon.i18n.locale without re-translating.
     const HINT_UI_TEXTS = {
         en: {
+            conflict: 'The highlighted cells break a rule — check the row/column balance, three-in-a-row, and the = / × walls.',
             wrongOne: 'This highlighted cell does not match the unique solution — please reconsider.',
             wrongMany: (n) =>
                 `These ${n} highlighted cells do not match the unique solution — please reconsider.`,
             noneAvail: 'There are no more cells that can be deduced.',
         },
         zh: {
+            conflict: '醒目標示的格子違反了規則，請檢查每列/行的數量、連續三個相同、以及 = / × 牆的限制。',
             wrongOne: '高亮的這格與唯一解不符，請重新檢查。',
             wrongMany: (n) => `高亮的這 ${n} 格與唯一解不符，請重新檢查。`,
             noneAvail: '目前已經沒有可推論的格子。',
@@ -687,8 +704,30 @@
         // Toggle off if a hint is already showing.
         if (state.hint) { clearHint(); return; }
 
-        // Priority 1: wrong placements. Tango is unique-solution, so any
-        // cell that disagrees with the stored solution is provably bad.
+        // Priority 1: rule conflicts. A visible rule break is fair to
+        // flag (the player can reason about it) so it comes before any
+        // solution-derived "wrong cell" hint.
+        const conflict = findConflictCells();
+        if (conflict.length > 0) {
+            state.hint = {
+                mode: 'error',
+                variant: 'conflict',
+                targetCells: conflict,
+                contextCells: [],
+                violationCells: [],
+                chainPlacements: null,
+                wrongCount: conflict.length,
+                badgeText: '',
+            };
+            renderHintBannerFromState();
+            applyHintHighlights();
+            return;
+        }
+
+        // Priority 2: wrong placements with no rule break yet. Tango is
+        // unique-solution, so a cell disagreeing with the stored solution
+        // is provably bad — but this reveals answer info, so it only runs
+        // when nothing visibly conflicts.
         const wrong = findWrongCells();
         if (wrong.length > 0) {
             state.hint = {
@@ -859,7 +898,9 @@
         const ui = uiTexts();
         let text = '';
         if (h.mode === 'error') {
-            text = h.wrongCount === 1 ? ui.wrongOne : ui.wrongMany(h.wrongCount);
+            text = h.variant === 'conflict'
+                ? ui.conflict
+                : (h.wrongCount === 1 ? ui.wrongOne : ui.wrongMany(h.wrongCount));
         } else if (h.mode === 'deduction' && h.reason) {
             const solver = window.PuzzleSolvers.tango;
             text = solver.describeReason(h.reason);

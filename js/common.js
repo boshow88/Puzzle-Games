@@ -715,6 +715,8 @@
                 `Each highlighted region needs one ♛, and those ${axis}s are already spoken for — every other region's cell in them is impossible.`,
             queensHintCover: (kind) =>
                 `The highlighted ${kind} must contain a ♛. Every candidate here would kill the striped cells, so the striped cells cannot hold a queen.`,
+            queensHintConflict:
+                'The highlighted ♛ break a rule (same row, column, region, or adjacent).',
             queensHintWrongOne:
                 'The highlighted cell is incorrect.',
             queensHintWrongMany: (n) =>
@@ -845,6 +847,8 @@
                 `每個醒目標示的區域都需要一個♛。這幾${axis}已經沒有地方放其他區域的♛了。排除掉條紋格子。`,
             queensHintCover: (kind) =>
                 `醒目標示的${kind}內必須有♛。條紋格子中的♛把此${kind}封死了。排除掉條紋格子。`,
+            queensHintConflict:
+                '醒目標示的 ♛ 違反了規則（同行、同列、同區域或相鄰）。',
             queensHintWrongOne:
                 '醒目標示的格子不正確。',
             queensHintWrongMany: (n) =>

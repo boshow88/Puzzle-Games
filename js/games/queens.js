@@ -838,6 +838,24 @@
         return out;
     }
 
+    // Cells currently breaking a rule (two queens sharing a row / col /
+    // region / 8-adjacency). Read from the live violation grid, which is
+    // recomputed on every placement. Surfacing these first — before any
+    // solution-derived "this cell is wrong" hint — keeps the hint fair:
+    // a visible rule break is something the player can reason about
+    // without being told the answer.
+    function findConflictCells() {
+        const N = state.puzzle.size;
+        const out = [];
+        if (!state.violations) return out;
+        for (let r = 0; r < N; r++) {
+            for (let c = 0; c < N; c++) {
+                if (state.violations[r][c]) out.push([r, c]);
+            }
+        }
+        return out;
+    }
+
     // Convert a solver step into a hint entry (mode='deduction'). The
     // `argKey` is the i18n key for the {row/column/region} noun the
     // banner splices in; resolving it at render time (not now) lets a
@@ -907,10 +925,29 @@
         if (!state.puzzle || state.won) return;
         if (state.hint) { clearHint(); return; }
 
-        // Priority 1: any ♛ that disagrees with the unique solution.
-        // Fixing those has to come before any further deduction —
-        // running the solver from a wrong state would either spin or
-        // give misleading advice.
+        // Priority 1: rule conflicts (queens breaking a rule). Point the
+        // player at the clashing cells before revealing any solution
+        // info — a visible rule break is fair to flag, unlike a silent
+        // "this disagrees with the answer" cell (handled at priority 2).
+        const conflict = findConflictCells();
+        if (conflict.length > 0) {
+            state.hint = {
+                mode: 'error',
+                textKey: 'queensHintConflict',
+                targetCells: [],
+                contextCells: conflict,
+                violationCells: [],
+            };
+            renderHintBanner();
+            repaintHintOverlay();
+            return;
+        }
+
+        // Priority 2: a ♛ / × that disagrees with the unique solution but
+        // isn't (yet) breaking a rule. This is the answer-revealing
+        // fallback, so it only runs when nothing visibly conflicts.
+        // Running the solver from a wrong-but-legal state would spin or
+        // mislead, so we still surface it before any deduction.
         const wrong = findWrongPlacements();
         if (wrong.length > 0) {
             state.hint = {
