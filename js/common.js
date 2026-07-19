@@ -279,6 +279,35 @@
         }
     }
 
+    // Build a positioned board symbol: a Lucide icon centred at (cx, cy)
+    // and scaled to `size`, wrapped so it can "pop" in place on win.
+    // Structure:
+    //   <g translate(cx,cy)>            positioning (SVG attribute)
+    //     <g class="board-pop [pop]">   animation target
+    //       <svg class="board-icon …"/> the icon, centred on 0,0
+    // A CSS scale on the inner group pivots around its local origin,
+    // which the outer translate has placed at the cell centre — so the
+    // symbol scales in place with no `transform-box` needed (that trick
+    // is unreliable on nested <svg> and made every symbol lurch toward
+    // the board corner). `opts.className` is appended to the icon
+    // (`board-icon <className>`); `opts.pop` toggles the win animation.
+    function boardIcon(name, cx, cy, size, opts) {
+        const svg = icon(name);
+        if (!svg) return null;
+        svg.setAttribute('x', -size / 2);
+        svg.setAttribute('y', -size / 2);
+        svg.setAttribute('width', size);
+        svg.setAttribute('height', size);
+        svg.setAttribute('class',
+            'board-icon' + (opts && opts.className ? ' ' + opts.className : ''));
+        const animG = svgEl('g',
+            { class: 'board-pop' + (opts && opts.pop ? ' pop' : '') });
+        animG.appendChild(svg);
+        const posG = svgEl('g', { transform: `translate(${cx}, ${cy})` });
+        posG.appendChild(animG);
+        return posG;
+    }
+
     // -----------------------------------------------------------------
     // Game shell
     //
@@ -418,6 +447,14 @@
                 const elapsed = timer.stop();
                 logSolve(gameId, size, difficulty, elapsed);
                 shell.setWin(true);
+                // Once solved the reveal overlay is redundant, and
+                // re-toggling it would replay the win animation, so drop
+                // it and lock the button. The caller's own repaint (run
+                // right after markSolved) picks up revealed=false. Re-
+                // enabled on New Game / Reset.
+                revealed = false;
+                syncRevealButton();
+                if (dom.revealBtn) dom.revealBtn.disabled = true;
                 return elapsed;
             },
         };
@@ -487,6 +524,7 @@
                 syncSizeButtons();
                 revealed = false;
                 syncRevealButton();
+                if (dom.revealBtn) dom.revealBtn.disabled = false;
                 shell.setWin(false);
                 if (dom.newGameBtn) dom.newGameBtn.disabled = true;
                 progress.start(t('generatingPuzzle'));
@@ -510,6 +548,7 @@
 
         function applyReset() {
             shell.setWin(false);
+            if (dom.revealBtn) dom.revealBtn.disabled = false;
             onReset();
             timer.start();
         }
@@ -1252,6 +1291,7 @@
         svgEl,
         icon,
         icons: { render: renderIcons },
+        boardIcon,
         i18n: {
             get locale() { return currentLocale; },
             setLocale,

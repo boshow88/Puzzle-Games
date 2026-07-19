@@ -524,7 +524,11 @@
 .board-icon.sun  { color: #f5a623; }
 .board-icon.moon { color: #4a6fa5; }
 .board-icon.hint-ghost { color: #e57373; }
-.board-icon.reveal { opacity: 0.5; }
+/* Reveal overlay is green across every game (matches Sudoku's green
+   solution digits) — the icon shape still says which symbol it is, the
+   green just marks it as the "solution hint". Placed after the sun/moon
+   colours so it overrides them for reveal cells. */
+.board-icon.reveal { color: #198754; opacity: 0.65; }
 
 /* Pre-filled cells: slightly darker background so the player can tell at
    a glance which cells are locked. The symbol itself stays the same weight
@@ -569,20 +573,23 @@
     stroke: #3d2b00;
 }
 
+/* 3-class rule so the green reveal colour beats the later
+   `.board-icon.queen` (dark) for a revealed crown; opacity comes from
+   the shared `.board-icon.reveal` rule. */
 .board-icon.queen.reveal {
     color: #198754;
-    opacity: 0.7;
 }
 
-/* Victory pop. The animation lives on the .queen-pop wrapper group
-   (not the icon) so scale() pivots around that group's local origin,
-   which the per-cell translate has already placed at the cell centre —
-   no transform-box needed, and every crown pops in place. */
-.queen-pop.pop {
-    animation: queen-victory-pop 720ms ease-out;
+/* Victory pop, shared by every board symbol (queen / sun / moon). The
+   animation lives on the .board-pop wrapper group (not the icon) so
+   scale() pivots around that group's local origin, which the per-cell
+   translate has already placed at the cell centre — no transform-box
+   needed, and every symbol pops in place. */
+.board-pop.pop {
+    animation: board-symbol-pop 720ms ease-out;
 }
 
-@keyframes queen-victory-pop {
+@keyframes board-symbol-pop {
     0%   { transform: scale(1); }
     40%  { transform: scale(1.32); }
     68%  { transform: scale(0.96); }
@@ -597,6 +604,15 @@
 .inline-icon.queen { color: #111827; }
 .inline-icon.sun   { color: #f5a623; }
 .inline-icon.moon  { color: #4a6fa5; }
+
+/* Solved-board affordance (Tango): a faint success wash across the
+   board (drawn below the symbols) so the finished state is obvious
+   while the sun/moon keep their own colours. */
+.win-wash {
+    fill: var(--accent-success);
+    opacity: 0.1;
+    pointer-events: none;
+}
 
 /* Violation slash */
 .violation-line {

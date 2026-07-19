@@ -400,34 +400,16 @@
         repaintHintOverlay();
     }
 
-    // Nested Lucide crown for a queen. Wrapped in two groups:
-    //   outer <g translate(cx,cy)>  — positioning (SVG attribute)
-    //     inner <g class="queen-pop">— animation target; a CSS scale
-    //         here pivots around this group's local origin (0,0), which
-    //         the outer translate has placed at the cell centre. That
-    //         avoids `transform-box: fill-box` (unreliable on nested
-    //         <svg>), which otherwise scales every queen around the
-    //         board origin and makes them lurch toward the corner.
-    //   <svg x=-s/2 y=-s/2 ...>      — the crown, centred on that origin
+    // Nested Lucide crown for a queen (see PC.boardIcon for the
+    // positioning / in-place pop structure). Victory fills it gold and
+    // triggers the pop; reveal renders the faded solution overlay.
     function queenIcon(cx, cy, size, opts) {
         const victory = !!(opts && opts.victory);
         const reveal = !!(opts && opts.reveal);
-        const svg = PC.icon('crown');
-        if (!svg) return null;
-        svg.setAttribute('x', -size / 2);
-        svg.setAttribute('y', -size / 2);
-        svg.setAttribute('width', size);
-        svg.setAttribute('height', size);
-        let cls = 'board-icon queen';
+        let cls = 'queen';
         if (victory) cls += ' victory';
         if (reveal) cls += ' reveal';
-        svg.setAttribute('class', cls);
-        const animG = PC.svgEl('g',
-            { class: 'queen-pop' + (victory ? ' pop' : '') });
-        animG.appendChild(svg);
-        const posG = PC.svgEl('g', { transform: `translate(${cx}, ${cy})` });
-        posG.appendChild(animG);
-        return posG;
+        return PC.boardIcon('crown', cx, cy, size, { className: cls, pop: victory });
     }
 
     function repaintSymbols() {
@@ -436,7 +418,7 @@
         const group = board.querySelector('#symbols');
         while (group.firstChild) group.removeChild(group.firstChild);
 
-        const queenSize = Math.max(16, Math.floor(cs * 0.62));
+        const queenSize = Math.max(16, Math.floor(cs * 0.56));
         const markFont = Math.max(12, Math.floor(cs * 0.45));
 
         // Player symbols
@@ -492,12 +474,12 @@
         // collides with the player's main symbol (which is centered).
         if (shell.revealed && state.puzzle && state.puzzle.solution) {
             const sol = state.puzzle.solution;
-            const revealSize = Math.max(11, Math.floor(cs * 0.34));
+            const revealSize = Math.max(10, Math.floor(cs * 0.26));
             for (let r = 0; r < N; r++) {
                 const c = sol[r];
                 group.appendChild(queenIcon(
-                    c * cs + cs * 0.24,
-                    r * cs + cs * 0.26,
+                    c * cs + cs * 0.18,
+                    r * cs + cs * 0.18,
                     revealSize,
                     { reveal: true }));
             }

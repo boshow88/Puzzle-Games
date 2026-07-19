@@ -421,20 +421,13 @@
         applyHintHighlights();
     }
 
-    // Build a nested Lucide icon <svg> for a board symbol, centred at
-    // (cx, cy) and scaled to `size`. Overrides the default `icon` class
-    // (so the 1em sizing rule doesn't fight our width/height) with a
-    // `board-icon` class that strokes in the sun/moon colour.
-    function symbolIcon(kind, cx, cy, size, extraClass) {
-        const svg = PC.icon(kind);
-        if (!svg) return null;
-        svg.setAttribute('x', cx - size / 2);
-        svg.setAttribute('y', cy - size / 2);
-        svg.setAttribute('width', size);
-        svg.setAttribute('height', size);
-        svg.setAttribute('class',
-            `board-icon ${kind}${extraClass ? ' ' + extraClass : ''}`);
-        return svg;
+    // Lucide sun/moon board symbol (see PC.boardIcon for the
+    // positioning / in-place pop structure). `pop` triggers the win
+    // animation; only the committed symbols pass it (not hint ghosts
+    // or the reveal overlay).
+    function symbolIcon(kind, cx, cy, size, extraClass, pop) {
+        const cls = `${kind}${extraClass ? ' ' + extraClass : ''}`;
+        return PC.boardIcon(kind, cx, cy, size, { className: cls, pop: !!pop });
     }
 
     function repaintSymbols() {
@@ -443,7 +436,17 @@
         const group = board.querySelector('#symbols');
         while (group.firstChild) group.removeChild(group.firstChild);
 
-        const symbolSize = Math.max(18, Math.floor(cs * 0.6));
+        // Persistent "solved" affordance: a success-tinted wash over the
+        // board, drawn below the symbols (added right after). Sun/moon
+        // keep their own colours so the finished layout stays readable.
+        if (state.won) {
+            group.appendChild(PC.svgEl('rect', {
+                class: 'win-wash',
+                x: 0, y: 0, width: BOARD_SIZE, height: BOARD_SIZE,
+            }));
+        }
+
+        const symbolSize = Math.max(16, Math.floor(cs * 0.56));
 
         // Symbols (prefilled + player)
         for (let r = 0; r < N; r++) {
@@ -454,8 +457,8 @@
                 const cy = r * cs + cs / 2;
                 const symbolKind = v === STATES.SUN ? 'sun' : 'moon';
                 const lockedClass = isPrefilled(r, c) ? 'prefilled' : '';
-                group.appendChild(
-                    symbolIcon(symbolKind, cx, cy, symbolSize, lockedClass));
+                group.appendChild(symbolIcon(
+                    symbolKind, cx, cy, symbolSize, lockedClass, state.won));
             }
         }
 
@@ -521,15 +524,15 @@
         // correct answer, so they don't need the hint.
         if (shell.revealed && state.puzzle && state.puzzle.solution) {
             const sol = state.puzzle.solution;
-            const revealSize = Math.max(11, Math.floor(cs * 0.34));
+            const revealSize = Math.max(10, Math.floor(cs * 0.26));
             for (let r = 0; r < N; r++) {
                 for (let c = 0; c < N; c++) {
                     if (isPrefilled(r, c)) continue;
                     const kind = sol[r][c] === STATES.SUN ? 'sun' : 'moon';
                     group.appendChild(symbolIcon(
                         kind,
-                        c * cs + cs * 0.24,
-                        r * cs + cs * 0.26,
+                        c * cs + cs * 0.18,
+                        r * cs + cs * 0.18,
                         revealSize,
                         'reveal'));
                 }
