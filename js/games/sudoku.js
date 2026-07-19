@@ -572,8 +572,15 @@
     // there so the player can act on the hint immediately.
     function hintFocusCell(h) {
         if (!h) return null;
-        if (h.kind === 'step') return [h.step.r, h.step.c];
         if (h.kind === 'error' && h.cells && h.cells.length) return h.cells[0];
+        if (h.kind === 'step') {
+            const s = h.step;
+            if (s.placements.length) return [s.placements[0].r, s.placements[0].c];
+            if (s.cells && s.cells.length) return s.cells[0];
+            if (s.eliminations.length) {
+                return [s.eliminations[0].r, s.eliminations[0].c];
+            }
+        }
         return null;
     }
 
@@ -617,18 +624,26 @@
         }
         if (h.kind === 'step') {
             const s = h.step;
-            // Context cells first (soft amber), then the target on top.
-            let context = [];
-            if (s.technique === 'nakedSingle') {
-                context = peerCells(s.r, s.c);
-            } else if (s.unitKind != null) {
-                context = unitCells(s.unitKind, s.unitIndex);
+            if (s.placements.length) {
+                // Single: soft-amber context (peers / unit), bright target.
+                const p = s.placements[0];
+                let context = [];
+                if (s.technique === 'nakedSingle') {
+                    context = peerCells(p.r, p.c);
+                } else if (s.unit) {
+                    context = unitCells(s.unit.kind, s.unit.index);
+                }
+                for (const [r, c] of context) {
+                    if (r === p.r && c === p.c) continue;
+                    tint(r, c, '#ffd54f', 0.22);
+                }
+                tint(p.r, p.c, '#ffd54f', 0.95);
+            } else {
+                // Advanced (elimination) technique: amber the pattern
+                // cells, red the cells that lose a candidate.
+                for (const [r, c] of s.cells) tint(r, c, '#ffd54f', 0.5);
+                for (const e of s.eliminations) tint(e.r, e.c, '#ef5350', 0.45);
             }
-            for (const [r, c] of context) {
-                if (r === s.r && c === s.c) continue;
-                tint(r, c, '#ffd54f', 0.22);
-            }
-            tint(s.r, s.c, '#ffd54f', 0.95);
         }
     }
 
@@ -652,12 +667,33 @@
             }
         } else if (h.kind === 'step') {
             const s = h.step;
-            if (s.technique === 'fullHouse') {
-                text = t('sudokuHintFullHouse', unitName(s.unitKind), s.value);
-            } else if (s.technique === 'nakedSingle') {
-                text = t('sudokuHintNaked', s.value);
-            } else {
-                text = t('sudokuHintHidden', unitName(s.unitKind), s.value);
+            const u = s.unit ? unitName(s.unit.kind) : '';
+            const dstr = s.digits.join('、');
+            switch (s.technique) {
+                case 'fullHouse':
+                    text = t('sudokuHintFullHouse', u, s.digits[0]); break;
+                case 'nakedSingle':
+                    text = t('sudokuHintNaked', s.digits[0]); break;
+                case 'hiddenSingle':
+                    text = t('sudokuHintHidden', u, s.digits[0]); break;
+                case 'lockedPointing':
+                    text = t('sudokuHintLockedPointing', u, dstr); break;
+                case 'lockedClaiming':
+                    text = t('sudokuHintLockedClaiming', u, dstr); break;
+                case 'nakedPair':
+                    text = t('sudokuHintNakedPair', u, dstr); break;
+                case 'hiddenPair':
+                    text = t('sudokuHintHiddenPair', u, dstr); break;
+                case 'nakedTriple':
+                    text = t('sudokuHintNakedTriple', u, dstr); break;
+                case 'hiddenTriple':
+                    text = t('sudokuHintHiddenTriple', u, dstr); break;
+                case 'xWing':
+                    text = t('sudokuHintXWing', dstr); break;
+                case 'xyWing':
+                    text = t('sudokuHintXYWing', dstr); break;
+                default:
+                    text = t('sudokuHintNoAvail');
             }
         } else {
             text = t('sudokuHintNoAvail');
