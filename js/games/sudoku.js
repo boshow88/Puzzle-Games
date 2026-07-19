@@ -567,9 +567,23 @@
         return { kind: 'none' };
     }
 
+    // The cell a hint wants the player to look at (target of a step, or
+    // the first offending cell of an error) — used to move the cursor
+    // there so the player can act on the hint immediately.
+    function hintFocusCell(h) {
+        if (!h) return null;
+        if (h.kind === 'step') return [h.step.r, h.step.c];
+        if (h.kind === 'error' && h.cells && h.cells.length) return h.cells[0];
+        return null;
+    }
+
     function showHint() {
         if (!state.puzzle || state.won) return;
+        // Second press toggles the current hint off (matches Queens/Tango).
+        if (state.hint) { clearHint(); return; }
         state.hint = computeHint();
+        const focus = hintFocusCell(state.hint);
+        if (focus) selectCell(focus[0], focus[1]);
         renderHintBanner();
         repaintHint();
     }
