@@ -501,6 +501,14 @@
     pointer-events: none;
 }
 
+/* Thin cell separators (Sudoku), drawn in the grid layer above the
+   selection ring so the ring tucks underneath. */
+.grid-line {
+    stroke: rgba(0, 0, 0, 0.18);
+    stroke-width: 1;
+    pointer-events: none;
+}
+
 /* Small symbol shown when Reveal is toggled on; sits in the top-left
    corner of each cell so it never collides with the player's symbol. */
 .reveal-hint {
@@ -642,7 +650,27 @@
    background. */
 .cell-select.peer  { fill: rgba(46, 125, 50, 0.08); }
 .cell-select.same  { fill: rgba(46, 125, 50, 0.16); }
-.cell-select.focus { fill: rgba(46, 125, 50, 0.28); }
+
+/* Focused cell = a ring (LinkedIn-style), not a fill. Drawn as four
+   edge lines (see repaintSelection) so the weight stays uniform on every
+   side; square caps make the corners meet cleanly. Green normally, black
+   on a pre-filled (given) cell. */
+.cell-ring {
+    fill: none;
+    stroke: var(--game-color, #2e7d32);
+    stroke-width: 3;
+    stroke-linecap: square;
+}
+.cell-ring.given {
+    stroke: #111827;
+}
+
+/* Hint "spotlight": dim every non-lit cell (drawn above the symbols so
+   the digits fade too), the way Queens does. */
+.hint-dim-cell {
+    fill: rgba(0, 0, 0, 0.42);
+    pointer-events: none;
+}
 
 /* Main digits sit dead-centre; player vs prefilled distinguished by
    colour only (no weight change — same convention as Tango). */

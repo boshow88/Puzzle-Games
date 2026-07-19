@@ -246,7 +246,12 @@
         const cs = BOARD_SIZE / N;
         const { boxRows, boxCols } = state.puzzle;
 
+        const W = N * cs;
+
         // Layer: cell backgrounds (white; prefilled get a darker tint).
+        // Drawn strokeless — all grid lines live in the `grid` layer
+        // below, which sits ABOVE the focus ring so the ring reads as
+        // tucked under the native grid.
         const bgGroup = PC.svgEl('g', { class: 'cells' });
         for (let r = 0; r < N; r++) {
             for (let c = 0; c < N; c++) {
@@ -256,52 +261,58 @@
                     class: cls,
                     x, y, width: size, height: size,
                     fill: isPrefilled(r, c) ? '#e6e8ee' : '#ffffff',
+                    style: 'stroke: none',
                 }));
             }
         }
         svg.appendChild(bgGroup);
 
-        // Layer: selection backdrop (rebuilt every time the selected cell
-        // changes; lives between the background and the box borders so
-        // the thick lines stay visible).
+        // Layer: selection backdrop (peer / same-digit tints).
         const selectGroup = PC.svgEl('g', { class: 'select' });
         selectGroup.setAttribute('id', 'select');
         svg.appendChild(selectGroup);
 
-        // Layer: hint highlights (target + context / violation tints).
-        // Sits above the selection tint but below the box borders and
-        // symbols, so digits stay readable on top of the highlight.
+        // Layer: below-symbol hint tint (error red wash).
         const hintGroup = PC.svgEl('g', { class: 'hint' });
         hintGroup.setAttribute('id', 'hint');
         svg.appendChild(hintGroup);
 
-        // Layer: box borders (thick lines between Sudoku boxes) + outer
-        // frame. All use the shared `.region-border` style so the visual
-        // weight matches Queens and Tango.
-        const borderGroup = PC.svgEl('g', { class: 'region-borders' });
-        const W = N * cs;
-        const addBorder = (x1, y1, x2, y2) => {
-            borderGroup.appendChild(PC.svgEl('line', {
-                class: 'region-border', x1, y1, x2, y2,
+        // Layer: focus ring — below the grid so the native grid lines are
+        // drawn on top of it (the ring tucks under the grid, its outer
+        // edge sitting on the cell boundary).
+        const ringGroup = PC.svgEl('g', { class: 'select-ring' });
+        ringGroup.setAttribute('id', 'select-ring');
+        svg.appendChild(ringGroup);
+
+        // Layer: grid lines — thin cell separators + thick box borders +
+        // outer frame, all above the ring so it never hides the grid.
+        const gridGroup = PC.svgEl('g', { class: 'grid' });
+        for (let i = 0; i <= N; i++) {
+            const hThick = i % boxRows === 0;
+            gridGroup.appendChild(PC.svgEl('line', {
+                class: hThick ? 'region-border' : 'grid-line',
+                x1: 0, y1: i * cs, x2: W, y2: i * cs,
             }));
-        };
-        addBorder(0, 0, W, 0);
-        addBorder(0, W, W, W);
-        addBorder(0, 0, 0, W);
-        addBorder(W, 0, W, W);
-        // Inner box lines.
-        for (let r = boxRows; r < N; r += boxRows) {
-            addBorder(0, r * cs, W, r * cs);
+            const vThick = i % boxCols === 0;
+            gridGroup.appendChild(PC.svgEl('line', {
+                class: vThick ? 'region-border' : 'grid-line',
+                x1: i * cs, y1: 0, x2: i * cs, y2: W,
+            }));
         }
-        for (let c = boxCols; c < N; c += boxCols) {
-            addBorder(c * cs, 0, c * cs, W);
-        }
-        svg.appendChild(borderGroup);
+        svg.appendChild(gridGroup);
 
         // Layer: symbols + notes + violations + reveal hint.
         const symbolGroup = PC.svgEl('g', { class: 'symbols' });
         symbolGroup.setAttribute('id', 'symbols');
         svg.appendChild(symbolGroup);
+
+        // Layer: hint dim + hint candidates. Above the symbols so it can
+        // fade the digits of non-spotlit cells (the "dim everything else"
+        // effect) and draw computed candidate marks on the lit cells for
+        // advanced-technique hints. Below the hit layer so clicks work.
+        const dimGroup = PC.svgEl('g', { class: 'hint-dim' });
+        dimGroup.setAttribute('id', 'hint-dim');
+        svg.appendChild(dimGroup);
 
         // Layer: invisible click targets (last, so they sit on top). All
         // cells get a hit rect, even prefilled ones — clicking them is
@@ -331,23 +342,59 @@
         const N = state.puzzle.size;
         const cs = BOARD_SIZE / N;
         const group = board.querySelector('#select');
-        if (!group) return;
+        const ringGroup = board.querySelector('#select-ring');
+        if (!group || !ringGroup) return;
         while (group.firstChild) group.removeChild(group.firstChild);
+        while (ringGroup.firstChild) ringGroup.removeChild(ringGroup.firstChild);
 
         const sel = state.selected;
         if (!sel) return;
 
         const selDigit = effective(sel.r, sel.c);
         const selBox = boxIndexOf(sel.r, sel.c);
+        // While a hint is on screen the dim-spotlight is the dominant
+        // signal, so we drop the row/col/box + same-digit tints and keep
+        // only the focus ring (which marks the hint's target cell).
+        const hintActive = !!state.hint;
+
+        // Focus ring — drawn as four independent edges so each side can be
+        // nudged inward by exactly the neighbouring native line's
+        // thickness. That keeps the ring a uniform, fully-visible weight on
+        // all four sides (a thick box border no longer eats into it) while
+        // it still hugs the inside of the cell. Green normally, black on a
+        // pre-filled (given) cell.
+        const rw = 3; // must match .cell-ring stroke-width
+        const { boxRows, boxCols } = state.puzzle;
+        // Inset for a side = half the native line's width there + half the
+        // ring's width, so the ring sits just inside that native line.
+        const inset = (thick) => (thick ? 1.5 : 0.5) + rw / 2;
+        const iT = inset(sel.r % boxRows === 0);
+        const iB = inset((sel.r + 1) % boxRows === 0);
+        const iL = inset(sel.c % boxCols === 0);
+        const iR = inset((sel.c + 1) % boxCols === 0);
+        const x0 = sel.c * cs;
+        const y0 = sel.r * cs;
+        const x1 = (sel.c + 1) * cs;
+        const y1 = (sel.r + 1) * cs;
+        const ringCls = 'cell-ring' + (isPrefilled(sel.r, sel.c) ? ' given' : '');
+        const edge = (ax, ay, bx, by) => ringGroup.appendChild(PC.svgEl('line', {
+            class: ringCls, x1: ax, y1: ay, x2: bx, y2: by,
+        }));
+        edge(x0 + iL, y0 + iT, x1 - iR, y0 + iT); // top
+        edge(x0 + iL, y1 - iB, x1 - iR, y1 - iB); // bottom
+        edge(x0 + iL, y0 + iT, x0 + iL, y1 - iB); // left
+        edge(x1 - iR, y0 + iT, x1 - iR, y1 - iB); // right
+
+        if (hintActive) return;
 
         for (let r = 0; r < N; r++) {
             for (let c = 0; c < N; c++) {
-                const isFocus = (r === sel.r && c === sel.c);
-                const isPeer = (r === sel.r || c === sel.c || boxIndexOf(r, c) === selBox);
+                if (r === sel.r && c === sel.c) continue;
+                const isPeer = (r === sel.r || c === sel.c
+                    || boxIndexOf(r, c) === selBox);
                 const isSameDigit = selDigit !== 0 && effective(r, c) === selDigit;
                 let cls = null;
-                if (isFocus) cls = 'cell-select focus';
-                else if (isSameDigit) cls = 'cell-select same';
+                if (isSameDigit) cls = 'cell-select same';
                 else if (isPeer) cls = 'cell-select peer';
                 if (!cls) continue;
                 group.appendChild(PC.svgEl('rect', {
@@ -562,9 +609,44 @@
         const techniques = S.TECHNIQUES_BY_DIFFICULTY[state.puzzle.difficulty];
         const solverState = S.makeState(grid, N, boxRows, boxCols);
         const step = S.nextStep(solverState, techniques);
-        if (step) return { kind: 'step', step };
+        if (step) {
+            // Snapshot the candidate grid (nextStep doesn't mutate it) so
+            // an advanced-technique hint can draw the pencil marks it
+            // reasons about — otherwise those eliminations would be
+            // invisible to a player who hasn't filled notes.
+            const cands = solverState.cands.map((row) => row.slice());
+            return { kind: 'step', step, cands };
+        }
 
         return { kind: 'none' };
+    }
+
+    // Digits present in a candidate bitmask.
+    function bitsOfMask(mask) {
+        const out = [];
+        let d = 1;
+        while (mask) { if (mask & 1) out.push(d); mask >>>= 1; d += 1; }
+        return out;
+    }
+
+    // For a hidden single (digit d forced into `target` of a unit): the
+    // cells elsewhere holding d that block d from the unit's OTHER empty
+    // cells — i.e. the "because of these other d's" cells the hint names.
+    function hiddenSingleBlockers(unitKind, unitIndex, d, tr, tc) {
+        const out = [];
+        const seen = new Set();
+        const N = state.puzzle.size;
+        for (const [r, c] of unitCells(unitKind, unitIndex)) {
+            if (r === tr && c === tc) continue;
+            if (effective(r, c) !== 0) continue; // only empty cells are blocked
+            for (const [pr, pc] of peerCells(r, c)) {
+                if (effective(pr, pc) === d) {
+                    const k = pr * N + pc;
+                    if (!seen.has(k)) { seen.add(k); out.push([pr, pc]); }
+                }
+            }
+        }
+        return out;
     }
 
     // The cell a hint wants the player to look at (target of a step, or
@@ -599,50 +681,127 @@
         state.hint = null;
         renderHintBanner();
         repaintHint();
+        // Selection tints (peer / same-digit) are suppressed while a hint
+        // is up, so restore them now that it's gone.
+        repaintSelection();
     }
 
-    /** Redraw the hint highlight layer from state.hint. */
-    function repaintHint() {
-        const group = board && board.querySelector('#hint');
-        if (!group) return;
-        while (group.firstChild) group.removeChild(group.firstChild);
-        const h = state.hint;
-        if (!h) return;
+    // Cells the current hint keeps lit (everything else is dimmed), plus
+    // any candidate marks / eliminations / error tint the hint draws.
+    // Returns { lit:Set(key), redTint:[[r,c]], candCells:[[r,c]], elims }.
+    function hintSpotlight(h) {
         const N = state.puzzle.size;
-        const cs = BOARD_SIZE / N;
-
-        const tint = (r, c, fill, opacity) => {
-            group.appendChild(PC.svgEl('rect', {
-                x: c * cs, y: r * cs, width: cs, height: cs,
-                fill, 'fill-opacity': opacity,
-            }));
-        };
+        const lit = new Set();
+        const add = (r, c) => lit.add(r * N + c);
+        const redTint = [];
+        let candCells = [];
+        let elims = [];
 
         if (h.kind === 'error') {
-            for (const [r, c] of h.cells) tint(r, c, '#ef5350', 0.5);
-            return;
+            for (const [r, c] of h.cells) { add(r, c); redTint.push([r, c]); }
+            return { lit, redTint, candCells, elims };
         }
         if (h.kind === 'step') {
             const s = h.step;
             if (s.placements.length) {
-                // Single: soft-amber context (peers / unit), bright target.
                 const p = s.placements[0];
-                let context = [];
                 if (s.technique === 'nakedSingle') {
-                    context = peerCells(p.r, p.c);
+                    add(p.r, p.c);
+                    for (const [r, c] of peerCells(p.r, p.c)) add(r, c);
+                } else if (s.technique === 'hiddenSingle' && s.unit) {
+                    for (const [r, c] of unitCells(s.unit.kind, s.unit.index)) {
+                        add(r, c);
+                    }
+                    for (const [r, c] of hiddenSingleBlockers(
+                        s.unit.kind, s.unit.index, p.value, p.r, p.c)) add(r, c);
                 } else if (s.unit) {
-                    context = unitCells(s.unit.kind, s.unit.index);
+                    for (const [r, c] of unitCells(s.unit.kind, s.unit.index)) {
+                        add(r, c);
+                    }
+                } else {
+                    add(p.r, p.c);
                 }
-                for (const [r, c] of context) {
-                    if (r === p.r && c === p.c) continue;
-                    tint(r, c, '#ffd54f', 0.22);
-                }
-                tint(p.r, p.c, '#ffd54f', 0.95);
             } else {
-                // Advanced (elimination) technique: amber the pattern
-                // cells, red the cells that lose a candidate.
-                for (const [r, c] of s.cells) tint(r, c, '#ffd54f', 0.5);
-                for (const e of s.eliminations) tint(e.r, e.c, '#ef5350', 0.45);
+                // Advanced: light the pattern + elimination cells and draw
+                // their candidates so the technique is actually visible.
+                for (const [r, c] of s.cells) add(r, c);
+                for (const e of s.eliminations) add(e.r, e.c);
+                candCells = s.cells.concat(s.eliminations.map((e) => [e.r, e.c]));
+                elims = s.eliminations;
+            }
+        }
+        return { lit, redTint, candCells, elims };
+    }
+
+    /** Redraw the hint layers (below-symbol tint + above-symbol dim). */
+    function repaintHint() {
+        const belowGroup = board && board.querySelector('#hint');
+        const dimGroup = board && board.querySelector('#hint-dim');
+        if (!belowGroup || !dimGroup) return;
+        while (belowGroup.firstChild) belowGroup.removeChild(belowGroup.firstChild);
+        while (dimGroup.firstChild) dimGroup.removeChild(dimGroup.firstChild);
+        const h = state.hint;
+        if (!h || h.kind === 'none') return;
+
+        const N = state.puzzle.size;
+        const cs = BOARD_SIZE / N;
+        const { boxRows, boxCols } = state.puzzle;
+        const { lit, redTint, candCells, elims } = hintSpotlight(h);
+
+        // Error cells get a red wash (below symbols so the digit shows).
+        for (const [r, c] of redTint) {
+            belowGroup.appendChild(PC.svgEl('rect', {
+                x: c * cs, y: r * cs, width: cs, height: cs,
+                fill: '#ef5350', 'fill-opacity': 0.35,
+            }));
+        }
+
+        // Dim every non-lit cell (above the symbols, so digits fade too).
+        for (let r = 0; r < N; r++) {
+            for (let c = 0; c < N; c++) {
+                if (lit.has(r * N + c)) continue;
+                dimGroup.appendChild(PC.svgEl('rect', {
+                    class: 'hint-dim-cell',
+                    x: c * cs, y: r * cs, width: cs, height: cs,
+                }));
+            }
+        }
+
+        // Advanced techniques: draw the pencil-mark candidates on the lit
+        // cells (above symbols so they win over any player notes), with
+        // the eliminated candidate struck through in red.
+        if (candCells.length && h.cands) {
+            const cands = h.cands;
+            const elimMap = new Map();
+            for (const e of elims) {
+                const k = e.r * N + e.c;
+                if (!elimMap.has(k)) elimMap.set(k, new Set());
+                elimMap.get(k).add(e.d);
+            }
+            const noteFont = Math.max(9, Math.floor(cs * 0.2));
+            const drawn = new Set();
+            for (const [r, c] of candCells) {
+                const key = r * N + c;
+                if (drawn.has(key)) continue;
+                drawn.add(key);
+                if (effective(r, c) !== 0) continue;
+                for (const d of bitsOfMask(cands[r][c])) {
+                    const nr = Math.floor((d - 1) / boxCols);
+                    const nc = (d - 1) % boxCols;
+                    const nx = c * cs + cs * (nc + 0.5) / boxCols;
+                    const ny = r * cs + cs * (nr + 0.5) / boxRows;
+                    const isElim = elimMap.has(key) && elimMap.get(key).has(d);
+                    const t = PC.svgEl('text', {
+                        x: nx, y: ny,
+                        'text-anchor': 'middle', 'dominant-baseline': 'middle',
+                        dy: '0.12em', 'font-size': noteFont,
+                        fill: isElim ? '#ef5350' : '#555',
+                        'font-weight': isElim ? 700 : 400,
+                    });
+                    if (isElim) t.setAttribute('text-decoration', 'line-through');
+                    t.textContent = String(d);
+                    dimGroup.appendChild(t);
+                }
             }
         }
     }
@@ -699,14 +858,10 @@
             text = t('sudokuHintNoAvail');
         }
 
-        const tierLabel = isError
-            ? t('sudokuHintTierError') : t('sudokuHintTierStep');
+        // No tier badge — Queens/Tango don't show one either; the red
+        // banner styling alone signals an error.
         el.classList.toggle('error', isError);
-        el.innerHTML = '';
-        const badge = PC.el('span',
-            { class: 'hint-tier' + (isError ? ' err' : '') }, tierLabel);
-        el.appendChild(badge);
-        el.appendChild(document.createTextNode(text));
+        el.textContent = text;
         el.hidden = false;
     }
 
@@ -961,14 +1116,83 @@
         updateKeypadMode();
     }
 
+    // Temporary debug affordance: `?sudoku_demo=<technique>` (e.g.
+    // ?sudoku_demo=xyWing) makes New Game hunt for a hard puzzle that
+    // actually uses that technique, fill in every step up to it, and pop
+    // the corresponding hint — so you can eyeball an advanced hint in the
+    // real game without playing the whole puzzle by hand.
+    const DEMO_TECH = (function () {
+        try {
+            return new URL(location.href).searchParams.get('sudoku_demo') || '';
+        } catch (e) { return ''; }
+    })();
+
+    function findDemoPuzzle(N, tech) {
+        const gen = window.PuzzleGenerators.sudoku;
+        for (let i = 0; i < 200; i++) {
+            const seed = (Math.random() * 0xffffffff) >>> 0;
+            const pz = gen(N, 'hard', seed);
+            if ((pz.stats.techniqueCounts || {})[tech] > 0) return pz;
+        }
+        return null;
+    }
+
+    // Advance the board (mirroring the solver's placements) until the
+    // solver's next step is `tech`, then present that step as a hint.
+    function demoShow(tech) {
+        if (!state.puzzle) return;
+        const S = window.PuzzleSolvers && window.PuzzleSolvers.sudoku;
+        if (!S) return;
+        const N = state.puzzle.size;
+        const st = S.makeState(state.puzzle.prefilled, N,
+            state.puzzle.boxRows, state.puzzle.boxCols);
+        const hard = S.TECHNIQUES_BY_DIFFICULTY.hard;
+        let target = null;
+        let guard = N * N * N + 50;
+        while (guard-- > 0) {
+            const step = S.nextStep(st, hard);
+            if (!step) break;
+            if (step.technique === tech) {
+                target = { step, cands: st.cands.map((row) => row.slice()) };
+                break;
+            }
+            for (const p of step.placements) {
+                if (!isPrefilled(p.r, p.c)) state.placements[p.r][p.c] = p.value;
+            }
+            S.applyStep(st, step);
+        }
+        if (!target) {
+            // Never reached (e.g. technique doesn't occur at this size).
+            // Reset the fast-forwarded board so we don't leave it solved.
+            ensurePlacementsForCurrent();
+            recomputeViolations();
+            repaintSymbols();
+            console.warn(`[sudoku demo] "${tech}" not reached — try 9×9.`);
+            return;
+        }
+        recomputeViolations();
+        repaintSymbols();
+        state.hint = { kind: 'step', step: target.step, cands: target.cands };
+        const focus = hintFocusCell(state.hint);
+        if (focus) selectCell(focus[0], focus[1]);
+        renderHintBanner();
+        repaintHint();
+    }
+
     function startNewGame() {
         const seed = (Date.now() ^ Math.floor(Math.random() * 0xffffffff)) >>> 0;
-        state.puzzle = generatePuzzle(shell.size, shell.difficulty, seed);
+        if (DEMO_TECH) {
+            state.puzzle = findDemoPuzzle(shell.size, DEMO_TECH)
+                || generatePuzzle(shell.size, 'hard', seed);
+        } else {
+            state.puzzle = generatePuzzle(shell.size, shell.difficulty, seed);
+        }
         ensurePlacementsForCurrent();
         renderBoard();
         buildKeypad();
         clearHint();
         updateStatusRow();
+        if (DEMO_TECH) demoShow(DEMO_TECH);
     }
 
     function resetPlacements() {
