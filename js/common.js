@@ -868,10 +868,10 @@
             sudokuName: 'Sudoku',
             sudokuTagline: '經典數字邏輯。',
             sudokuCardBody:
-                '填滿盤面，使每列、每行、每宮都恰好包含 1 至 N 各一次。',
+                '填滿盤面，使每列、每行、每個區域都恰好包含 1 至 N 各一次。',
             sudokuBoardAria: 'Sudoku 盤面',
             sudokuNumPadAria: '數字鍵盤',
-            sudokuNotes: '便箋',
+            sudokuNotes: '筆記',
             sudokuErase: '清除',
             sudokuEraseAria: '清除',
             sudokuEraseTitle: '清除（Backspace / Delete / 0）',
@@ -879,18 +879,18 @@
             sudokuHelp2:
                 '用螢幕鍵盤或實體鍵盤輸入數字。再按一次同一個鍵會清除該數字。',
             sudokuHelp3Html:
-                '切換 <strong>便箋</strong>（或按 <kbd>N</kbd>）可寫入小型候選數字，而非正式數字。',
+                '切換 <strong>筆記</strong>（或按 <kbd>N</kbd>）可寫入小型候選數字，而非正式數字。',
             sudokuHelp4Html:
-                '每個 <strong>列</strong>、<strong>行</strong>、<strong>宮</strong> 都必須恰好包含每個數字各一次。',
+                '每個 <strong>列</strong>、<strong>行</strong>、<strong>區域</strong> 都必須恰好包含每個數字各一次。',
             sudokuHelp5Html:
                 '<kbd>Backspace</kbd> / <kbd>Delete</kbd> / <kbd>0</kbd> 清除格子；方向鍵移動選取。',
             sudokuHintUnitRow: '列',
             sudokuHintUnitCol: '行',
-            sudokuHintUnitBox: '區塊',
+            sudokuHintUnitBox: '區域',
             sudokuHintFullHouse: (unit, v) =>
                 `此${unit}只剩下 ${v} 這個選項。`,
             sudokuHintNaked: (v) =>
-                `根據其所屬行、列、區塊的情況，這格只剩下 ${v} 這個選項。`,
+                `根據其所屬行、列、區域的情況，這格只剩下 ${v} 這個選項。`,
             sudokuHintHidden: (unit, v) =>
                 `此${unit}其餘所有格子都因為其他 ${v} 的存在而無法再放置，所以 ${v} 只能放在這一格。`,
             sudokuHintContradiction: (unit, v, n) =>
