@@ -241,6 +241,20 @@
     transform: translateY(1px);
 }
 
+/* Disabled (e.g. Undo with nothing to undo, New Game mid-generation):
+   dim it and kill the affordances so it reads as unavailable. */
+.btn:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+}
+.btn:disabled:hover {
+    background: var(--bg-secondary);
+    border-color: var(--border-strong);
+}
+.btn:disabled:active {
+    transform: none;
+}
+
 .btn.btn-primary {
     background: var(--game-color, var(--accent-primary));
     border-color: var(--game-color, var(--accent-primary));

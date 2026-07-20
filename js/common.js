@@ -212,6 +212,11 @@
         'undo-2':
             '<path d="M9 14 4 9l5-5"/>'
             + '<path d="M4 9h10.5a5.5 5.5 0 0 1 5.5 5.5 5.5 5.5 0 0 1-5.5 5.5H11"/>',
+        dices:
+            '<rect width="12" height="12" x="2" y="10" rx="2" ry="2"/>'
+            + '<path d="m17.92 14 3.5-3.5a2.24 2.24 0 0 0 0-3l-5-4.92a2.24 2.24 0 0 0-3 0L10 6"/>'
+            + '<path d="M6 18h.01"/><path d="M10 14h.01"/>'
+            + '<path d="M15 6h.01"/><path d="M18 9h.01"/>',
         lightbulb:
             '<path d="M15 14c.2-1 .7-1.7 1.5-2.5 1-.9 1.5-2.2 1.5-3.5A6 6 0 0 0 6 8c0 1 .2 2.2 1.5 3.5.7.7 1.3 1.5 1.5 2.5"/>'
             + '<path d="M9 18h6"/><path d="M10 22h4"/>',
@@ -378,6 +383,7 @@
             newGameBtn: document.getElementById('new-game-btn'),
             resetBtn: document.getElementById('reset-btn'),
             revealBtn: document.getElementById('reveal-btn'),
+            hintBtn: document.getElementById('hint-btn'),
             timer: document.getElementById('timer'),
             violations: document.getElementById('violations'),
             violationsText: document.getElementById('violations-text'),
@@ -458,6 +464,9 @@
                 revealed = false;
                 syncRevealButton();
                 if (dom.revealBtn) dom.revealBtn.disabled = true;
+                // Nothing left to hint once solved — disable it too (matches
+                // Reveal). Re-enabled on New Game / Reset.
+                if (dom.hintBtn) dom.hintBtn.disabled = true;
                 return elapsed;
             },
         };
@@ -528,6 +537,7 @@
                 revealed = false;
                 syncRevealButton();
                 if (dom.revealBtn) dom.revealBtn.disabled = false;
+                if (dom.hintBtn) dom.hintBtn.disabled = false;
                 shell.setWin(false);
                 if (dom.newGameBtn) dom.newGameBtn.disabled = true;
                 progress.start(t('generatingPuzzle'));
@@ -552,6 +562,7 @@
         function applyReset() {
             shell.setWin(false);
             if (dom.revealBtn) dom.revealBtn.disabled = false;
+            if (dom.hintBtn) dom.hintBtn.disabled = false;
             onReset();
             timer.start();
         }
