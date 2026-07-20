@@ -405,6 +405,19 @@
         }
     }
 
+    // Centre of the pencil-mark slot for digit `d` inside cell (r,c). Slots
+    // are spread with equal gaps that INCLUDE the cell border (…/(box+1)),
+    // so the margin to the cell edge matches the gap between digits instead
+    // of being half of it. Shared by notes, the reveal hint and hint marks.
+    function noteSlot(r, c, d, cs, boxRows, boxCols) {
+        const nr = Math.floor((d - 1) / boxCols);
+        const nc = (d - 1) % boxCols;
+        return {
+            x: c * cs + (cs * (nc + 1)) / (boxCols + 1),
+            y: r * cs + (cs * (nr + 1)) / (boxRows + 1),
+        };
+    }
+
     function repaintSymbols() {
         const N = state.puzzle.size;
         const cs = BOARD_SIZE / N;
@@ -436,15 +449,16 @@
                     text.textContent = String(v);
                     group.appendChild(text);
                 } else {
+                    // While the solution is revealed we hide the player's
+                    // notes so the small answer digit never collides with a
+                    // pencil mark (they share the same slots).
+                    if (shell.revealed) continue;
                     // Notes: lay them out in a sub-grid matching the box
                     // shape (so 9×9 → 3×3, 6×6 → 2×3 with digits 1–6).
                     const notes = state.notes[r][c];
                     if (notes.size === 0) continue;
                     for (const d of notes) {
-                        const nr = Math.floor((d - 1) / boxCols);
-                        const nc = (d - 1) % boxCols;
-                        const nx = c * cs + cs * (nc + 0.5) / boxCols;
-                        const ny = r * cs + cs * (nr + 0.5) / boxRows;
+                        const { x: nx, y: ny } = noteSlot(r, c, d, cs, boxRows, boxCols);
                         const text = PC.svgEl('text', {
                             class: 'symbol note',
                             x: nx, y: ny,
@@ -483,18 +497,20 @@
             }
         }
 
-        // Reveal: tiny solution digit in the top-left corner of every
+        // Reveal: tiny solution digit in the top-left note slot of every
         // player-editable cell (prefilled cells already show the answer).
+        // Player notes are hidden while revealed, so this never overlaps.
         if (shell.revealed && state.puzzle && state.puzzle.solution) {
             const sol = state.puzzle.solution;
             const hintFont = Math.max(9, Math.floor(cs * 0.22));
             for (let r = 0; r < N; r++) {
                 for (let c = 0; c < N; c++) {
                     if (isPrefilled(r, c)) continue;
+                    const slot = noteSlot(r, c, 1, cs, boxRows, boxCols);
                     const text = PC.svgEl('text', {
                         class: 'symbol reveal-hint',
-                        x: c * cs + cs * 0.16,
-                        y: r * cs + cs * 0.18,
+                        x: slot.x,
+                        y: slot.y,
                         'text-anchor': 'middle',
                         'dominant-baseline': 'middle',
                         dy: '0.12em',
@@ -786,10 +802,7 @@
                 drawn.add(key);
                 if (effective(r, c) !== 0) continue;
                 for (const d of bitsOfMask(cands[r][c])) {
-                    const nr = Math.floor((d - 1) / boxCols);
-                    const nc = (d - 1) % boxCols;
-                    const nx = c * cs + cs * (nc + 0.5) / boxCols;
-                    const ny = r * cs + cs * (nr + 0.5) / boxRows;
+                    const { x: nx, y: ny } = noteSlot(r, c, d, cs, boxRows, boxCols);
                     const isElim = elimMap.has(key) && elimMap.get(key).has(d);
                     const t = PC.svgEl('text', {
                         x: nx, y: ny,
