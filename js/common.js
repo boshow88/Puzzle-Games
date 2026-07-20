@@ -787,8 +787,13 @@
             sudokuHintContradiction: (unit, v, n) =>
                 `This ${unit} has too many ${v}s. Every ${unit} must contain the digits 1–${n} without repeats.`,
             sudokuHintWrong: 'The highlighted cell is incorrect.',
+            sudokuHintNoteConflict:
+                'These pencil marks clash with a placed digit — cleared for you (struck red).',
+            sudokuHintNoteMissing:
+                'The correct candidate was crossed out here — added back for you (green).',
             sudokuHintNoAvail:
                 'No simple next step found from the current board.',
+            sudokuHintContinue: ' (candidates removed — reopen the hint for the next step)',
             sudokuHintTierStep: 'STEP',
             sudokuHintTierError: 'ERROR',
 
@@ -932,7 +937,12 @@
             sudokuHintContradiction: (unit, v, n) =>
                 `此${unit}有太多 ${v} 了。每${unit}都必須包含數字 1–${n}，不得重複。`,
             sudokuHintWrong: '醒目標示的格子不正確。',
+            sudokuHintNoteConflict:
+                '這些筆記和已填入的數字衝突，已為你清除（紅色刪除線）。',
+            sudokuHintNoteMissing:
+                '這幾格的正確候選被劃掉了，已為你補回（綠色）。',
             sudokuHintNoAvail: '從目前的盤面找不到簡單的下一步。',
+            sudokuHintContinue: '（已消去這些候選；再次開啟提示即接續下一步）',
             sudokuHintTierStep: '步驟',
             sudokuHintTierError: '錯誤',
 

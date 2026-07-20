@@ -64,6 +64,10 @@
         violationTimer: null,
 
         hint: null,               // current hint descriptor, or null
+        // The hint solver reads the player's notes as its candidate state
+        // (empty-note cells fall back to basic candidates). A shown elimination
+        // is pruned from the relevant cells' notes and stays pruned, so
+        // reopening the hint continues to the next deduction.
         hintBanner: null,         // #hint-banner element
     };
 
@@ -566,22 +570,6 @@
         return out;
     }
 
-    /** Row + column + box peers of a cell (used for naked-single context). */
-    function peerCells(r0, c0) {
-        const N = state.puzzle.size;
-        const box0 = boxIndexOf(r0, c0);
-        const out = [];
-        for (let r = 0; r < N; r++) {
-            for (let c = 0; c < N; c++) {
-                if (r === r0 && c === c0) continue;
-                if (r === r0 || c === c0 || boxIndexOf(r, c) === box0) {
-                    out.push([r, c]);
-                }
-            }
-        }
-        return out;
-    }
-
     function effectiveGrid() {
         const N = state.puzzle.size;
         const grid = [];
@@ -593,14 +581,16 @@
         return grid;
     }
 
-    function computeHint() {
+    function sudokuSolver() {
+        return (window.PuzzleSolvers && window.PuzzleSolvers.sudoku) || null;
+    }
+
+    // A rule-violation hint (wrong entry / contradiction), or null. Takes
+    // priority over any deduction and is terminal (no walkthrough).
+    function errorHint(S) {
         const N = state.puzzle.size;
         const { boxRows, boxCols, solution } = state.puzzle;
-        const S = window.PuzzleSolvers && window.PuzzleSolvers.sudoku;
-        if (!S) return { kind: 'none' };
         const grid = effectiveGrid();
-
-        // 1. Wrong player entries (differ from the unique solution).
         const wrong = [];
         for (let r = 0; r < N; r++) {
             for (let c = 0; c < N; c++) {
@@ -609,32 +599,92 @@
                 if (v !== 0 && v !== solution[r][c]) wrong.push([r, c]);
             }
         }
-        if (wrong.length) {
-            const contra = S.findContradiction(grid, N, boxRows, boxCols);
-            if (contra) {
-                return {
-                    kind: 'error', variant: 'contradiction',
-                    cells: contra.cells,
-                    unitKind: contra.unitKind, value: contra.value,
-                };
+        if (!wrong.length) return null;
+        const contra = S.findContradiction(grid, N, boxRows, boxCols);
+        if (contra) {
+            return {
+                kind: 'error', variant: 'contradiction',
+                cells: contra.cells, unitKind: contra.unitKind, value: contra.value,
+            };
+        }
+        return { kind: 'error', variant: 'wrong', cells: wrong };
+    }
+
+    // Pencil marks that are impossible given the placed digits (the same digit
+    // sits in the cell's row, column or box). Returned as a conflict hint so we
+    // can flag + clear them before any deduction — mirroring the conflict-first
+    // rule for placed digits.
+    function conflictNotesHint(S) {
+        const N = state.puzzle.size;
+        const { boxRows, boxCols } = state.puzzle;
+        const basicState = S.makeState(effectiveGrid(), N, boxRows, boxCols);
+        const elims = [];
+        for (let r = 0; r < N; r++) {
+            for (let c = 0; c < N; c++) {
+                if (isPrefilled(r, c) || effective(r, c) !== 0) continue;
+                const basic = basicState.cands[r][c];
+                for (const d of state.notes[r][c]) {
+                    if (!(basic & (1 << (d - 1)))) elims.push({ r, c, d });
+                }
             }
-            return { kind: 'error', variant: 'wrong', cells: wrong };
         }
+        if (!elims.length) return null;
+        return { kind: 'noteConflict', eliminations: elims };
+    }
 
-        // 2. Next forced deduction from the current (correct) board.
-        const techniques = S.TECHNIQUES_BY_DIFFICULTY[state.puzzle.difficulty];
-        const solverState = S.makeState(grid, N, boxRows, boxCols);
-        const step = S.nextStep(solverState, techniques);
-        if (step) {
-            // Snapshot the candidate grid (nextStep doesn't mutate it) so
-            // an advanced-technique hint can draw the pencil marks it
-            // reasons about — otherwise those eliminations would be
-            // invisible to a player who hasn't filled notes.
-            const cands = solverState.cands.map((row) => row.slice());
-            return { kind: 'step', step, cands };
+    // Cells where the player has pencil marks but has crossed out the one that
+    // is actually correct — a self-inflicted dead end the note-based solver
+    // would otherwise follow astray. Returned so we can add the digit back.
+    function missingSolutionNoteHint() {
+        const N = state.puzzle.size;
+        const { solution } = state.puzzle;
+        const restores = [];
+        for (let r = 0; r < N; r++) {
+            for (let c = 0; c < N; c++) {
+                if (isPrefilled(r, c) || effective(r, c) !== 0) continue;
+                const notes = state.notes[r][c];
+                if (notes.size === 0) continue; // empty = every digit still open
+                if (!notes.has(solution[r][c])) {
+                    restores.push({ r, c, d: solution[r][c] });
+                }
+            }
         }
+        if (!restores.length) return null;
+        return { kind: 'noteMissing', restores };
+    }
 
-        return { kind: 'none' };
+    // Build the solver the hint reasons on. Its candidates ARE the player's
+    // notes (intersected with the basic candidates so a stray/typo pencil mark
+    // can never make the solver place an impossible digit); cells the player
+    // hasn't noted yet fall back to their basic candidates. Also returns the
+    // raw `basic` grid so we can fill in only the cells a step touches.
+    function buildHintSolver(S) {
+        const N = state.puzzle.size;
+        const { boxRows, boxCols } = state.puzzle;
+        const st = S.makeState(effectiveGrid(), N, boxRows, boxCols);
+        const basic = st.cands.map((row) => row.slice());
+        for (let r = 0; r < N; r++) {
+            for (let c = 0; c < N; c++) {
+                if (isPrefilled(r, c) || effective(r, c) !== 0) continue;
+                let m = 0;
+                for (const d of state.notes[r][c]) m |= 1 << (d - 1);
+                st.cands[r][c] = m ? (m & basic[r][c]) : basic[r][c];
+            }
+        }
+        return { st, basic };
+    }
+
+    // Pencil in the true candidates for only the cells a step reasons about
+    // (its pattern + elimination cells) — and only where the player has no
+    // notes yet, so cells already pruned by earlier steps are never re-filled.
+    function fillStepNotes(step, basic) {
+        const cells = step.cells.concat(step.eliminations.map((e) => [e.r, e.c]));
+        for (const [r, c] of cells) {
+            if (isPrefilled(r, c) || effective(r, c) !== 0) continue;
+            if (state.notes[r][c].size > 0) continue; // keep pruned cells intact
+            const set = state.notes[r][c];
+            for (const d of bitsOfMask(basic[r][c])) set.add(d);
+        }
     }
 
     // Digits present in a candidate bitmask.
@@ -645,16 +695,30 @@
         return out;
     }
 
-    // For a hidden single (digit d forced into `target` of a unit): the
-    // cells elsewhere holding d that block d from the unit's OTHER empty
-    // cells — i.e. the "because of these other d's" cells the hint names.
+    // Row + column + box peers of a cell.
+    function peerCells(r0, c0) {
+        const N = state.puzzle.size;
+        const box0 = boxIndexOf(r0, c0);
+        const out = [];
+        for (let r = 0; r < N; r++) {
+            for (let c = 0; c < N; c++) {
+                if (r === r0 && c === c0) continue;
+                if (r === r0 || c === c0 || boxIndexOf(r, c) === box0) out.push([r, c]);
+            }
+        }
+        return out;
+    }
+
+    // For a hidden single (digit d forced into (tr,tc) of a unit): the placed
+    // copies of d elsewhere that block d from the unit's OTHER empty cells —
+    // i.e. the "because of these other d's" cells the hint text names.
     function hiddenSingleBlockers(unitKind, unitIndex, d, tr, tc) {
         const out = [];
         const seen = new Set();
         const N = state.puzzle.size;
         for (const [r, c] of unitCells(unitKind, unitIndex)) {
             if (r === tr && c === tc) continue;
-            if (effective(r, c) !== 0) continue; // only empty cells are blocked
+            if (effective(r, c) !== 0) continue;
             for (const [pr, pc] of peerCells(r, c)) {
                 if (effective(pr, pc) === d) {
                     const k = pr * N + pc;
@@ -682,74 +746,103 @@
         return null;
     }
 
-    function showHint() {
-        if (!state.puzzle || state.won) return;
-        // Second press toggles the current hint off (matches Queens/Tango).
-        if (state.hint) { clearHint(); return; }
-        state.hint = computeHint();
-        const focus = hintFocusCell(state.hint);
-        if (focus) selectCell(focus[0], focus[1]);
+    // Is the current hint a pure-elimination step (i.e. the walkthrough can
+    // advance past it on the next press)?
+    function hintIsElimination(h) {
+        return !!(h && h.kind === 'step' && h.step
+            && h.step.placements.length === 0
+            && h.step.eliminations.length);
+    }
+
+    function setHint(h) {
+        state.hint = h;
+        // Move the cursor onto the actionable cell for placements / errors so
+        // the player can act right away; elimination steps have no single
+        // "target", so we leave the cursor where it is to avoid jumpiness.
+        if (h && (h.kind === 'error'
+            || (h.kind === 'step' && h.step && h.step.placements.length))) {
+            const focus = hintFocusCell(h);
+            if (focus) selectCell(focus[0], focus[1]);
+        }
+        // The walkthrough edits the note layer, so refresh it too.
+        repaintSymbols();
         renderHintBanner();
         repaintHint();
     }
 
+    function showHint() {
+        if (!state.puzzle || state.won) return;
+        const S = sudokuSolver();
+        if (!S) return;
+
+        // Toggle: a shown hint is dismissed on the next press. The candidate
+        // removals it made stay in the notes, so reopening continues onward.
+        if (state.hint) { clearHint(); return; }
+
+        // Rule violations win over any deduction.
+        const err = errorHint(S);
+        if (err) { setHint(err); return; }
+
+        // Then: pencil marks that conflict with a placed digit. Flag + clear
+        // them (red strike) before deducing, so the notes the deduction reads
+        // always match what's shown.
+        const noteConflict = conflictNotesHint(S);
+        if (noteConflict) {
+            for (const e of noteConflict.eliminations) {
+                state.notes[e.r][e.c].delete(e.d);
+            }
+            setHint(noteConflict);
+            return;
+        }
+
+        // Then: a cell where the correct candidate has been crossed out. Add it
+        // back (green) so the note-based deduction can't be led astray.
+        const noteMissing = missingSolutionNoteHint();
+        if (noteMissing) {
+            for (const e of noteMissing.restores) state.notes[e.r][e.c].add(e.d);
+            setHint(noteMissing);
+            return;
+        }
+
+        const techniques = S.TECHNIQUES_BY_DIFFICULTY[state.puzzle.difficulty];
+        const { st, basic } = buildHintSolver(S);
+        const step = S.nextStep(st, techniques);
+        if (!step) { setHint({ kind: 'none' }); return; }
+
+        // Showing an elimination commits it: pencil in the candidates for just
+        // the cells it touches (leaving already-pruned cells alone), then strike
+        // the removed candidate and drop it from the notes for good — never
+        // re-added — so reopening the hint continues where this one left off.
+        // Singles never touch the notes.
+        if (step.eliminations.length) {
+            fillStepNotes(step, basic);
+            for (const e of step.eliminations) state.notes[e.r][e.c].delete(e.d);
+        }
+        setHint({ kind: 'step', step });
+    }
+
     function clearHint() {
         state.hint = null;
+        // The auto-filled / pruned candidate notes are kept — dropping only
+        // the overlay is what makes "dismiss, reopen, continue" work.
         renderHintBanner();
         repaintHint();
+        repaintSymbols();
         // Selection tints (peer / same-digit) are suppressed while a hint
         // is up, so restore them now that it's gone.
         repaintSelection();
     }
 
-    // Cells the current hint keeps lit (everything else is dimmed), plus
-    // any candidate marks / eliminations / error tint the hint draws.
-    // Returns { lit:Set(key), redTint:[[r,c]], candCells:[[r,c]], elims }.
-    function hintSpotlight(h) {
-        const N = state.puzzle.size;
-        const lit = new Set();
-        const add = (r, c) => lit.add(r * N + c);
-        const redTint = [];
-        let candCells = [];
-        let elims = [];
-
-        if (h.kind === 'error') {
-            for (const [r, c] of h.cells) { add(r, c); redTint.push([r, c]); }
-            return { lit, redTint, candCells, elims };
-        }
-        if (h.kind === 'step') {
-            const s = h.step;
-            if (s.placements.length) {
-                const p = s.placements[0];
-                if (s.technique === 'nakedSingle') {
-                    add(p.r, p.c);
-                    for (const [r, c] of peerCells(p.r, p.c)) add(r, c);
-                } else if (s.technique === 'hiddenSingle' && s.unit) {
-                    for (const [r, c] of unitCells(s.unit.kind, s.unit.index)) {
-                        add(r, c);
-                    }
-                    for (const [r, c] of hiddenSingleBlockers(
-                        s.unit.kind, s.unit.index, p.value, p.r, p.c)) add(r, c);
-                } else if (s.unit) {
-                    for (const [r, c] of unitCells(s.unit.kind, s.unit.index)) {
-                        add(r, c);
-                    }
-                } else {
-                    add(p.r, p.c);
-                }
-            } else {
-                // Advanced: light the pattern + elimination cells and draw
-                // their candidates so the technique is actually visible.
-                for (const [r, c] of s.cells) add(r, c);
-                for (const e of s.eliminations) add(e.r, e.c);
-                candCells = s.cells.concat(s.eliminations.map((e) => [e.r, e.c]));
-                elims = s.eliminations;
-            }
-        }
-        return { lit, redTint, candCells, elims };
-    }
-
-    /** Redraw the hint layers (below-symbol tint + above-symbol dim). */
+    /**
+     * Redraw the hint layers.
+     *   #hint      (below the symbols) — soft cell tints: the unit/pattern
+     *              cells the current step reasons about, plus a green wash on
+     *              a placement target. Sits under the notes so they read.
+     *   #hint-dim  (above the symbols) — red strike-through over the exact
+     *              candidate(s) this step removes (the notes already show the
+     *              full, accumulating candidate view via repaintSymbols).
+     * Errors keep the old red-wash + dim-everything-else spotlight.
+     */
     function repaintHint() {
         const belowGroup = board && board.querySelector('#hint');
         const dimGroup = board && board.querySelector('#hint-dim');
@@ -762,61 +855,120 @@
         const N = state.puzzle.size;
         const cs = BOARD_SIZE / N;
         const { boxRows, boxCols } = state.puzzle;
-        const { lit, redTint, candCells, elims } = hintSpotlight(h);
-
-        // Error cells get a red wash (below symbols so the digit shows).
-        for (const [r, c] of redTint) {
-            belowGroup.appendChild(PC.svgEl('rect', {
-                x: c * cs, y: r * cs, width: cs, height: cs,
-                fill: '#ef5350', 'fill-opacity': 0.35,
-            }));
-        }
-
-        // Dim every non-lit cell (above the symbols, so digits fade too).
-        for (let r = 0; r < N; r++) {
-            for (let c = 0; c < N; c++) {
-                if (lit.has(r * N + c)) continue;
-                dimGroup.appendChild(PC.svgEl('rect', {
-                    class: 'hint-dim-cell',
-                    x: c * cs, y: r * cs, width: cs, height: cs,
-                }));
-            }
-        }
-
-        // Advanced techniques: draw the pencil-mark candidates on the lit
-        // cells (above symbols so they win over any player notes), with
-        // the eliminated candidate struck through in red.
-        if (candCells.length && h.cands) {
-            const cands = h.cands;
-            const elimMap = new Map();
-            for (const e of elims) {
-                const k = e.r * N + e.c;
-                if (!elimMap.has(k)) elimMap.set(k, new Set());
-                elimMap.get(k).add(e.d);
-            }
-            const noteFont = Math.max(9, Math.floor(cs * 0.2));
-            const drawn = new Set();
-            for (const [r, c] of candCells) {
-                const key = r * N + c;
-                if (drawn.has(key)) continue;
-                drawn.add(key);
-                if (effective(r, c) !== 0) continue;
-                for (const d of bitsOfMask(cands[r][c])) {
-                    const { x: nx, y: ny } = noteSlot(r, c, d, cs, boxRows, boxCols);
-                    const isElim = elimMap.has(key) && elimMap.get(key).has(d);
-                    const t = PC.svgEl('text', {
-                        x: nx, y: ny,
-                        'text-anchor': 'middle', 'dominant-baseline': 'middle',
-                        dy: '0.12em', 'font-size': noteFont,
-                        fill: isElim ? '#ef5350' : '#555',
-                        'font-weight': isElim ? 700 : 400,
-                    });
-                    if (isElim) t.setAttribute('text-decoration', 'line-through');
-                    t.textContent = String(d);
-                    dimGroup.appendChild(t);
+        const tint = (r, c, fill, op) => belowGroup.appendChild(PC.svgEl('rect', {
+            x: c * cs, y: r * cs, width: cs, height: cs,
+            fill, 'fill-opacity': op,
+        }));
+        const noteFont = Math.max(9, Math.floor(cs * 0.22));
+        // A coloured copy of a candidate drawn above the notes: red + struck
+        // for a removal, green for one added back.
+        const drawCand = (r, c, d, color, struck) => {
+            const { x, y } = noteSlot(r, c, d, cs, boxRows, boxCols);
+            const txt = PC.svgEl('text', {
+                x, y, 'text-anchor': 'middle', 'dominant-baseline': 'middle',
+                dy: '0.12em', 'font-size': noteFont,
+                fill: color, 'font-weight': 700,
+            });
+            if (struck) txt.setAttribute('text-decoration', 'line-through');
+            txt.textContent = String(d);
+            dimGroup.appendChild(txt);
+        };
+        const strike = (r, c, d) => drawCand(r, c, d, '#ef5350', true);
+        const dimExcept = (litSet) => {
+            for (let r = 0; r < N; r++) {
+                for (let c = 0; c < N; c++) {
+                    if (litSet.has(r * N + c)) continue;
+                    dimGroup.appendChild(PC.svgEl('rect', {
+                        class: 'hint-dim-cell', x: c * cs, y: r * cs,
+                        width: cs, height: cs,
+                    }));
                 }
             }
+        };
+
+        if (h.kind === 'error') {
+            const errSet = new Set(h.cells.map(([r, c]) => r * N + c));
+            for (const [r, c] of h.cells) tint(r, c, '#ef5350', 0.35);
+            dimExcept(errSet);
+            return;
         }
+
+        if (h.kind === 'noteConflict') {
+            const lit = new Set(h.eliminations.map((e) => e.r * N + e.c));
+            const seen = new Set();
+            for (const e of h.eliminations) {
+                const k = e.r * N + e.c;
+                if (!seen.has(k)) { seen.add(k); tint(e.r, e.c, '#ef5350', 0.10); }
+            }
+            dimExcept(lit);
+            for (const e of h.eliminations) strike(e.r, e.c, e.d);
+            return;
+        }
+
+        if (h.kind === 'noteMissing') {
+            const lit = new Set(h.restores.map((e) => e.r * N + e.c));
+            const seen = new Set();
+            for (const e of h.restores) {
+                const k = e.r * N + e.c;
+                if (!seen.has(k)) { seen.add(k); tint(e.r, e.c, '#2e7d32', 0.14); }
+            }
+            dimExcept(lit);
+            for (const e of h.restores) drawCand(e.r, e.c, e.d, '#2e7d32', false);
+            return;
+        }
+
+        const s = h.step;
+        const target = s.placements.length ? s.placements[0] : null;
+        const targetKey = target ? target.r * N + target.c : -1;
+
+        // Cells the spotlight keeps bright: the unit, the pattern cells, the
+        // target, and any cell losing a candidate. Everything else is dimmed.
+        const lit = new Set();
+        if (s.unit) {
+            for (const [r, c] of unitCells(s.unit.kind, s.unit.index)) {
+                lit.add(r * N + c);
+            }
+        }
+        for (const [r, c] of s.cells) lit.add(r * N + c);
+        for (const e of s.eliminations) lit.add(e.r * N + e.c);
+        if (target) lit.add(targetKey);
+        // Naked single: light the row/col/box peers — they're the "根據其所屬
+        // 行、列、區域" that forces the single.
+        if (target && s.technique === 'nakedSingle') {
+            for (const [r, c] of peerCells(target.r, target.c)) lit.add(r * N + c);
+        }
+        // Hidden single: keep the blocking copies of the digit bright too —
+        // they're the whole reason the digit is forced into the target.
+        let blockers = [];
+        if (target && s.technique === 'hiddenSingle' && s.unit) {
+            blockers = hiddenSingleBlockers(
+                s.unit.kind, s.unit.index, target.value, target.r, target.c);
+            for (const [r, c] of blockers) lit.add(r * N + c);
+        }
+
+        // Tints under the notes: stronger wash on the pattern cells (the
+        // "reason"), green on a placement target, faint red on cells losing a
+        // candidate (so they read even outside the unit, e.g. X-Wing).
+        for (const [r, c] of s.cells) {
+            if (r * N + c !== targetKey) tint(r, c, '#2196f3', 0.18);
+        }
+        for (const [r, c] of blockers) tint(r, c, '#2196f3', 0.18);
+        const elimCellSeen = new Set();
+        for (const e of s.eliminations) {
+            const k = e.r * N + e.c;
+            if (elimCellSeen.has(k)) continue;
+            elimCellSeen.add(k);
+            tint(e.r, e.c, '#ef5350', 0.10);
+        }
+        if (target) tint(target.r, target.c, '#2e7d32', 0.22);
+
+        // Dim everything the step doesn't touch (above the symbols, so notes
+        // fade too), restoring the focused spotlight.
+        dimExcept(lit);
+
+        // Red strike over each candidate this step removes. It's already gone
+        // from the note layer, so draw a red, struck copy to show what went.
+        for (const e of s.eliminations) strike(e.r, e.c, e.d);
     }
 
     function renderHintBanner() {
@@ -837,6 +989,11 @@
             } else {
                 text = t('sudokuHintWrong');
             }
+        } else if (h.kind === 'noteConflict') {
+            isError = true;
+            text = t('sudokuHintNoteConflict');
+        } else if (h.kind === 'noteMissing') {
+            text = t('sudokuHintNoteMissing');
         } else if (h.kind === 'step') {
             const s = h.step;
             const u = s.unit ? unitName(s.unit.kind) : '';
@@ -870,6 +1027,10 @@
         } else {
             text = t('sudokuHintNoAvail');
         }
+
+        // Elimination steps don't change the board, so signal that pressing
+        // Hint again walks to the next deduction.
+        if (hintIsElimination(h)) text += t('sudokuHintContinue');
 
         // No tier badge — Queens/Tango don't show one either; the red
         // banner styling alone signals an error.
@@ -961,6 +1122,8 @@
 
     function moveSelection(dr, dc) {
         if (!state.puzzle) return;
+        // While a hint is on screen the selection is locked to the hint's cell.
+        if (state.hint) return;
         const N = state.puzzle.size;
         if (!state.selected) {
             selectCell(0, 0);
@@ -1077,6 +1240,8 @@
     }
 
     function onBoardClick(ev) {
+        // Selection is locked while a hint is on screen.
+        if (state.hint) return;
         const target = ev.target.closest('rect.cell-hover');
         if (!target) return;
         const r = parseInt(target.getAttribute('data-r'), 10);
@@ -1184,12 +1349,15 @@
             return;
         }
         recomputeViolations();
-        repaintSymbols();
-        state.hint = { kind: 'step', step: target.step, cands: target.cands };
-        const focus = hintFocusCell(state.hint);
-        if (focus) selectCell(focus[0], focus[1]);
-        renderHintBanner();
-        repaintHint();
+        // Pencil in candidates for just the cells the demo step touches, then
+        // commit its eliminations — same as a normal elimination hint, so
+        // pressing Hint again continues from here.
+        const basic = st.cands.map((row) => row.slice());
+        fillStepNotes(target.step, basic);
+        for (const e of target.step.eliminations) {
+            state.notes[e.r][e.c].delete(e.d);
+        }
+        setHint({ kind: 'step', step: target.step });
     }
 
     function startNewGame() {
