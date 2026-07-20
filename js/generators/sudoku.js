@@ -70,13 +70,13 @@
     // allows" — used by hard so it bottoms out at the singles limit.
     function minClues(N, difficulty) {
         if (N === 6) {
-            if (difficulty === 'easy') return 22;
-            if (difficulty === 'medium') return 16;
+            if (difficulty === 'easy') return 20;
+            if (difficulty === 'medium') return 14;
             return 0;
         }
         // 9×9
-        if (difficulty === 'easy') return 40;
-        if (difficulty === 'medium') return 32;
+        if (difficulty === 'easy') return 36;
+        if (difficulty === 'medium') return 30;
         return 0;
     }
 

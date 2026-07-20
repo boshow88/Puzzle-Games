@@ -780,23 +780,8 @@
     color: var(--text-on-accent);
 }
 
-/* When Notes mode is on the digit keys switch to a "writing pencil
-   marks" look. The notes-toggle itself stays filled green; the erase
-   key stays neutral. */
-.keypad.notes-mode .keypad-btn[data-digit] {
-    background: rgba(46, 125, 50, 0.08);
-    color: #1d6b21;
-    border-color: rgba(46, 125, 50, 0.4);
-}
-
-/* In notes mode the default :hover (light grey wash) reads as almost
-   no change against the tinted green base, so we deliberately deepen
-   the green instead. */
-.keypad.notes-mode .keypad-btn[data-digit]:hover {
-    background: rgba(46, 125, 50, 0.22);
-    border-color: rgba(46, 125, 50, 0.7);
-    color: #14531b;
-}
+/* Notes mode is signalled by the filled-green Notes toggle alone; the
+   digit keys keep their normal look so the keypad doesn't recolour. */
 
 /* ---- Zip-specific ---- */
 
