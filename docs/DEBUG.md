@@ -17,18 +17,32 @@ rg "\[DEBUG-HOOK\]"
 
 ## Dev tools (`tools/`)
 
-These are standalone pages, not linked from the app — safe to leave, but they're
-part of the dev surface:
+Standalone pages, not linked from anywhere in the app (no nav points at them),
+loaded manually by opening the file. Safe to ship, but they are dev surface:
 
 | Tool | Purpose |
 | --- | --- |
 | `tools/queens-solver-trace.html` | Step through the Queens generator/solver and inspect each deduction + score. |
 | `tools/sudoku-solver-trace.html` | Step through the Sudoku solver technique-by-technique on a generated/seeded puzzle. |
+| `tools/tango-solver-trace.html` | Step through the Tango solver's deductions one at a time. |
+| `tools/tango-gen-stats.html` | Batch-generate Tango puzzles and inspect generator statistics. |
+
+## Ungated console logging
+
+Not behind any flag — plain defensive/dev `console.warn` / `console.log` that
+fires in normal runs. Nothing here changes behaviour, but strip/quiet it if you
+want a silent console. Find them with `rg "console\.(log|warn)"`. Current spots:
+
+- `js/generators/tango.js` — row-rejection budget exhausted; "returning unverified".
+- `js/games/queens.js` — a solver-state warning.
+- `js/games/sudoku.js` — `?sudoku_demo` "technique not reached" warning (only under that flag).
+- `js/common.js` — storage read/write + i18n subscriber failures.
 
 ## Cleanup checklist
 
 When preparing a release build:
 
-1. `rg "\[DEBUG-HOOK\]"` and remove/guard each hook.
-2. Decide whether to ship or drop the `tools/` trace pages.
-3. Update this file.
+1. `rg "\[DEBUG-HOOK\]"` and remove/guard each URL flag.
+2. `rg "console\.(log|warn)"` and quiet anything you don't want shipping.
+3. Decide whether to ship or drop the four `tools/` pages.
+4. Update this file.
