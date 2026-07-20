@@ -91,6 +91,7 @@
 .toolbar-action {
     display: flex;
     align-items: stretch;
+    gap: var(--space-sm);
 }
 
 .toolbar-action .btn {
