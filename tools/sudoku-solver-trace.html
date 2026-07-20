@@ -53,7 +53,7 @@
 
     <div class="row">
         <label>Size:
-            <select id="size"><option>6</option><option selected>9</option></select>
+            <select id="size"><option>6</option><option selected>9</option><option>12</option></select>
         </label>
         <label>Difficulty:
             <select id="difficulty">
@@ -160,7 +160,7 @@
         }
 
         // ---- generate ----
-        els.generate.addEventListener('click', () => {
+        els.generate.addEventListener('click', async () => {
             const N = parseInt(els.size.value, 10);
             const difficulty = els.difficulty.value;
             if (els.randomSeed.checked) {
@@ -168,7 +168,7 @@
             }
             const seed = parseInt(els.seed.value, 16) >>> 0;
             const t0 = performance.now();
-            puzzle = window.PuzzleGenerators.sudoku(N, difficulty, seed);
+            puzzle = await window.PuzzleGenerators.sudoku(N, difficulty, seed);
             const dt = performance.now() - t0;
             renderStats(dt);
             resetSolver();

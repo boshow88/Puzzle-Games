@@ -40,8 +40,18 @@
     // Puzzle generation (thin wrapper around the external generator).
     // -----------------------------------------------------------------
 
-    function generatePuzzle(size, difficulty, seed) {
-        return window.PuzzleGenerators.sudoku(size, difficulty, seed);
+    async function generatePuzzle(size, difficulty, seed) {
+        const progress = PC.progress;
+        // Drive a determinate bar off the generator's per-chunk callback.
+        // When it's fast the bar just races to 100%; when it's slow (12×12)
+        // it gives real feedback.
+        const onProgress = progress
+            ? async (fraction) => {
+                progress.setFraction(fraction);
+                await progress.waitNextPaint();
+            }
+            : null;
+        return window.PuzzleGenerators.sudoku(size, difficulty, seed, onProgress);
     }
 
     // -----------------------------------------------------------------
@@ -81,6 +91,20 @@
         return Array.from({ length: N }, () =>
             Array.from({ length: N }, () => new Set())
         );
+    }
+
+    // On 12×12 / 16×16 the digits run past 9, so we render them hex-style as
+    // single characters (1–9, then A, B, C, …) to keep glyphs one-wide.
+    function digitLabel(d) {
+        return d <= 9 ? String(d) : String.fromCharCode(55 + d); // 10→'A'
+    }
+
+    // Inverse of digitLabel for keyboard entry: '1'–'9' → 1–9, 'a'/'A' → 10, …
+    function keyToDigit(key) {
+        if (key >= '1' && key <= '9') return key.charCodeAt(0) - 48;
+        const u = key.toUpperCase();
+        if (u >= 'A' && u <= 'G') return u.charCodeAt(0) - 55; // 'A'→10 … 'G'→16
+        return 0;
     }
 
     function ensurePlacementsForCurrent() {
@@ -450,7 +474,7 @@
                         dy: '0.12em',
                         'font-size': digitFont,
                     });
-                    text.textContent = String(v);
+                    text.textContent = digitLabel(v);
                     group.appendChild(text);
                 } else {
                     // While the solution is revealed we hide the player's
@@ -471,7 +495,7 @@
                             dy: '0.12em',
                             'font-size': noteFont,
                         });
-                        text.textContent = String(d);
+                        text.textContent = digitLabel(d);
                         group.appendChild(text);
                     }
                 }
@@ -520,7 +544,7 @@
                         dy: '0.12em',
                         'font-size': hintFont,
                     });
-                    text.textContent = String(sol[r][c]);
+                    text.textContent = digitLabel(sol[r][c]);
                     group.appendChild(text);
                 }
             }
@@ -862,7 +886,7 @@
                 fill: color, 'font-weight': 700,
             });
             if (struck) txt.setAttribute('text-decoration', 'line-through');
-            txt.textContent = String(d);
+            txt.textContent = digitLabel(d);
             dimGroup.appendChild(txt);
         };
         const strike = (r, c, d) => drawCand(r, c, d, '#ef5350', true);
@@ -991,7 +1015,7 @@
             isError = true;
             if (h.variant === 'contradiction') {
                 text = t('sudokuHintContradiction',
-                    unitName(h.unitKind), h.value, state.puzzle.size);
+                    unitName(h.unitKind), digitLabel(h.value), state.puzzle.size);
             } else {
                 text = t('sudokuHintWrong');
             }
@@ -1003,14 +1027,15 @@
         } else if (h.kind === 'step') {
             const s = h.step;
             const u = s.unit ? unitName(s.unit.kind) : '';
-            const dstr = s.digits.join('、');
+            const d0 = digitLabel(s.digits[0]);
+            const dstr = s.digits.map(digitLabel).join('、');
             switch (s.technique) {
                 case 'fullHouse':
-                    text = t('sudokuHintFullHouse', u, s.digits[0]); break;
+                    text = t('sudokuHintFullHouse', u, d0); break;
                 case 'nakedSingle':
-                    text = t('sudokuHintNaked', s.digits[0]); break;
+                    text = t('sudokuHintNaked', d0); break;
                 case 'hiddenSingle':
-                    text = t('sudokuHintHidden', u, s.digits[0]); break;
+                    text = t('sudokuHintHidden', u, d0); break;
                 case 'lockedPointing':
                     text = t('sudokuHintLockedPointing', u, dstr); break;
                 case 'lockedClaiming':
@@ -1063,8 +1088,8 @@
                 type: 'button',
                 class: 'keypad-btn',
                 'data-digit': String(d),
-                'aria-label': `Digit ${d}`,
-            }, String(d));
+                'aria-label': `Digit ${digitLabel(d)}`,
+            }, digitLabel(d));
             btn.addEventListener('click', () => onKeypadDigit(d));
             digits.appendChild(btn);
         }
@@ -1279,15 +1304,13 @@
             ev.preventDefault();
             return;
         }
-        // Digit input: 1..N. (We never want a digit larger than the
-        // board size to be entered — pressing 7 on a 6×6 board is a
-        // no-op.)
-        if (k >= '1' && k <= '9') {
-            const d = parseInt(k, 10);
-            if (d <= state.puzzle.size) {
-                onKeypadDigit(d);
-                ev.preventDefault();
-            }
+        // Digit input: 1..N, entered as 1–9 then A–G for 10–16 (to match the
+        // hex-style labels on large boards). A key beyond the board size is a
+        // no-op (pressing 7 on a 6×6 board does nothing).
+        const d = keyToDigit(k);
+        if (d >= 1 && d <= state.puzzle.size) {
+            onKeypadDigit(d);
+            ev.preventDefault();
         }
     }
 
@@ -1311,7 +1334,7 @@
     // generator is deterministic, the friend who opens it gets the same
     // puzzle. The seed is used once for the first board, then New Game rolls
     // a fresh one and the address bar re-syncs.
-    const VALID_SIZES = new Set([6, 9]);
+    const VALID_SIZES = new Set([6, 9, 12]);
     const VALID_DIFFS = new Set(['easy', 'medium', 'hard']);
 
     function readUrlInitial() {
@@ -1332,11 +1355,13 @@
         if (PC.toast) PC.toast.show(PC.i18n.t(ok ? 'shareCopied' : 'shareFailed'));
     }
 
-    function findDemoPuzzle(N, tech) {
+    async function findDemoPuzzle(N, tech) {
         const gen = window.PuzzleGenerators.sudoku;
         for (let i = 0; i < 200; i++) {
             const seed = (Math.random() * 0xffffffff) >>> 0;
-            const pz = gen(N, 'hard', seed);
+            // No onProgress → the generator runs without yielding, so this
+            // 200-try loop stays fast.
+            const pz = await gen(N, 'hard', seed);
             if ((pz.stats.techniqueCounts || {})[tech] > 0) return pz;
         }
         return null;
@@ -1387,16 +1412,16 @@
         setHint({ kind: 'step', step: target.step });
     }
 
-    function startNewGame() {
+    async function startNewGame() {
         const seed = (!DEMO_TECH && pendingSeed != null)
             ? pendingSeed
             : ((Date.now() ^ Math.floor(Math.random() * 0xffffffff)) >>> 0);
         pendingSeed = null;
         if (DEMO_TECH) {
-            state.puzzle = findDemoPuzzle(shell.size, DEMO_TECH)
-                || generatePuzzle(shell.size, 'hard', seed);
+            state.puzzle = (await findDemoPuzzle(shell.size, DEMO_TECH))
+                || (await generatePuzzle(shell.size, 'hard', seed));
         } else {
-            state.puzzle = generatePuzzle(shell.size, shell.difficulty, seed);
+            state.puzzle = await generatePuzzle(shell.size, shell.difficulty, seed);
         }
         ensurePlacementsForCurrent();
         renderBoard();

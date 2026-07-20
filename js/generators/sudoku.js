@@ -40,6 +40,7 @@
     const BOX_SHAPE = {
         6: { rows: 2, cols: 3 },
         9: { rows: 3, cols: 3 },
+        12: { rows: 3, cols: 4 },
     };
 
     // Techniques allowed per difficulty. Each tier is a strict superset
@@ -72,6 +73,12 @@
         if (N === 6) {
             if (difficulty === 'easy') return 20;
             if (difficulty === 'medium') return 14;
+            return 0;
+        }
+        if (N === 12) {
+            // 144 cells; keep a comfortable amount of scaffolding.
+            if (difficulty === 'easy') return 80;
+            if (difficulty === 'medium') return 66;
             return 0;
         }
         // 9×9
@@ -789,7 +796,8 @@
     // solvable by the allowed techniques.
     // -----------------------------------------------------------------
 
-    function digHoles(solution, N, boxRows, boxCols, techniques, keepMin, rng) {
+    async function digHoles(solution, N, boxRows, boxCols, techniques,
+        keepMin, rng, onProgress) {
         const prefilled = solution.map((row) => row.slice());
         const cells = [];
         for (let r = 0; r < N; r++) {
@@ -806,26 +814,38 @@
             return true;
         };
 
+        // Yield to the UI only after ~40ms of solid work, so a fast board
+        // (6×6 / 9×9) finishes in one go with no added latency, while a slow
+        // one (12×12) repaints a determinate bar a couple dozen times.
+        // onProgress is null for the demo / trace-tool paths — those never
+        // yield and stay at full speed.
+        const YIELD_MS = 40;
+        let lastYield = Date.now();
         let clues = N * N;
-        for (const [r, c] of cells) {
+        for (let i = 0; i < cells.length; i++) {
+            const [r, c] = cells[i];
             if (keepMin > 0 && clues <= keepMin) break;
             const saved = prefilled[r][c];
-            if (saved === 0) continue;
-            prefilled[r][c] = 0;
-            const res = solveWithTechniques(prefilled, N, boxRows, boxCols, techniques);
-            // Accept the removal only if the technique-bounded solve
-            // reaches the *correct* full solution. Requiring the exact
-            // match (not just "full") is a soundness guard: were any
-            // technique buggy enough to make an unsound elimination, it
-            // could fill the grid wrongly — this keeps that clue in
-            // rather than shipping a puzzle with a broken unique-solution
-            // guarantee.
-            if (res.solved && matchesSolution(res.grid)) {
-                clues -= 1;
-            } else {
-                prefilled[r][c] = saved; // restore — removal broke solvability
+            if (saved !== 0) {
+                prefilled[r][c] = 0;
+                const res = solveWithTechniques(
+                    prefilled, N, boxRows, boxCols, techniques);
+                // Accept the removal only if the technique-bounded solve
+                // reaches the *correct* full solution. Requiring the exact
+                // match (not just "full") is a soundness guard: were any
+                // technique buggy enough to make an unsound elimination, it
+                // could fill the grid wrongly — this keeps that clue in
+                // rather than shipping a puzzle with a broken unique-solution
+                // guarantee.
+                if (res.solved && matchesSolution(res.grid)) clues -= 1;
+                else prefilled[r][c] = saved; // restore — removal broke it
+            }
+            if (onProgress && Date.now() - lastYield >= YIELD_MS) {
+                lastYield = Date.now();
+                await onProgress((i + 1) / cells.length);
             }
         }
+        if (onProgress) await onProgress(1);
         return { prefilled, clues };
     }
 
@@ -833,7 +853,7 @@
     // Public entry point.
     // -----------------------------------------------------------------
 
-    function generate(size, difficulty, seed) {
+    async function generate(size, difficulty, seed, onProgress) {
         const N = size;
         const { rows: boxRows, cols: boxCols } = boxDims(N);
         const rng = PC.rng.make(seed >>> 0);
@@ -847,8 +867,8 @@
         const techniques = TECHNIQUES_BY_DIFFICULTY[difficulty]
             || TECHNIQUES_BY_DIFFICULTY.medium;
         const keepMin = minClues(N, difficulty);
-        const { prefilled, clues } = digHoles(
-            solution, N, boxRows, boxCols, techniques, keepMin, rng);
+        const { prefilled, clues } = await digHoles(
+            solution, N, boxRows, boxCols, techniques, keepMin, rng, onProgress);
 
         // Record the technique mix of the canonical solve for insight
         // into how the puzzle actually plays out (surfaced in stats).
