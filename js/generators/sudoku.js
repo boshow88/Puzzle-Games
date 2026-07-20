@@ -589,8 +589,10 @@
                         }
                     }
                     if (elims.length) {
-                        return elimStep('xWing', elims,
+                        const step = elimStep('xWing', elims,
                             [[r1, ca], [r1, cb], [r2, ca], [r2, cb]], [d], null);
+                        step.fish = 'row'; // defined by two rows; clears columns
+                        return step;
                     }
                 }
             }
@@ -617,8 +619,10 @@
                         }
                     }
                     if (elims.length) {
-                        return elimStep('xWing', elims,
+                        const step = elimStep('xWing', elims,
                             [[ra, c1], [rb, c1], [ra, c2], [rb, c2]], [d], null);
+                        step.fish = 'col'; // defined by two columns; clears rows
+                        return step;
                     }
                 }
             }

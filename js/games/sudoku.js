@@ -746,14 +746,6 @@
         return null;
     }
 
-    // Is the current hint a pure-elimination step (i.e. the walkthrough can
-    // advance past it on the next press)?
-    function hintIsElimination(h) {
-        return !!(h && h.kind === 'step' && h.step
-            && h.step.placements.length === 0
-            && h.step.eliminations.length);
-    }
-
     function setHint(h) {
         state.hint = h;
         // Move the cursor onto the actionable cell for placements / errors so
@@ -949,14 +941,28 @@
         // Tints under the notes: stronger wash on the pattern cells (the
         // "reason"), green on a placement target, faint red on cells losing a
         // candidate (so they read even outside the unit, e.g. X-Wing).
-        for (const [r, c] of s.cells) {
-            if (r * N + c !== targetKey) tint(r, c, '#2196f3', 0.18);
-        }
-        for (const [r, c] of blockers) tint(r, c, '#2196f3', 0.18);
+        // XY-Wing has a special role: cells[0] is the pivot — mark it violet
+        // so it's distinguishable from its two amber wings.
+        const xyPivot = (s.technique === 'xyWing' && s.cells.length === 3)
+            ? s.cells[0] : null;
+        s.cells.forEach(([r, c]) => {
+            if (r * N + c === targetKey) return;
+            if (xyPivot && r === xyPivot[0] && c === xyPivot[1]) {
+                tint(r, c, '#7e57c2', 0.34); // pivot
+            } else {
+                tint(r, c, '#f5a623', 0.34); // reason / wing cells
+            }
+        });
+        for (const [r, c] of blockers) tint(r, c, '#f5a623', 0.34);
+        // Faint red wash on cells losing a candidate — but NOT on cells that
+        // are already an amber pattern cell (hidden pair/triple eliminate from
+        // their own cells, so the two washes would stack into a muddy, darker
+        // tone). The red strike on the candidate is enough there.
+        const patternKeys = new Set(s.cells.map(([r, c]) => r * N + c));
         const elimCellSeen = new Set();
         for (const e of s.eliminations) {
             const k = e.r * N + e.c;
-            if (elimCellSeen.has(k)) continue;
+            if (elimCellSeen.has(k) || patternKeys.has(k)) continue;
             elimCellSeen.add(k);
             tint(e.r, e.c, '#ef5350', 0.10);
         }
@@ -1018,7 +1024,7 @@
                 case 'hiddenTriple':
                     text = t('sudokuHintHiddenTriple', u, dstr); break;
                 case 'xWing':
-                    text = t('sudokuHintXWing', dstr); break;
+                    text = t('sudokuHintXWing', dstr, s.fish); break;
                 case 'xyWing':
                     text = t('sudokuHintXYWing', dstr); break;
                 default:
@@ -1027,10 +1033,6 @@
         } else {
             text = t('sudokuHintNoAvail');
         }
-
-        // Elimination steps don't change the board, so signal that pressing
-        // Hint again walks to the next deduction.
-        if (hintIsElimination(h)) text += t('sudokuHintContinue');
 
         // No tier badge — Queens/Tango don't show one either; the red
         // banner styling alone signals an error.
