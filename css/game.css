@@ -648,7 +648,7 @@
    cell gets a stronger tint, and any cell that shares the focused cell's
    digit gets a third subtle tint. Drawn below symbols, above the cell
    background. */
-.cell-select.peer  { fill: rgba(46, 125, 50, 0.08); }
+.cell-select.peer  { fill: rgba(46, 125, 50, 0.12); }
 .cell-select.same  { fill: rgba(46, 125, 50, 0.16); }
 
 /* Focused cell = a ring (LinkedIn-style), not a fill. Drawn as four

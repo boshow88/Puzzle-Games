@@ -977,7 +977,8 @@
                 tint(r, c, '#f5a623', 0.34); // reason / wing cells
             }
         });
-        for (const [r, c] of blockers) tint(r, c, '#f5a623', 0.34);
+        // Hidden-single blockers stay bright (they're in `lit`) but get no
+        // wash — the placed digit already reads clearly on its own.
         // Faint red wash on cells losing a candidate — but NOT on cells that
         // are already an amber pattern cell (hidden pair/triple eliminate from
         // their own cells, so the two washes would stack into a muddy, darker
