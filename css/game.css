@@ -677,7 +677,7 @@
     stroke-linecap: square;
 }
 .cell-ring.given {
-    stroke: #111827;
+    stroke: #455063;
 }
 
 /* Hint "spotlight": dim every non-lit cell (drawn above the symbols so
