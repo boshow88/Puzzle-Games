@@ -90,9 +90,50 @@
     };
 
     let shell = null;
+    let undoHistory = null; // bounded snapshot stack (created in init)
 
     function emptyViolationGrid(N) {
         return Array.from({ length: N }, () => new Array(N).fill(false));
+    }
+
+    // -----------------------------------------------------------------
+    // Undo (bounded snapshot history) — see PC.history.
+    // -----------------------------------------------------------------
+
+    function clonePlacements(p) { return p.map((row) => row.slice()); }
+
+    function snapshotState() {
+        return { placements: clonePlacements(state.placements) };
+    }
+
+    function restoreSnapshot(snap) {
+        state.placements = clonePlacements(snap.placements);
+        state.won = false;
+        state.pendingHint = null;
+        state.lastMove = null;
+        clearHint();
+        cancelViolationTimer();
+        recomputeViolations();
+        state.displayedViolations = state.violations.map((row) => row.slice());
+        state.displayedPairs = state.conflictPairs;
+        repaintSymbols();
+        updateStatusRow();
+    }
+
+    function pushUndo() {
+        if (undoHistory) { undoHistory.push(); updateUndoButton(); }
+    }
+
+    function doUndo() {
+        if (!state.puzzle || state.won) return;
+        if (undoHistory && undoHistory.undo()) updateUndoButton();
+    }
+
+    function updateUndoButton() {
+        const btn = document.getElementById('undo-btn');
+        if (btn) {
+            btn.disabled = state.won || !(undoHistory && undoHistory.canUndo());
+        }
     }
 
     function ensurePlacementsForCurrent() {
@@ -552,6 +593,7 @@
     function cycleCell(r, c) {
         if (!state.puzzle || state.won) return;
         if (isPrefilled(r, c)) return;
+        pushUndo();
         // The hint banner sits below the board now, so touching any cell
         // dismisses it without misleading the player. (pendingHint /
         // lastMove are intentionally NOT cleared here — clearHint only
@@ -587,6 +629,7 @@
             shell.markSolved();
             repaintSymbols();
             updateStatusRow();
+            updateUndoButton(); // solved → no more undoing
             return;
         }
 
@@ -601,6 +644,16 @@
         const r = parseInt(target.getAttribute('data-r'), 10);
         const c = parseInt(target.getAttribute('data-c'), 10);
         cycleCell(r, c);
+    }
+
+    function onKeyDown(ev) {
+        if (!state.puzzle) return;
+        // Ctrl/⌘+Z → undo (Tango has no other keyboard input).
+        if ((ev.ctrlKey || ev.metaKey) && !ev.shiftKey && !ev.altKey
+            && (ev.key === 'z' || ev.key === 'Z')) {
+            doUndo();
+            ev.preventDefault();
+        }
     }
 
     // -----------------------------------------------------------------
@@ -1002,6 +1055,8 @@
         pendingSeed = null;
         state.puzzle = await generatePuzzle(shell.size, shell.difficulty, seed);
         ensurePlacementsForCurrent();
+        if (undoHistory) undoHistory.clear();
+        updateUndoButton();
         renderBoard();
         updateStatusRow();
         if (PC.share) {
@@ -1023,6 +1078,7 @@
 
     function resetPlacements() {
         if (!state.puzzle) return;
+        pushUndo(); // Reset is undoable.
         ensurePlacementsForCurrent();
         state.won = false;
         repaintSymbols();
@@ -1049,6 +1105,13 @@
         });
         board = shell.dom.board;
         board.addEventListener('click', onBoardClick);
+        window.addEventListener('keydown', onKeyDown);
+
+        undoHistory = PC.history.create({
+            limit: 20,
+            snapshot: snapshotState,
+            restore: restoreSnapshot,
+        });
 
         state.hintBanner = document.getElementById('hint-banner');
         state.hintButton = document.getElementById('hint-btn');
@@ -1060,6 +1123,8 @@
         if (shareBtn) {
             shareBtn.addEventListener('click', onShareClick);
         }
+        const undoBtn = document.getElementById('undo-btn');
+        if (undoBtn) undoBtn.addEventListener('click', doUndo);
 
         // Re-render the hint banner if the locale flips while a hint
         // is on screen (error / deduction / noHint all carry source

@@ -129,6 +129,8 @@
     //   'tap'            — started on ♛. Pure tap: cycle only if the
     //                      release lands back on the same cell.
     let dragState = null;
+    let undoHistory = null;   // bounded snapshot stack (created in init)
+    let gestureDirty = false; // has the current pointer gesture snapshotted yet?
 
     function emptyViolationGrid(N) {
         return Array.from({ length: N }, () => new Array(N).fill(false));
@@ -150,6 +152,49 @@
         if (state.violationTimer) {
             clearTimeout(state.violationTimer);
             state.violationTimer = null;
+        }
+    }
+
+    // -----------------------------------------------------------------
+    // Undo (bounded snapshot history) — see PC.history.
+    //
+    // A whole pointer gesture (a drag that paints many ×s, or a tap) counts
+    // as ONE undo step: applyCellState snapshots the pre-gesture board on the
+    // gesture's first real change (gestureDirty guards the once-per-gesture
+    // push), so no-op gestures never land on the stack.
+    // -----------------------------------------------------------------
+
+    function clonePlacements(p) { return p.map((row) => row.slice()); }
+
+    function snapshotState() {
+        return { placements: clonePlacements(state.placements) };
+    }
+
+    function restoreSnapshot(snap) {
+        state.placements = clonePlacements(snap.placements);
+        state.won = false;
+        clearHint();
+        cancelViolationTimer();
+        recomputeViolations();
+        state.displayedViolations = state.violations.map((row) => row.slice());
+        state.displayedPairs = state.conflictPairs;
+        repaintSymbols();
+        updateStatusRow();
+    }
+
+    function pushUndo() {
+        if (undoHistory) { undoHistory.push(); updateUndoButton(); }
+    }
+
+    function doUndo() {
+        if (!state.puzzle || state.won) return;
+        if (undoHistory && undoHistory.undo()) updateUndoButton();
+    }
+
+    function updateUndoButton() {
+        const btn = document.getElementById('undo-btn');
+        if (btn) {
+            btn.disabled = state.won || !(undoHistory && undoHistory.canUndo());
         }
     }
 
@@ -510,6 +555,9 @@
         if (state.hint && !isHintCell(r, c)) return;
         const cur = state.placements[r][c];
         if (cur === next) return;
+        // First real change of this gesture → snapshot the pre-gesture board
+        // once, so the whole drag/tap undoes in a single step.
+        if (!gestureDirty) { pushUndo(); gestureDirty = true; }
         state.placements[r][c] = next;
 
         const queenInvolved = cur === STATES.QUEEN || next === STATES.QUEEN;
@@ -524,6 +572,7 @@
                 clearHint();
                 repaintSymbols();
                 updateStatusRow();
+                updateUndoButton(); // solved → no more undoing
                 return;
             }
             // Show unrelated conflicts immediately; debounce the ones
@@ -641,6 +690,7 @@
 
         ev.preventDefault();
         try { board.setPointerCapture(ev.pointerId); } catch (_) { /* ignore */ }
+        gestureDirty = false; // new gesture — arm the once-per-gesture snapshot
 
         let mode;
         if (cur === STATES.EMPTY) {
@@ -1119,6 +1169,8 @@
         pendingSeed = null;
         state.puzzle = await generatePuzzle(shell.size, shell.difficulty, seed);
         ensurePlacementsForCurrent();
+        if (undoHistory) undoHistory.clear();
+        updateUndoButton();
         clearHint();
         renderBoard();
         updateStatusRow();
@@ -1141,11 +1193,22 @@
 
     function resetPlacements() {
         if (!state.puzzle) return;
+        pushUndo(); // Reset is undoable.
         ensurePlacementsForCurrent();
         state.won = false;
         clearHint();
         repaintSymbols();
         updateStatusRow();
+    }
+
+    function onKeyDown(ev) {
+        if (!state.puzzle) return;
+        // Ctrl/⌘+Z → undo (Queens has no other keyboard input).
+        if ((ev.ctrlKey || ev.metaKey) && !ev.shiftKey && !ev.altKey
+            && (ev.key === 'z' || ev.key === 'Z')) {
+            doUndo();
+            ev.preventDefault();
+        }
     }
 
     // -----------------------------------------------------------------
@@ -1173,6 +1236,13 @@
         board.addEventListener('pointerup', onPointerUp);
         board.addEventListener('pointercancel', onPointerUp);
         board.addEventListener('contextmenu', (ev) => ev.preventDefault());
+        window.addEventListener('keydown', onKeyDown);
+
+        undoHistory = PC.history.create({
+            limit: 20,
+            snapshot: snapshotState,
+            restore: restoreSnapshot,
+        });
 
         state.hintBanner = document.getElementById('hint-banner');
         state.hintButton = document.getElementById('hint-btn');
@@ -1184,6 +1254,8 @@
         if (shareBtn) {
             shareBtn.addEventListener('click', onShareClick);
         }
+        const undoBtn = document.getElementById('undo-btn');
+        if (undoBtn) undoBtn.addEventListener('click', doUndo);
         // Rerender the banner if the player flips the locale mid-hint,
         // so a T4 / T3 / etc. explanation picks up the new language
         // without needing to re-request the hint.
