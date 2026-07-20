@@ -209,6 +209,9 @@
         'rotate-ccw':
             '<path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/>'
             + '<path d="M3 3v5h5"/>',
+        'undo-2':
+            '<path d="M9 14 4 9l5-5"/>'
+            + '<path d="M4 9h10.5a5.5 5.5 0 0 1 5.5 5.5 5.5 5.5 0 0 1-5.5 5.5H11"/>',
         lightbulb:
             '<path d="M15 14c.2-1 .7-1.7 1.5-2.5 1-.9 1.5-2.2 1.5-3.5A6 6 0 0 0 6 8c0 1 .2 2.2 1.5 3.5.7.7 1.3 1.5 1.5 2.5"/>'
             + '<path d="M9 18h6"/><path d="M10 22h4"/>',
@@ -667,6 +670,8 @@
             gameSettings: 'Game settings',
             newGame: 'New Game',
             reset: 'Reset',
+            undo: 'Undo',
+            undoTitle: 'Undo the last move (Ctrl+Z)',
             hint: 'Hint',
             reveal: 'Reveal',
             share: 'Share',
@@ -766,8 +771,12 @@
                 `This ${unit} has only ${v} left as an option.`,
             sudokuHintNaked: (v) =>
                 `Given its row, column and box, this cell can only be ${v}.`,
+            sudokuHintNakedDerived: (v) =>
+                `The earlier eliminations leave this cell with only ${v}.`,
             sudokuHintHidden: (unit, v) =>
                 `Every other cell in this ${unit} is blocked by another ${v}, so ${v} can only go here.`,
+            sudokuHintHiddenDerived: (unit, v) =>
+                `After the earlier eliminations, ${v} can only go in this cell of the ${unit}.`,
             sudokuHintLockedPointing: (unit, d) =>
                 `In this ${unit}, ${d} only fits along one line — so ${d} can be removed from the rest of that line.`,
             sudokuHintLockedClaiming: (unit, d) =>
@@ -826,6 +835,8 @@
             gameSettings: '遊戲設定',
             newGame: '新局',
             reset: '重設',
+            undo: '復原',
+            undoTitle: '復原上一步（Ctrl+Z）',
             hint: '提示',
             reveal: '解答',
             share: '分享',
@@ -916,8 +927,12 @@
                 `此${unit}只剩下 ${v} 這個選項。`,
             sudokuHintNaked: (v) =>
                 `根據其所屬行、列、區域的情況，這格只剩下 ${v} 這個選項。`,
+            sudokuHintNakedDerived: (v) =>
+                `此格其餘候選都已被先前的推理排除，只剩下 ${v}。`,
             sudokuHintHidden: (unit, v) =>
                 `此${unit}其餘所有格子都因為其他 ${v} 的存在而無法再放置，所以 ${v} 只能放在這一格。`,
+            sudokuHintHiddenDerived: (unit, v) =>
+                `經過先前的候選排除後，此${unit}只剩這一格能放 ${v}。`,
             sudokuHintLockedPointing: (unit, d) =>
                 `此${unit}內的 ${d} 只能落在同一條線上，因此該線其餘格子可以排除 ${d}。`,
             sudokuHintLockedClaiming: (unit, d) =>
@@ -1325,6 +1340,36 @@
         return { show };
     })();
 
+    // -----------------------------------------------------------------
+    // Undo history
+    //
+    // A tiny bounded snapshot stack. The caller supplies `snapshot()` (return
+    // a deep copy of whatever mutable state matters) and `restore(snap)`
+    // (put it back + repaint). We never diff or invert actions — for the
+    // small boards here, copying the whole state before each edit is simplest
+    // and impossible to get subtly wrong.
+    // -----------------------------------------------------------------
+
+    function createHistory(opts) {
+        const limit = (opts && opts.limit) || 20;
+        const snapshot = opts.snapshot;
+        const restore = opts.restore;
+        let stack = [];
+        return {
+            push() {
+                stack.push(snapshot());
+                if (stack.length > limit) stack.shift();
+            },
+            undo() {
+                if (!stack.length) return false;
+                restore(stack.pop());
+                return true;
+            },
+            clear() { stack = []; },
+            canUndo() { return stack.length > 0; },
+        };
+    }
+
     global.PuzzleCommon = {
         storage: { readJSON, writeJSON, storageKey },
         prefs: { get: getPrefs, set: setPrefs },
@@ -1350,5 +1395,6 @@
         progress,
         share,
         toast,
+        history: { create: createHistory },
     };
 })(window);

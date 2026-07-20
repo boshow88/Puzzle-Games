@@ -20,6 +20,9 @@ so the rule sections below only mention game-specific deviations.
   size, clearing the timer.
 - **Reset**: clears everything the player has placed / drawn, but
   keeps the same puzzle.
+- **Undo** (Queens, Tango, Sudoku): steps back through your recent
+  moves — up to ~20, and a Reset counts as one step. `Ctrl`/`⌘`+`Z`
+  also works. Cleared on New Game.
 - **Reveal**: toggles a faint overlay of the intended solution.
   In the cell-toggle games (Queens, Tango, Sudoku) it shows a small
   hint glyph in the corner of each editable cell; in Zip it draws the
@@ -130,11 +133,13 @@ that each row, column, and box contains each digit exactly once.
 
 ### Board
 
-- N×N grid, with N from **6×6** or **9×9**.
+- N×N grid, with N from **6×6**, **9×9**, or **12×12**.
 - Boxes:
   - 6×6 → 2×3 boxes (2 rows × 3 cols of cells per box, giving
     3 boxes per row, 2 per column → six 2×3 boxes total).
   - 9×9 → 3×3 boxes (the classic Sudoku layout).
+  - 12×12 → 3×4 boxes (3 rows × 4 cols per box). Digits run 1..12;
+    10, 11, 12 are drawn hex-style as **A**, **B**, **C**.
 - Some cells are **pre-filled** (locked, dark digits); the rest are
   empty.
 
@@ -151,8 +156,9 @@ that each row, column, and box contains each digit exactly once.
   same-box cells get a soft tint to help you spot conflicts; cells
   with the same digit as the selected one are tinted slightly more.
 - **Arrow keys** move the selection.
-- **Type a digit** (`1`–`9`) on the keyboard, or click a digit on
-  the on-screen keypad, to fill the selected cell.
+- **Type a digit** (`1`–`9`, plus `A`–`C` for 10–12 on a 12×12) on
+  the keyboard, or click a digit on the on-screen keypad, to fill
+  the selected cell.
 - **Backspace**, **Delete**, **0**, or **Erase** on the keypad
   clears a player-placed digit. Pre-filled digits are protected.
 - **Notes mode** (`N` key, or the **Notes** button on the keypad):

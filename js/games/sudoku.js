@@ -82,6 +82,7 @@
     };
 
     let shell = null;
+    let undoHistory = null; // bounded snapshot stack (created in init)
 
     function emptyViolationGrid(N) {
         return Array.from({ length: N }, () => new Array(N).fill(false));
@@ -106,6 +107,9 @@
         if (u >= 'A' && u <= 'G') return u.charCodeAt(0) - 55; // 'A'→10 … 'G'→16
         return 0;
     }
+
+    function clonePlacements(p) { return p.map((row) => row.slice()); }
+    function cloneNotes(n) { return n.map((row) => row.map((s) => new Set(s))); }
 
     function ensurePlacementsForCurrent() {
         const N = state.puzzle.size;
@@ -834,7 +838,32 @@
             fillStepNotes(step, basic);
             for (const e of step.eliminations) state.notes[e.r][e.c].delete(e.d);
         }
-        setHint({ kind: 'step', step });
+        setHint({ kind: 'step', step, basicSingle: isBasicSingle(step, basic) });
+    }
+
+    // Is a single forced by the placed digits alone ("basic"), or only after
+    // the walkthrough's advanced eliminations narrowed the candidates
+    // ("derived")? The wording must differ: a basic single is blocked by other
+    // copies / peers, a derived one is "the earlier eliminations left only
+    // this" — claiming "because of other Ns" would be wrong there.
+    function isBasicSingle(step, basic) {
+        if (!step.placements.length) return true;
+        const p = step.placements[0];
+        const bit = 1 << (p.value - 1);
+        if (step.technique === 'nakedSingle') {
+            // Basic iff the placed digits alone already leave only this value.
+            return basic[p.r][p.c] === bit;
+        }
+        if (step.technique === 'hiddenSingle' && step.unit) {
+            // Basic iff the target is the only unit cell where the placed
+            // digits still allow this value.
+            let homes = 0;
+            for (const [r, c] of unitCells(step.unit.kind, step.unit.index)) {
+                if (effective(r, c) === 0 && (basic[r][c] & bit)) homes += 1;
+            }
+            return homes === 1;
+        }
+        return true;
     }
 
     function clearHint() {
@@ -1034,9 +1063,11 @@
                 case 'fullHouse':
                     text = t('sudokuHintFullHouse', u, d0); break;
                 case 'nakedSingle':
-                    text = t('sudokuHintNaked', d0); break;
+                    text = t(h.basicSingle === false
+                        ? 'sudokuHintNakedDerived' : 'sudokuHintNaked', d0); break;
                 case 'hiddenSingle':
-                    text = t('sudokuHintHidden', u, d0); break;
+                    text = t(h.basicSingle === false
+                        ? 'sudokuHintHiddenDerived' : 'sudokuHintHidden', u, d0); break;
                 case 'lockedPointing':
                     text = t('sudokuHintLockedPointing', u, dstr); break;
                 case 'lockedClaiming':
@@ -1190,6 +1221,7 @@
         const sel = state.selected;
         if (!sel) return;
         if (isPrefilled(sel.r, sel.c)) return;
+        pushUndo();
         const cur = state.placements[sel.r][sel.c];
         if (cur === d) {
             // Same key again clears the cell.
@@ -1206,6 +1238,7 @@
         const sel = state.selected;
         if (!sel) return;
         if (isPrefilled(sel.r, sel.c)) return;
+        pushUndo();
         // Notes only show on cells without a final digit. Adding a note
         // to a digit-occupied cell would visually clobber the digit, so
         // we drop the digit first. Dropping it can resolve a conflict,
@@ -1234,6 +1267,10 @@
         const sel = state.selected;
         if (!sel) return;
         if (isPrefilled(sel.r, sel.c)) return;
+        // Nothing to erase → don't push a no-op onto the undo stack.
+        if (state.placements[sel.r][sel.c] === 0
+            && state.notes[sel.r][sel.c].size === 0) return;
+        pushUndo();
         state.placements[sel.r][sel.c] = 0;
         state.notes[sel.r][sel.c].clear();
         afterPlacementChange(sel.r, sel.c);
@@ -1259,6 +1296,7 @@
             repaintSelection();
             repaintSymbols();
             updateStatusRow();
+            updateUndoButton(); // solved → no more undoing
             return;
         }
         scheduleViolationRefresh(r, c);
@@ -1279,6 +1317,13 @@
 
     function onKeyDown(ev) {
         if (!state.puzzle) return;
+        // Ctrl/⌘+Z → undo (Shift not held, so we don't hijack redo chords).
+        if ((ev.ctrlKey || ev.metaKey) && !ev.shiftKey && !ev.altKey
+            && (ev.key === 'z' || ev.key === 'Z')) {
+            doUndo();
+            ev.preventDefault();
+            return;
+        }
         // Ignore key strokes when modifier keys other than Shift are held
         // — leaves the browser's own shortcuts (Ctrl+R, ⌘+L…) alone.
         if (ev.ctrlKey || ev.metaKey || ev.altKey) return;
@@ -1425,6 +1470,8 @@
             state.puzzle = await generatePuzzle(shell.size, shell.difficulty, seed);
         }
         ensurePlacementsForCurrent();
+        if (undoHistory) undoHistory.clear();
+        updateUndoButton();
         renderBoard();
         buildKeypad();
         clearHint();
@@ -1441,12 +1488,60 @@
 
     function resetPlacements() {
         if (!state.puzzle) return;
+        pushUndo(); // Reset is undoable — snapshot the board before wiping it.
         ensurePlacementsForCurrent();
         state.won = false;
         clearHint();
         repaintSelection();
         repaintSymbols();
         updateStatusRow();
+    }
+
+    // -----------------------------------------------------------------
+    // Undo (bounded snapshot history)
+    // -----------------------------------------------------------------
+
+    function snapshotState() {
+        return {
+            placements: clonePlacements(state.placements),
+            notes: cloneNotes(state.notes),
+            selected: state.selected
+                ? { r: state.selected.r, c: state.selected.c } : null,
+        };
+    }
+
+    function restoreSnapshot(snap) {
+        state.placements = clonePlacements(snap.placements);
+        state.notes = cloneNotes(snap.notes);
+        state.selected = snap.selected
+            ? { r: snap.selected.r, c: snap.selected.c } : null;
+        state.won = false;
+        clearHint();
+        // Snap the conflict overlay straight to the restored board (no
+        // debounce — an undo should look instant and correct).
+        cancelViolationTimer();
+        recomputeViolations();
+        state.displayedViolations = state.violations.map((row) => row.slice());
+        state.displayedPairs = state.conflictPairs;
+        repaintSelection();
+        repaintSymbols();
+        updateStatusRow();
+    }
+
+    function pushUndo() {
+        if (undoHistory) { undoHistory.push(); updateUndoButton(); }
+    }
+
+    function doUndo() {
+        if (!state.puzzle || state.won) return;
+        if (undoHistory && undoHistory.undo()) updateUndoButton();
+    }
+
+    function updateUndoButton() {
+        const btn = document.getElementById('undo-btn');
+        if (btn) {
+            btn.disabled = state.won || !(undoHistory && undoHistory.canUndo());
+        }
     }
 
     // -----------------------------------------------------------------
@@ -1466,11 +1561,19 @@
         keypad = document.getElementById('keypad');
         board.addEventListener('click', onBoardClick);
 
+        undoHistory = PC.history.create({
+            limit: 20,
+            snapshot: snapshotState,
+            restore: restoreSnapshot,
+        });
+
         state.hintBanner = document.getElementById('hint-banner');
         const hintBtn = document.getElementById('hint-btn');
         if (hintBtn) hintBtn.addEventListener('click', showHint);
         const shareBtn = document.getElementById('share-btn');
         if (shareBtn) shareBtn.addEventListener('click', onShareClick);
+        const undoBtn = document.getElementById('undo-btn');
+        if (undoBtn) undoBtn.addEventListener('click', doUndo);
 
         // Re-render the hint banner if the locale flips while a hint is
         // on screen, so the technique wording follows the language.
