@@ -1307,6 +1307,31 @@
         } catch (e) { return ''; }
     })();
 
+    // Shareable-URL state: a link carries (size, diff, seed); because the
+    // generator is deterministic, the friend who opens it gets the same
+    // puzzle. The seed is used once for the first board, then New Game rolls
+    // a fresh one and the address bar re-syncs.
+    const VALID_SIZES = new Set([6, 9]);
+    const VALID_DIFFS = new Set(['easy', 'medium', 'hard']);
+
+    function readUrlInitial() {
+        if (!PC.share) return null;
+        const raw = PC.share.readParams();
+        if (!VALID_SIZES.has(raw.size)) return null;
+        if (!VALID_DIFFS.has(raw.difficulty)) return null;
+        if (!Number.isInteger(raw.seed)) return null;
+        return { size: raw.size, difficulty: raw.difficulty, seed: raw.seed };
+    }
+
+    const urlInitial = readUrlInitial();
+    let pendingSeed = urlInitial ? urlInitial.seed : null;
+
+    async function onShareClick() {
+        if (!PC.share) return;
+        const ok = await PC.share.copyCurrentUrl();
+        if (PC.toast) PC.toast.show(PC.i18n.t(ok ? 'shareCopied' : 'shareFailed'));
+    }
+
     function findDemoPuzzle(N, tech) {
         const gen = window.PuzzleGenerators.sudoku;
         for (let i = 0; i < 200; i++) {
@@ -1363,7 +1388,10 @@
     }
 
     function startNewGame() {
-        const seed = (Date.now() ^ Math.floor(Math.random() * 0xffffffff)) >>> 0;
+        const seed = (!DEMO_TECH && pendingSeed != null)
+            ? pendingSeed
+            : ((Date.now() ^ Math.floor(Math.random() * 0xffffffff)) >>> 0);
+        pendingSeed = null;
         if (DEMO_TECH) {
             state.puzzle = findDemoPuzzle(shell.size, DEMO_TECH)
                 || generatePuzzle(shell.size, 'hard', seed);
@@ -1375,7 +1403,14 @@
         buildKeypad();
         clearHint();
         updateStatusRow();
-        if (DEMO_TECH) demoShow(DEMO_TECH);
+        if (DEMO_TECH) { demoShow(DEMO_TECH); return; }
+        if (PC.share) {
+            PC.share.replaceUrl({
+                size: shell.size,
+                difficulty: shell.difficulty,
+                seed,
+            });
+        }
     }
 
     function resetPlacements() {
@@ -1395,8 +1430,8 @@
     function init() {
         shell = PC.shell.create({
             gameId: 'sudoku',
-            difficulty: { default: 'medium' },
-            size: { kind: 'segmented', default: 6 },
+            difficulty: { default: urlInitial ? urlInitial.difficulty : 'medium' },
+            size: { kind: 'segmented', default: urlInitial ? urlInitial.size : 6 },
             onNewGame: startNewGame,
             onReset: resetPlacements,
             onReveal: repaintSymbols,
@@ -1408,6 +1443,8 @@
         state.hintBanner = document.getElementById('hint-banner');
         const hintBtn = document.getElementById('hint-btn');
         if (hintBtn) hintBtn.addEventListener('click', showHint);
+        const shareBtn = document.getElementById('share-btn');
+        if (shareBtn) shareBtn.addEventListener('click', onShareClick);
 
         // Re-render the hint banner if the locale flips while a hint is
         // on screen, so the technique wording follows the language.
