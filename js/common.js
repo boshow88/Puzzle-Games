@@ -769,21 +769,21 @@
             sudokuHintHidden: (unit, v) =>
                 `Every other cell in this ${unit} is blocked by another ${v}, so ${v} can only go here.`,
             sudokuHintLockedPointing: (unit, d) =>
-                `In this ${unit}, ${d} only fits along one line — so ${d} can be removed from the rest of that line (marked red).`,
+                `In this ${unit}, ${d} only fits along one line — so ${d} can be removed from the rest of that line (struck through in red).`,
             sudokuHintLockedClaiming: (unit, d) =>
-                `In this ${unit}, ${d} only fits inside one box — so ${d} can be removed from the rest of that box (marked red).`,
+                `In this ${unit}, ${d} only fits inside one box — so ${d} can be removed from the rest of that box (struck through in red).`,
             sudokuHintNakedPair: (unit, d) =>
-                `These two cells can only be ${d}, so those digits can be removed from the rest of the ${unit} (marked red).`,
+                `These two cells can only be ${d}, so those digits can be removed from the rest of the ${unit} (struck through in red).`,
             sudokuHintHiddenPair: (unit, d) =>
-                `In this ${unit}, ${d} fit only these two cells — every other candidate in them can be removed (marked red).`,
+                `In this ${unit}, ${d} fit only these two cells — every other candidate in them can be removed (struck through in red).`,
             sudokuHintNakedTriple: (unit, d) =>
-                `These three cells only hold ${d}, so those digits can be removed from the rest of the ${unit} (marked red).`,
+                `These three cells only hold ${d}, so those digits can be removed from the rest of the ${unit} (struck through in red).`,
             sudokuHintHiddenTriple: (unit, d) =>
-                `In this ${unit}, ${d} fit only these three cells — every other candidate in them can be removed (marked red).`,
+                `In this ${unit}, ${d} fit only these three cells — every other candidate in them can be removed (struck through in red).`,
             sudokuHintXWing: (d) =>
-                `${d} forms an X-Wing (a rectangle) — it can be removed from the red cells.`,
+                `${d} forms an X-Wing (a rectangle) — those ${d}s can be removed (struck through in red).`,
             sudokuHintXYWing: (d) =>
-                `An XY-Wing rules ${d} out of the red cells.`,
+                `An XY-Wing rules out these ${d}s (struck through in red).`,
             sudokuHintContradiction: (unit, v, n) =>
                 `This ${unit} has too many ${v}s. Every ${unit} must contain the digits 1–${n} without repeats.`,
             sudokuHintWrong: 'The highlighted cell is incorrect.',
@@ -914,21 +914,21 @@
             sudokuHintHidden: (unit, v) =>
                 `此${unit}其餘所有格子都因為其他 ${v} 的存在而無法再放置，所以 ${v} 只能放在這一格。`,
             sudokuHintLockedPointing: (unit, d) =>
-                `此${unit}內的 ${d} 只能落在同一條線上，因此該線其餘格子可以排除 ${d}（紅色格）。`,
+                `此${unit}內的 ${d} 只能落在同一條線上，因此該線其餘格子可以排除 ${d}（見紅色刪除線）。`,
             sudokuHintLockedClaiming: (unit, d) =>
-                `此${unit}內的 ${d} 只能落在同一個區域裡，因此該區域其餘格子可以排除 ${d}（紅色格）。`,
+                `此${unit}內的 ${d} 只能落在同一個區域裡，因此該區域其餘格子可以排除 ${d}（見紅色刪除線）。`,
             sudokuHintNakedPair: (unit, d) =>
-                `這兩格只可能是 ${d}，所以同${unit}其餘格子可以排除這些數字（紅色格）。`,
+                `這兩格只可能是 ${d}，所以同${unit}其餘格子可以排除這些數字（見紅色刪除線）。`,
             sudokuHintHiddenPair: (unit, d) =>
-                `此${unit}中的 ${d} 只能放在這兩格，因此這兩格其餘候選都可以排除（紅色格）。`,
+                `此${unit}中的 ${d} 只能放在這兩格，因此這兩格其餘候選都可以排除（見紅色刪除線）。`,
             sudokuHintNakedTriple: (unit, d) =>
-                `這三格只可能是 ${d}，所以同${unit}其餘格子可以排除這些數字（紅色格）。`,
+                `這三格只可能是 ${d}，所以同${unit}其餘格子可以排除這些數字（見紅色刪除線）。`,
             sudokuHintHiddenTriple: (unit, d) =>
-                `此${unit}中的 ${d} 只能放在這三格，因此這三格其餘候選都可以排除（紅色格）。`,
+                `此${unit}中的 ${d} 只能放在這三格，因此這三格其餘候選都可以排除（見紅色刪除線）。`,
             sudokuHintXWing: (d) =>
-                `${d} 形成 X-Wing（矩形），因此可以從紅色格排除 ${d}。`,
+                `${d} 形成 X-Wing（矩形），因此這些 ${d} 都可以排除（見紅色刪除線）。`,
             sudokuHintXYWing: (d) =>
-                `XY-Wing 讓紅色格不能再是 ${d}。`,
+                `XY-Wing 排除了這些格子的 ${d}（見紅色刪除線）。`,
             sudokuHintContradiction: (unit, v, n) =>
                 `此${unit}有太多 ${v} 了。每${unit}都必須包含數字 1–${n}，不得重複。`,
             sudokuHintWrong: '醒目標示的格子不正確。',
