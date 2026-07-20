@@ -75,6 +75,7 @@
 
     const PC = global.PuzzleCommon;
 
+    // [DEBUG-HOOK] `?queens_debug=1` turns on per-attempt generator logging.
     const DEBUG = (function () {
         try {
             return new URL(location.href).searchParams.get('queens_debug') === '1';

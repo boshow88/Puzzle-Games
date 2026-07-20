@@ -1319,7 +1319,7 @@
         updateKeypadMode();
     }
 
-    // Temporary debug affordance: `?sudoku_demo=<technique>` (e.g.
+    // [DEBUG-HOOK] Temporary debug affordance: `?sudoku_demo=<technique>` (e.g.
     // ?sudoku_demo=xyWing) makes New Game hunt for a hard puzzle that
     // actually uses that technique, fill in every step up to it, and pop
     // the corresponding hint — so you can eyeball an advanced hint in the
