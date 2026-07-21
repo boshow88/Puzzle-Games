@@ -460,15 +460,29 @@
         const digitFont = Math.max(20, Math.floor(cs * 0.62));
         const noteFont = Math.max(9, Math.floor(cs * 0.22));
 
+        // Persistent "solved" affordance: a faint success wash across the
+        // board (below the digits), so the finished state stays obvious like
+        // Tango's win wash.
+        if (state.won) {
+            group.appendChild(PC.svgEl('rect', {
+                class: 'win-wash',
+                x: 0, y: 0, width: BOARD_SIZE, height: BOARD_SIZE,
+            }));
+        }
+
         for (let r = 0; r < N; r++) {
             for (let c = 0; c < N; c++) {
                 const v = effective(r, c);
                 if (v !== 0) {
                     const lockedClass = isPrefilled(r, c) ? ' prefilled' : '';
+                    const cx = c * cs + cs / 2;
+                    const cy = r * cs + cs / 2;
                     const text = PC.svgEl('text', {
                         class: `symbol digit${lockedClass}`,
-                        x: c * cs + cs / 2,
-                        y: r * cs + cs / 2,
+                        // Centred on the wrapper's origin so the win pop scales
+                        // it in place (see the translate wrapper below).
+                        x: 0,
+                        y: 0,
                         'text-anchor': 'middle',
                         'dominant-baseline': 'middle',
                         // Digits 0-9 are visually centred lower than the
@@ -479,7 +493,16 @@
                         'font-size': digitFont,
                     });
                     text.textContent = digitLabel(v);
-                    group.appendChild(text);
+                    // Wrap so the digit can "pop" in place on win (same
+                    // structure as PC.boardIcon): outer translate to the cell
+                    // centre, inner scaled group.
+                    const animG = PC.svgEl('g',
+                        { class: 'board-pop' + (state.won ? ' pop' : '') });
+                    animG.appendChild(text);
+                    const posG = PC.svgEl('g',
+                        { transform: `translate(${cx}, ${cy})` });
+                    posG.appendChild(animG);
+                    group.appendChild(posG);
                 } else {
                     // While the solution is revealed we hide the player's
                     // notes so the small answer digit never collides with a
@@ -529,20 +552,21 @@
             }
         }
 
-        // Reveal: tiny solution digit in the top-left note slot of every
+        // Reveal: tiny solution digit tucked into the top-left corner of every
         // player-editable cell (prefilled cells already show the answer).
-        // Player notes are hidden while revealed, so this never overlaps.
+        // Player notes are hidden while revealed, so this never overlaps — and
+        // it uses its own corner offset (NOT the note grid, which sits further
+        // toward the centre).
         if (shell.revealed && state.puzzle && state.puzzle.solution) {
             const sol = state.puzzle.solution;
             const hintFont = Math.max(9, Math.floor(cs * 0.22));
             for (let r = 0; r < N; r++) {
                 for (let c = 0; c < N; c++) {
                     if (isPrefilled(r, c)) continue;
-                    const slot = noteSlot(r, c, 1, cs, boxRows, boxCols);
                     const text = PC.svgEl('text', {
                         class: 'symbol reveal-hint',
-                        x: slot.x,
-                        y: slot.y,
+                        x: c * cs + cs * 0.16,
+                        y: r * cs + cs * 0.18,
                         'text-anchor': 'middle',
                         'dominant-baseline': 'middle',
                         dy: '0.12em',
