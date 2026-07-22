@@ -66,25 +66,48 @@
         },
     };
 
-    // Minimum clue count to keep when digging. Lower = harder (fewer
-    // givens, more scanning). 0 means "dig as far as the technique set
-    // allows" — used by hard so it bottoms out at the singles limit.
-    function minClues(N, difficulty) {
-        if (N === 6) {
-            if (difficulty === 'easy') return 20;
-            if (difficulty === 'medium') return 14;
-            return 0;
+    // Difficulty knob: every puzzle is dug to the technique-set limit (the
+    // hardest that set can still solve), then a few correct clues are added
+    // back. "Limit + K clues" is a steadier difficulty than a fixed clue
+    // count, because the raw limit varies per puzzle/seed. Adding clues back
+    // never breaks the unique solution or tier-solvability — it only makes the
+    // board easier. K is random within a per-(size, difficulty) band so levels
+    // vary a little. Bigger boards add back more (their limit is more punishing
+    // to scan); smaller boards add back fewer, so they still bite.
+    function addBackCount(N, difficulty, rng) {
+        let lo = 0;
+        let hi = 0;
+        if (difficulty === 'easy') {
+            if (N === 6) { lo = 2; hi = 4; }
+            else if (N === 12) { lo = 10; hi = 16; }
+            else { lo = 6; hi = 10; } // 9×9 (and any other size)
+        } else if (difficulty === 'medium') {
+            if (N === 6) { lo = 0; hi = 0; } // 6×6 medium stays at the limit
+            else if (N === 12) { lo = 4; hi = 8; }
+            else { lo = 0; hi = 4; } // 9×9
         }
-        if (N === 12) {
-            // 144 cells; keep a comfortable amount of scaffolding.
-            if (difficulty === 'easy') return 80;
-            if (difficulty === 'medium') return 66;
-            return 0;
+        // hard → [0, 0]: stay at the limit.
+        if (hi <= lo) return lo;
+        return lo + Math.floor(rng() * (hi - lo + 1));
+    }
+
+    // Put `k` of the removed clues back (chosen at random, filled with their
+    // solution value). Returns how many were actually restored.
+    function restoreClues(prefilled, solution, N, k, rng) {
+        if (k <= 0) return 0;
+        const holes = [];
+        for (let r = 0; r < N; r++) {
+            for (let c = 0; c < N; c++) {
+                if (prefilled[r][c] === 0) holes.push([r, c]);
+            }
         }
-        // 9×9
-        if (difficulty === 'easy') return 36;
-        if (difficulty === 'medium') return 30;
-        return 0;
+        PC.rng.shuffle(holes, rng);
+        const n = Math.min(k, holes.length);
+        for (let i = 0; i < n; i++) {
+            const [r, c] = holes[i];
+            prefilled[r][c] = solution[r][c];
+        }
+        return n;
     }
 
     function boxDims(N) { return BOX_SHAPE[N] || BOX_SHAPE[9]; }
@@ -866,9 +889,13 @@
 
         const techniques = TECHNIQUES_BY_DIFFICULTY[difficulty]
             || TECHNIQUES_BY_DIFFICULTY.medium;
-        const keepMin = minClues(N, difficulty);
-        const { prefilled, clues } = await digHoles(
-            solution, N, boxRows, boxCols, techniques, keepMin, rng, onProgress);
+        // Dig to the limit, then add a few clues back (see addBackCount).
+        const dug = await digHoles(
+            solution, N, boxRows, boxCols, techniques, 0, rng, onProgress);
+        const prefilled = dug.prefilled;
+        const restored = restoreClues(
+            prefilled, solution, N, addBackCount(N, difficulty, rng), rng);
+        const clues = dug.clues + restored;
 
         // Record the technique mix of the canonical solve for insight
         // into how the puzzle actually plays out (surfaced in stats).
