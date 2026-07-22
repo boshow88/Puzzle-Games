@@ -83,9 +83,12 @@
     // -----------------------------------------------------------------
 
     function createTimer(displayEl) {
+        // `startedAt` is the *effective* start: on resume it's back-dated by
+        // the already-elapsed time so the display continues seamlessly.
         let startedAt = null;
         let rafId = null;
         let stopped = true;
+        let elapsedMs = 0; // time accumulated as of the last stop()
 
         function format(ms) {
             const s = Math.floor(ms / 1000);
@@ -105,6 +108,7 @@
             start() {
                 stopped = false;
                 startedAt = Date.now();
+                elapsedMs = 0;
                 if (displayEl) displayEl.textContent = format(0);
                 cancelAnimationFrame(rafId);
                 rafId = requestAnimationFrame(tick);
@@ -112,16 +116,27 @@
             stop() {
                 stopped = true;
                 cancelAnimationFrame(rafId);
-                return startedAt != null ? Date.now() - startedAt : 0;
+                elapsedMs = startedAt != null ? Date.now() - startedAt : 0;
+                return elapsedMs;
+            },
+            // Continue counting from where stop() left off (no reset to 0).
+            // Used when a game undoes back out of a solved state.
+            resume() {
+                if (!stopped || startedAt == null) return;
+                stopped = false;
+                startedAt = Date.now() - elapsedMs;
+                cancelAnimationFrame(rafId);
+                rafId = requestAnimationFrame(tick);
             },
             reset() {
                 this.stop();
                 startedAt = null;
+                elapsedMs = 0;
                 if (displayEl) displayEl.textContent = format(0);
             },
             elapsed() {
                 if (startedAt == null) return 0;
-                return (stopped ? 0 : Date.now() - startedAt);
+                return (stopped ? elapsedMs : Date.now() - startedAt);
             },
         };
     }
@@ -413,6 +428,9 @@
         let appliedDifficulty = difficulty;
         let appliedSize = size;
         let revealed = false;
+        // Whether this puzzle's solve has already been recorded, so that
+        // undoing a win and re-solving doesn't double-count it in the stats.
+        let solveLogged = false;
 
         const timer = createTimer(dom.timer);
 
@@ -454,20 +472,36 @@
             },
             markSolved() {
                 const elapsed = timer.stop();
-                logSolve(gameId, size, difficulty, elapsed);
+                // Log the solve once per puzzle (an undo-then-re-solve must
+                // not double-count it).
+                if (!solveLogged) {
+                    logSolve(gameId, size, difficulty, elapsed);
+                    solveLogged = true;
+                }
                 shell.setWin(true);
                 // Once solved the reveal overlay is redundant, and
                 // re-toggling it would replay the win animation, so drop
                 // it and lock the button. The caller's own repaint (run
                 // right after markSolved) picks up revealed=false. Re-
-                // enabled on New Game / Reset.
+                // enabled on New Game / Reset / undo-out-of-win.
                 revealed = false;
                 syncRevealButton();
                 if (dom.revealBtn) dom.revealBtn.disabled = true;
                 // Nothing left to hint once solved — disable it too (matches
-                // Reveal). Re-enabled on New Game / Reset.
+                // Reveal). Re-enabled on New Game / Reset / undo-out-of-win.
                 if (dom.hintBtn) dom.hintBtn.disabled = true;
                 return elapsed;
+            },
+            // Reverse the win chrome when a game undoes back out of a solved
+            // state: hide the badge, re-enable Hint / Reveal, and resume the
+            // clock (you're playing again). The solve stays logged just once,
+            // so re-finishing won't double-count it.
+            clearWin() {
+                shell.setWin(false);
+                if (dom.revealBtn) dom.revealBtn.disabled = false;
+                if (dom.hintBtn) dom.hintBtn.disabled = false;
+                // Back in play → resume the clock from the finish time.
+                timer.resume();
             },
         };
 
@@ -538,6 +572,7 @@
                 syncRevealButton();
                 if (dom.revealBtn) dom.revealBtn.disabled = false;
                 if (dom.hintBtn) dom.hintBtn.disabled = false;
+                solveLogged = false;
                 shell.setWin(false);
                 if (dom.newGameBtn) dom.newGameBtn.disabled = true;
                 progress.start(t('generatingPuzzle'));
@@ -563,6 +598,7 @@
             shell.setWin(false);
             if (dom.revealBtn) dom.revealBtn.disabled = false;
             if (dom.hintBtn) dom.hintBtn.disabled = false;
+            solveLogged = false;
             onReset();
             timer.start();
         }

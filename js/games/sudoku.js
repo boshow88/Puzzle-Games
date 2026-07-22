@@ -1320,7 +1320,9 @@
             repaintSelection();
             repaintSymbols();
             updateStatusRow();
-            updateUndoButton(); // solved → no more undoing
+            // Keep the undo history so the player can step back and review
+            // the winning moves; it's cleared on Reset / New Game.
+            updateUndoButton();
             return;
         }
         scheduleViolationRefresh(r, c);
@@ -1512,13 +1514,20 @@
 
     function resetPlacements() {
         if (!state.puzzle) return;
-        pushUndo(); // Reset is undoable — snapshot the board before wiping it.
+        if (state.won) {
+            // Post-win Reset ends the session — discard its undo history.
+            if (undoHistory) undoHistory.clear();
+        } else {
+            // Mid-game Reset is undoable — snapshot before wiping.
+            pushUndo();
+        }
         ensurePlacementsForCurrent();
         state.won = false;
         clearHint();
         repaintSelection();
         repaintSymbols();
         updateStatusRow();
+        updateUndoButton();
     }
 
     // -----------------------------------------------------------------
@@ -1535,11 +1544,15 @@
     }
 
     function restoreSnapshot(snap) {
+        const wasWon = state.won;
         state.placements = clonePlacements(snap.placements);
         state.notes = cloneNotes(snap.notes);
         state.selected = snap.selected
             ? { r: snap.selected.r, c: snap.selected.c } : null;
         state.won = false;
+        // Undoing out of a solved board reverses the win chrome (badge +
+        // Hint/Reveal) and resumes the clock; the solve stays logged once.
+        if (wasWon) shell.clearWin();
         clearHint();
         // Snap the conflict overlay straight to the restored board (no
         // debounce — an undo should look instant and correct).
@@ -1553,19 +1566,23 @@
     }
 
     function pushUndo() {
-        if (undoHistory) { undoHistory.push(); updateUndoButton(); }
+        // A solved board is never snapshotted (edits are blocked while won,
+        // and a post-win Reset clears history instead of pushing).
+        if (!undoHistory || state.won) return;
+        undoHistory.push();
+        updateUndoButton();
     }
 
+    // Undo stays available AFTER winning (to step back and review the last
+    // moves) — it's only cleared on Reset / New Game.
     function doUndo() {
-        if (!state.puzzle || state.won) return;
+        if (!state.puzzle) return;
         if (undoHistory && undoHistory.undo()) updateUndoButton();
     }
 
     function updateUndoButton() {
         const btn = document.getElementById('undo-btn');
-        if (btn) {
-            btn.disabled = state.won || !(undoHistory && undoHistory.canUndo());
-        }
+        if (btn) btn.disabled = !(undoHistory && undoHistory.canUndo());
     }
 
     // -----------------------------------------------------------------
