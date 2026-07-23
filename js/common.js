@@ -275,6 +275,10 @@
             '<circle cx="6" cy="19" r="3"/>'
             + '<path d="M9 19h8.5a3.5 3.5 0 0 0 0-7h-11a3.5 3.5 0 0 1 0-7H15"/>'
             + '<circle cx="18" cy="5" r="3"/>',
+        shapes:
+            '<path d="M8.3 10a.7.7 0 0 1-.626-1.079L11.4 3a.7.7 0 0 1 1.199 0l3.726 5.921A.7.7 0 0 1 15.7 10Z"/>'
+            + '<rect width="7" height="7" x="3" y="14" rx="1"/>'
+            + '<circle cx="17.5" cy="17.5" r="3.5"/>',
     };
 
     function icon(name, opts) {
@@ -869,6 +873,27 @@
                 'You can pick up the drag from any cell already on the path — everything after that cell is dropped.',
             zipHelp5:
                 'Solved when the path covers every white cell with checkpoints in the right order.',
+            patchesName: 'Patches',
+            patchesTagline: 'Tile the grid with shapes.',
+            patchesCardBody:
+                'Split the grid into rectangles — one per clue — matching each clue\u2019s shape and size.',
+            patchesBoardAria: 'Patches puzzle board',
+            patchesHelp1:
+                'Divide the whole grid into rectangles so that every rectangle contains exactly one clue.',
+            patchesHelp2Html:
+                'A clue\u2019s shape fixes its rectangle: <strong>square</strong>, <strong>wide</strong> (w&gt;h), <strong>tall</strong> (h&gt;w), or <strong>any</strong>.',
+            patchesHelp3:
+                'If a clue shows a number, its rectangle must have exactly that many cells.',
+            patchesHelp4:
+                'Drag across the board to draw a rectangle over a clue; release to place it. Click a placed rectangle to remove it.',
+            patchesHelp5:
+                'Solved when every clue owns one valid rectangle and the rectangles fill the grid with no gaps or overlaps.',
+            patchesHint1:
+                'The outlined shape has only one way to be completed. With the current cells locked in, this is the only way to complete the shape.',
+            patchesHint2:
+                'The outlined shape has only one valid placement. Every other placement conflicts with another clue, so this is the only valid placement.',
+            patchesHint3:
+                'The outlined cell can only belong to the highlighted shape\u2019s region. It can\u2019t connect to any other clue or region without breaking a rule, so it must go here.',
         },
         zh: {
             menu: '選單',
@@ -1022,6 +1047,27 @@
             zipHelp4:
                 '可以從路徑上任何一格重新拖曳 — 該格之後的部分都會被取消。',
             zipHelp5: '當路徑覆蓋每個白格，且檢查點都依序通過時即過關。',
+            patchesName: 'Patches',
+            patchesTagline: '用形狀鋪滿整個盤面。',
+            patchesCardBody:
+                '把盤面切成一個個矩形 — 每個提示對應一個 — 並符合該提示的形狀與大小。',
+            patchesBoardAria: 'Patches 盤面',
+            patchesHelp1:
+                '把整個盤面切成數個矩形，使每個矩形內恰好包含一個提示。',
+            patchesHelp2Html:
+                '提示的形狀決定其矩形：<strong>方形</strong>、<strong>寬</strong>（寬&gt;高）、<strong>高</strong>（高&gt;寬）或<strong>任意</strong>。',
+            patchesHelp3:
+                '若提示上有數字，其矩形就必須剛好是那麼多格。',
+            patchesHelp4:
+                '在盤面上拖曳畫出一個涵蓋某提示的矩形，放開即放置。點擊已放置的矩形可將它移除。',
+            patchesHelp5:
+                '當每個提示都擁有一個合法矩形，且所有矩形不重疊、無空隙地填滿盤面時即過關。',
+            patchesHint1:
+                '此外框形狀只有一種完成方式。目前格子已鎖定，這是完成該形狀的唯一解法。',
+            patchesHint2:
+                '此外框形狀只有一個有效位置。由於其他位置皆與既有線索衝突，因此這是唯一的有效位置。',
+            patchesHint3:
+                '畫出外框的格子只能屬於此醒目標示形狀的區域。在不違反規則的情況下，它無法與任何其他線索或區域相連，因此必須置於此處。',
         },
     };
 

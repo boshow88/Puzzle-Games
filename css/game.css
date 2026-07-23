@@ -916,6 +916,47 @@
     user-select: none;
 }
 
+/* ---- Patches-specific ---- */
+
+/* A placed / revealed rectangle. Fill and stroke colours are set inline
+   per clue; opacity here keeps the underlying grid faintly visible. The
+   reveal variant is a touch more transparent so it reads as an overlay
+   rather than a committed piece. */
+.patch-rect {
+    fill-opacity: 0.55;
+    stroke-width: 2.5;
+    stroke-opacity: 0.9;
+    pointer-events: none;
+}
+
+.patch-rect.reveal {
+    fill-opacity: 0.4;
+    stroke-opacity: 0.75;
+}
+
+/* Clue swatch — a small shape token tinted with the clue's colour. */
+.clue-swatch {
+    stroke: rgba(0, 0, 0, 0.12);
+    stroke-width: 1;
+    pointer-events: none;
+}
+
+.clue-swatch.any {
+    stroke-width: 2;
+}
+
+/* Size number sitting on top of the swatch, in white. */
+.clue-num {
+    fill: #ffffff;
+    font-family: var(--font-body);
+    font-weight: 700;
+    pointer-events: none;
+    user-select: none;
+    paint-order: stroke fill;
+    stroke: rgba(0, 0, 0, 0.28);
+    stroke-width: 2.5px;
+}
+
 /* ----------------------------------------------------------------
    Help / footer hints
    ---------------------------------------------------------------- */

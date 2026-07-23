@@ -309,10 +309,11 @@ button {
 
 /* Per-game accent overrides — must match the `--game-color` declared
    in each per-game HTML so the launcher card and game page agree. */
-.game-card.queens { --game-color: #b341d1; }
-.game-card.tango  { --game-color: #f5a623; }
-.game-card.sudoku { --game-color: #2e7d32; }
-.game-card.zip    { --game-color: #3498db; }
+.game-card.queens  { --game-color: #b341d1; }
+.game-card.tango   { --game-color: #f5a623; }
+.game-card.sudoku  { --game-color: #2e7d32; }
+.game-card.zip     { --game-color: #3498db; }
+.game-card.patches { --game-color: #e5484d; }
 
 /* ----------------------------------------------------------------
    Toast (transient bottom-centre notice)

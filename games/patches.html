@@ -1,0 +1,117 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Patches · Puzzle Games</title>
+    <link rel="icon" type="image/svg+xml" href="../favicon.svg">
+    <link rel="stylesheet" href="../css/common.css">
+    <link rel="stylesheet" href="../css/game.css">
+    <style>
+        body { --game-color: #e5484d; }
+    </style>
+</head>
+<body>
+    <div class="game-shell">
+        <header class="game-topbar">
+            <a class="back-link" href="../index.html">
+                <span data-icon="arrow-left" aria-hidden="true"></span>
+                <span data-i18n="menu">Menu</span>
+            </a>
+            <div class="game-title">
+                <span class="game-icon" data-icon="shapes" aria-hidden="true"></span>
+                <span data-i18n="patchesName">Patches</span>
+            </div>
+            <div class="lang-toggle" id="lang-toggle" role="radiogroup" data-i18n-aria-label="language">
+                <button type="button" data-lang="en" role="radio" aria-checked="true">EN</button>
+                <button type="button" data-lang="zh" role="radio" aria-checked="false">中</button>
+            </div>
+        </header>
+
+        <section class="game-toolbar" data-i18n-aria-label="gameSettings">
+            <div class="toolbar-group">
+                <span class="toolbar-label" data-i18n="difficulty">Difficulty</span>
+                <div class="toolbar-control">
+                    <div class="segmented" id="difficulty-seg" role="radiogroup" data-i18n-aria-label="difficulty">
+                        <button type="button" data-value="easy" role="radio" data-i18n="easy">Easy</button>
+                        <button type="button" data-value="medium" role="radio" class="active" data-i18n="medium">Medium</button>
+                        <button type="button" data-value="hard" role="radio" data-i18n="hard">Hard</button>
+                    </div>
+                </div>
+            </div>
+
+            <div class="toolbar-group">
+                <span class="toolbar-label" data-i18n="boardSize">Board size</span>
+                <div class="size-control">
+                    <input type="range" id="size-slider" min="5" max="12" step="1" value="8" data-i18n-aria-label="boardSize" aria-label="Board size">
+                    <span class="size-readout" id="size-readout">8×8</span>
+                </div>
+            </div>
+
+            <div class="toolbar-action">
+                <button class="btn" id="new-game-btn" type="button">
+                    <span data-icon="dices" aria-hidden="true"></span>
+                    <span data-i18n="newGame">New Game</span>
+                </button>
+            </div>
+        </section>
+
+        <div class="action-row">
+            <button class="btn" id="reset-btn" type="button" data-i18n-title="clearPlacements" title="Clear placements">
+                <span data-icon="rotate-ccw" aria-hidden="true"></span>
+                <span data-i18n="reset">Reset</span>
+            </button>
+            <button class="btn" id="hint-btn" type="button" data-i18n-title="highlightDeducible" title="Highlight one deducible step">
+                <span data-icon="lightbulb" aria-hidden="true"></span>
+                <span data-i18n="hint">Hint</span>
+            </button>
+            <button class="btn toggle" id="reveal-btn" type="button" aria-pressed="false" data-i18n-title="showSolution" title="Show solution overlay">
+                <span data-icon="eye" aria-hidden="true"></span>
+                <span data-i18n="reveal">Reveal</span>
+            </button>
+        </div>
+
+        <div class="status-row" aria-live="polite">
+            <span class="status-item">
+                <span class="timer" id="timer">00:00</span>
+            </span>
+            <span class="status-item violations" id="violations" hidden>
+                <span data-icon="triangle-alert" aria-hidden="true"></span>
+                <span id="violations-text"></span>
+            </span>
+            <span class="status-item win-message" id="win-message" hidden>
+                <span data-icon="sparkles" aria-hidden="true"></span>
+                <span data-i18n="winMessage">You Win!</span>
+            </span>
+        </div>
+
+        <div class="board-wrap">
+            <svg class="board-svg"
+                 id="board"
+                 viewBox="-3 -3 486 486"
+                 xmlns="http://www.w3.org/2000/svg"
+                 role="application"
+                 data-i18n-aria-label="patchesBoardAria"
+                 aria-label="Patches puzzle board">
+            </svg>
+        </div>
+
+        <div class="hint-banner" id="hint-banner" hidden aria-live="polite"></div>
+
+        <section class="game-footer">
+            <h4 data-i18n="howToPlay">How to play</h4>
+            <ul>
+                <li data-i18n="patchesHelp1">Divide the whole grid into rectangles so that every rectangle contains exactly one clue.</li>
+                <li data-i18n="patchesHelp2Html">A clue's shape fixes its rectangle: <strong>square</strong>, <strong>wide</strong> (w&gt;h), <strong>tall</strong> (h&gt;w), or <strong>any</strong>.</li>
+                <li data-i18n="patchesHelp3">If a clue shows a number, its rectangle must have exactly that many cells.</li>
+                <li data-i18n="patchesHelp4">Drag across the board to draw a rectangle over a clue; release to place it. Click a placed rectangle to remove it.</li>
+                <li data-i18n="patchesHelp5">Solved when every clue owns one valid rectangle and the rectangles fill the grid with no gaps or overlaps.</li>
+            </ul>
+        </section>
+    </div>
+
+    <script src="../js/common.js"></script>
+    <script src="../js/generators/patches.js"></script>
+    <script src="../js/games/patches.js"></script>
+</body>
+</html>
