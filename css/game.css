@@ -934,6 +934,20 @@
     stroke-opacity: 0.75;
 }
 
+/* Live drag preview. Grey while it covers no clue; the renderer swaps the
+   inline fill/stroke to the clue colour the moment it encloses one. Sits
+   above the grid lines but below the clue glyphs. */
+.patch-preview {
+    fill-opacity: 0.34;
+    stroke-width: 2.5;
+    stroke-opacity: 0.85;
+    pointer-events: none;
+}
+
+.patch-preview.tinted {
+    fill-opacity: 0.5;
+}
+
 /* Clue swatch — a small shape token tinted with the clue's colour. */
 .clue-swatch {
     stroke: rgba(0, 0, 0, 0.12);

@@ -14,6 +14,11 @@
 
     const PC = window.PuzzleCommon;
 
+    // Exposes game internals on window for the trace/demo tooling and
+    // headless tests. Off unless ?patches_debug=1.  [DEBUG-HOOK]
+    const DEBUG = typeof location !== 'undefined'
+        && /[?&]patches_debug=1\b/.test(location.search);
+
     const BOARD_SIZE = 480;
     const MIN_SIZE = 5;
     const MAX_SIZE = 12;
@@ -59,16 +64,61 @@
 
     const state = {
         puzzle: null,
-        placements: [],   // player rectangles (P2); { r, c, w, h, clue }
+        placements: [],   // player rectangles; { r, c, w, h, clue }
         won: false,
+        // Active pointer gesture. A gesture that never leaves its start
+        // cell is a "click" (delete); one that moves is a "drag" (draw).
+        drag: null,       // { pointerId, sr, sc, minR, maxR, minC, maxC, moved }
     };
 
     let shell = null;
     let board = null;
+    let clueAt = null;    // Map "r,c" -> clue index, rebuilt per puzzle
 
     function resetPlacements() {
         state.placements = [];
         state.won = false;
+        state.drag = null;
+    }
+
+    function rebuildIndices() {
+        clueAt = new Map();
+        state.puzzle.clues.forEach((cl, i) => clueAt.set(cl.r + ',' + cl.c, i));
+    }
+
+    function clueIndexAt(r, c) {
+        const v = clueAt.get(r + ',' + c);
+        return v == null ? -1 : v;
+    }
+
+    /** Clue cells falling inside an inclusive bounding box. */
+    function cluesInBox(minR, minC, maxR, maxC) {
+        let count = 0;
+        let idx = -1;
+        state.puzzle.clues.forEach((cl, i) => {
+            if (cl.r >= minR && cl.r <= maxR && cl.c >= minC && cl.c <= maxC) {
+                count += 1;
+                idx = i;
+            }
+        });
+        return { count, idx };
+    }
+
+    function shapeOK(shape, w, h) {
+        if (w * h < 2) return false;
+        if (shape === SQUARE) return w === h;
+        if (shape === WIDE) return w > h;
+        if (shape === TALL) return h > w;
+        return true; // any
+    }
+
+    function rectContainsCell(rc, r, c) {
+        return r >= rc.r && r < rc.r + rc.h && c >= rc.c && c < rc.c + rc.w;
+    }
+
+    function rectsOverlap(a, b) {
+        return a.c < b.c + b.w && b.c < a.c + a.w
+            && a.r < b.r + b.h && b.r < a.r + a.h;
     }
 
     // -----------------------------------------------------------------
@@ -130,6 +180,12 @@
         }
         svg.appendChild(borders);
 
+        // Layer: live drag preview (above the grid, below the clue glyphs
+        // so a clue number stays readable through the tint).
+        const preview = PC.svgEl('g', { class: 'patch-preview-layer' });
+        preview.setAttribute('id', 'patch-preview');
+        svg.appendChild(preview);
+
         // Layer: clue glyphs.
         const clues = PC.svgEl('g', { class: 'clues' });
         clues.setAttribute('id', 'clues');
@@ -137,6 +193,28 @@
 
         repaintRects();
         repaintClues();
+    }
+
+    function repaintPreview() {
+        const layer = board.querySelector('#patch-preview');
+        while (layer.firstChild) layer.removeChild(layer.firstChild);
+        const d = state.drag;
+        if (!d) return;
+        const cs = cellSize();
+        const inset = Math.max(2, cs * 0.06);
+        const radius = Math.max(3, cs * 0.10);
+        const { count, idx } = cluesInBox(d.minR, d.minC, d.maxR, d.maxC);
+        const tinted = count === 1;
+        const color = tinted ? clueColor(idx) : '#7a7a7a';
+        layer.appendChild(PC.svgEl('rect', {
+            class: 'patch-preview' + (tinted ? ' tinted' : ''),
+            x: d.minC * cs + inset,
+            y: d.minR * cs + inset,
+            width: (d.maxC - d.minC + 1) * cs - inset * 2,
+            height: (d.maxR - d.minR + 1) * cs - inset * 2,
+            rx: radius, ry: radius,
+            fill: color, stroke: color,
+        }));
     }
 
     /** Draw the solution partition when Reveal is on (P2 will also draw
@@ -236,12 +314,170 @@
     }
 
     // -----------------------------------------------------------------
+    // Win check
+    // -----------------------------------------------------------------
+
+    /** Solved when every clue owns exactly one placed rectangle, each
+     *  rectangle satisfies its clue, they don't overlap, and together they
+     *  fill the grid. One-clue-per-rectangle is already guaranteed at
+     *  placement time (the drag can never enclose two clues). */
+    function isWin() {
+        const p = state.puzzle;
+        const N = p.size;
+        if (state.placements.length !== p.clues.length) return false;
+
+        const seenClue = new Set();
+        const cover = new Int8Array(N * N);
+        for (const rc of state.placements) {
+            if (rc.clue < 0 || seenClue.has(rc.clue)) return false;
+            seenClue.add(rc.clue);
+            const cl = p.clues[rc.clue];
+            if (!shapeOK(cl.shape, rc.w, rc.h)) return false;
+            if (cl.size != null && rc.w * rc.h !== cl.size) return false;
+            for (let r = rc.r; r < rc.r + rc.h; r++) {
+                for (let c = rc.c; c < rc.c + rc.w; c++) {
+                    const k = r * N + c;
+                    if (cover[k]) return false; // overlap
+                    cover[k] = 1;
+                }
+            }
+        }
+        for (let k = 0; k < N * N; k++) if (!cover[k]) return false;
+        return true;
+    }
+
+    function commitChange() {
+        repaintRects();
+        if (!state.won && isWin()) {
+            state.won = true;
+            shell.markSolved();
+            repaintRects();
+        }
+        updateStatusRow();
+    }
+
+    // -----------------------------------------------------------------
+    // Pointer / drag interaction
+    // -----------------------------------------------------------------
+
+    /** Map an event to a grid cell, or null if outside the board. The SVG
+     *  viewBox is "-3 -3 486 486", so the playable area is the inner
+     *  480/486 offset by 3/486 on each side (same maths as Zip). */
+    function eventToCell(ev) {
+        const N = state.puzzle.size;
+        const rect = board.getBoundingClientRect();
+        if (rect.width === 0 || rect.height === 0) return null;
+        const vbx = (ev.clientX - rect.left) / rect.width * 486 - 3;
+        const vby = (ev.clientY - rect.top) / rect.height * 486 - 3;
+        if (vbx < 0 || vbx >= BOARD_SIZE) return null;
+        if (vby < 0 || vby >= BOARD_SIZE) return null;
+        const cs = BOARD_SIZE / N;
+        return [Math.floor(vby / cs), Math.floor(vbx / cs)];
+    }
+
+    function interactive() {
+        return state.puzzle && !state.won && !shell.revealed;
+    }
+
+    function onPointerDown(ev) {
+        if (!interactive()) return;
+        if (ev.button !== undefined && ev.button !== 0) return;
+        const cell = eventToCell(ev);
+        if (!cell) return;
+        ev.preventDefault();
+        try { board.setPointerCapture(ev.pointerId); } catch (_) { /* ignore */ }
+        const [r, c] = cell;
+        state.drag = {
+            pointerId: ev.pointerId,
+            sr: r, sc: c,
+            minR: r, maxR: r, minC: c, maxC: c,
+            moved: false,
+        };
+        repaintPreview();
+    }
+
+    function onPointerMove(ev) {
+        const d = state.drag;
+        if (!d || ev.pointerId !== d.pointerId) return;
+        const cell = eventToCell(ev);
+        if (!cell) return;
+        const [r, c] = cell;
+        if (r !== d.sr || c !== d.sc) d.moved = true;
+
+        // Candidate box = current box unioned with the pointer cell. Reject
+        // the growth if it would enclose a second clue (never let a preview
+        // straddle two clues, matching the LinkedIn rule). The box only
+        // ever grows within a single gesture.
+        const nMinR = Math.min(d.minR, r);
+        const nMaxR = Math.max(d.maxR, r);
+        const nMinC = Math.min(d.minC, c);
+        const nMaxC = Math.max(d.maxC, c);
+        if (nMinR === d.minR && nMaxR === d.maxR
+            && nMinC === d.minC && nMaxC === d.maxC) return;
+        if (cluesInBox(nMinR, nMinC, nMaxR, nMaxC).count >= 2) return;
+        // Reject growth that would overlap an already-placed rectangle —
+        // same guard style as the two-clue rule. Placements therefore stay
+        // non-overlapping; to change a rectangle, delete it first (click)
+        // then redraw.
+        const cand = { r: nMinR, c: nMinC, w: nMaxC - nMinC + 1, h: nMaxR - nMinR + 1 };
+        for (const rc of state.placements) {
+            if (rectsOverlap(rc, cand)) return;
+        }
+        d.minR = nMinR; d.maxR = nMaxR; d.minC = nMinC; d.maxC = nMaxC;
+        repaintPreview();
+    }
+
+    function onPointerUp(ev) {
+        const d = state.drag;
+        if (!d || ev.pointerId !== d.pointerId) return;
+        try { board.releasePointerCapture(ev.pointerId); } catch (_) { /* ignore */ }
+        state.drag = null;
+
+        if (!d.moved) {
+            // Click: delete the placed rectangle under the start cell.
+            deleteAt(d.sr, d.sc);
+        } else {
+            placeFromBox(d);
+        }
+        repaintPreview();
+        commitChange();
+    }
+
+    function onPointerCancel(ev) {
+        if (!state.drag || ev.pointerId !== state.drag.pointerId) return;
+        state.drag = null;
+        repaintPreview();
+    }
+
+    function placeFromBox(d) {
+        const w = d.maxC - d.minC + 1;
+        const h = d.maxR - d.minR + 1;
+        if (w * h < 2) return;                 // 1×1 is never a placement
+        const { count, idx } = cluesInBox(d.minR, d.minC, d.maxR, d.maxC);
+        if (count !== 1) return;               // must cover exactly one clue
+        // Overlaps are already prevented during the drag, so the only thing
+        // to clear here is a prior rectangle for the same clue (one per clue).
+        state.placements = state.placements.filter((rc) => rc.clue !== idx);
+        state.placements.push({ r: d.minR, c: d.minC, w, h, clue: idx });
+    }
+
+    function deleteAt(r, c) {
+        for (let i = state.placements.length - 1; i >= 0; i--) {
+            if (rectContainsCell(state.placements[i], r, c)) {
+                state.placements.splice(i, 1);
+                return;
+            }
+        }
+    }
+
+    // -----------------------------------------------------------------
     // Shell callbacks
     // -----------------------------------------------------------------
 
     async function startNewGame() {
         const seed = (Date.now() ^ Math.floor(Math.random() * 0xffffffff)) >>> 0;
         state.puzzle = await generatePuzzle(shell.size, shell.difficulty, seed);
+        rebuildIndices();
         resetPlacements();
         renderBoard();
         updateStatusRow();
@@ -256,6 +492,9 @@
     }
 
     function onReveal() {
+        // Cancel any in-flight drag when flipping into reveal mode.
+        state.drag = null;
+        repaintPreview();
         repaintRects();
     }
 
@@ -274,6 +513,14 @@
         });
         board = shell.dom.board;
         board.classList.add('drag-board');
+        board.addEventListener('pointerdown', onPointerDown);
+        board.addEventListener('pointermove', onPointerMove);
+        board.addEventListener('pointerup', onPointerUp);
+        board.addEventListener('pointercancel', onPointerCancel);
+        board.addEventListener('contextmenu', (ev) => ev.preventDefault());
+        if (DEBUG) {
+            window.__patches = { state, isWin, commitChange, repaintRects };
+        }
         shell.start();
     }
 
