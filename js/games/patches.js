@@ -322,13 +322,20 @@
 
         const showSolution = shell.revealed && !state.won;
         const rects = showSolution ? p.solution : state.placements;
-        const inset = Math.max(2, cs * 0.06);
-        const radius = Math.max(3, cs * 0.10);
+        const won = state.won;
+        // On win the patches close their gaps and deepen in colour — the quilt
+        // reads as finished, clearly distinct from the gapped in-play state.
+        // The inset is half the 2.5 stroke so each patch's OUTER edge lands
+        // exactly on the cell boundary: neighbours' borders meet flush without
+        // overlapping. The grey grid lines fade out (see .board-svg.board-won).
+        const inset = won ? 1.25 : Math.max(2, cs * 0.06);
+        const radius = won ? 0 : Math.max(3, cs * 0.10);
+        board.classList.toggle('board-won', won);
 
         for (const rc of rects) {
             const color = clueColor(rc.clue);
             layer.appendChild(PC.svgEl('rect', {
-                class: 'patch-rect' + (showSolution ? ' reveal' : ''),
+                class: 'patch-rect' + (showSolution ? ' reveal' : '') + (won ? ' won' : ''),
                 'data-clue': rc.clue,
                 x: rc.c * cs + inset,
                 y: rc.r * cs + inset,
@@ -999,6 +1006,13 @@
     function applyDemo() {
         if (DEMO === 'hint') { onHint(); return; }
         if (DEMO === 'hint3') { demoTier3(); return; }
+        if (DEMO === 'win') {
+            state.placements = state.puzzle.solution.map((s) => ({
+                r: s.r, c: s.c, w: s.w, h: s.h, clue: s.clue,
+            }));
+            commitChange(); // triggers the win state + animation
+            return;
+        }
         if (DEMO !== 'conflict') return;
         const p = state.puzzle;
         const N = p.size;

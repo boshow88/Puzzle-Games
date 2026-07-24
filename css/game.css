@@ -522,6 +522,7 @@
     stroke: rgba(0, 0, 0, 0.18);
     stroke-width: 1;
     pointer-events: none;
+    transition: opacity 0.45s ease;
 }
 
 /* Small symbol shown when Reveal is toggled on; sits in the top-left
@@ -932,6 +933,26 @@
 .patch-rect.reveal {
     fill-opacity: 0.4;
     stroke-opacity: 0.75;
+}
+
+/* Solved: the patches deepen and pop in place (each scales about its own
+   centre via transform-box: fill-box, so there's no whole-board lurch). */
+@keyframes patch-win-pop {
+    0%   { transform: scale(1); }
+    45%  { transform: scale(1.07); }
+    100% { transform: scale(1); }
+}
+.patch-rect.won {
+    fill-opacity: 0.85;
+    stroke-opacity: 1;
+    transform-box: fill-box;
+    transform-origin: center;
+    animation: patch-win-pop 460ms ease-out;
+}
+/* Solved board: the grey grid lines fade away so the finished quilt reads
+   cleanly (the patch borders now carry the structure). */
+.board-svg.board-won .grid-line {
+    opacity: 0;
 }
 
 /* Live drag preview. Grey while it covers no clue; the renderer swaps the
