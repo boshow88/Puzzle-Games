@@ -503,6 +503,7 @@
 .cell-bg {
     stroke: rgba(0, 0, 0, 0.18);
     stroke-width: 1;
+    transition: stroke 0.45s ease;
 }
 
 /* Region borders. The same stroke width is used for the outer frame and
@@ -949,10 +950,14 @@
     transform-origin: center;
     animation: patch-win-pop 460ms ease-out;
 }
-/* Solved board: the grey grid lines fade away so the finished quilt reads
-   cleanly (the patch borders now carry the structure). */
+/* Solved board: both grid sources — the top .grid-line layer and the grey
+   stroke on every .cell-bg beneath the patches — fade away so the finished
+   quilt reads cleanly (the patch borders now carry the structure). */
 .board-svg.board-won .grid-line {
     opacity: 0;
+}
+.board-svg.board-won .cell-bg {
+    stroke: transparent;
 }
 
 /* Live drag preview. Grey while it covers no clue; the renderer swaps the
