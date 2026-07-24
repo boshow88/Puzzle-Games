@@ -19,9 +19,21 @@
     const DEBUG = typeof location !== 'undefined'
         && /[?&]patches_debug=1\b/.test(location.search);
 
+    // ?patches_demo=conflict auto-places a deliberately wrong rectangle so
+    // the violation UI can be seen (and screenshotted) immediately.  [DEBUG-HOOK]
+    const DEMO = (function () {
+        if (typeof location === 'undefined') return null;
+        const m = /[?&]patches_demo=([a-z]+)/.exec(location.search);
+        return m ? m[1] : null;
+    })();
+
     const BOARD_SIZE = 480;
     const MIN_SIZE = 5;
     const MAX_SIZE = 12;
+
+    // Grace period after a placement before its rule violations are flagged,
+    // so actively editing the board doesn't nag mid-gesture (matches Queens).
+    const VIOLATION_DELAY_MS = 800;
 
     const SQUARE = 'square';
     const WIDE = 'wide';
@@ -66,9 +78,12 @@
         puzzle: null,
         placements: [],   // player rectangles; { r, c, w, h, clue }
         won: false,
-        // Active pointer gesture. A gesture that never leaves its start
-        // cell is a "click" (delete); one that moves is a "drag" (draw).
-        drag: null,       // { pointerId, sr, sc, minR, maxR, minC, maxC, moved }
+        // Active pointer gesture. A gesture that never leaves its start cell
+        // is a "click" (delete); one that moves is a "drag". Starting inside a
+        // placed rectangle picks it up to expand (editClue = that clue, box
+        // seeded to its bounds); otherwise it draws a fresh rectangle.
+        drag: null,       // { pointerId, sr, sc, minR, maxR, minC, maxC, moved, editClue }
+        violationTimer: null,
     };
 
     let shell = null;
@@ -79,6 +94,10 @@
         state.placements = [];
         state.won = false;
         state.drag = null;
+        if (state.violationTimer) {
+            clearTimeout(state.violationTimer);
+            state.violationTimer = null;
+        }
     }
 
     function rebuildIndices() {
@@ -191,6 +210,11 @@
         clues.setAttribute('id', 'clues');
         svg.appendChild(clues);
 
+        // Layer: violation message bubbles (topmost).
+        const bubbles = PC.svgEl('g', { class: 'patch-bubbles-layer' });
+        bubbles.setAttribute('id', 'patch-bubbles');
+        svg.appendChild(bubbles);
+
         repaintRects();
         repaintClues();
     }
@@ -234,6 +258,7 @@
             const color = clueColor(rc.clue);
             layer.appendChild(PC.svgEl('rect', {
                 class: 'patch-rect' + (showSolution ? ' reveal' : ''),
+                'data-clue': rc.clue,
                 x: rc.c * cs + inset,
                 y: rc.r * cs + inset,
                 width: rc.w * cs - inset * 2,
@@ -354,6 +379,133 @@
             repaintRects();
         }
         updateStatusRow();
+        if (state.won) clearViolationDisplay();
+        else scheduleViolations();
+    }
+
+    // -----------------------------------------------------------------
+    // Violation flagging (delayed, matches the other games' rhythm)
+    // -----------------------------------------------------------------
+
+    /** Placed rectangles that break their clue's shape or size. Overlaps
+     *  can't happen (prevented during the drag), so those two are the only
+     *  possible rule breaks. */
+    function findViolations() {
+        const p = state.puzzle;
+        const N = p.size;
+        const out = [];
+        for (const rc of state.placements) {
+            const cl = p.clues[rc.clue];
+            const area = rc.w * rc.h;
+            // Number: only a violation once the count EXCEEDS the target — a
+            // still-too-small patch may just be mid-expansion. Judged on its
+            // own, independent of shape.
+            if (cl.size != null && area > cl.size) {
+                out.push({ rc, message: PC.i18n.t('patchesConflictSizeOver', cl.size) });
+                continue;
+            }
+            // Shape: a wrong *current* shape is fine while the patch can still
+            // grow into the target shape. It's only a violation once that's
+            // impossible — blocked purely by the board edge and OTHER clue
+            // cells (other placed rectangles are ignored, and the number is
+            // irrelevant here).
+            if (cl.shape !== ANY && !shapeOK(cl.shape, rc.w, rc.h)
+                && !canReachShape(rc, rc.clue, cl.shape, N, p.clues)) {
+                const key = cl.shape === SQUARE ? 'patchesConflictShapeSquare'
+                    : cl.shape === WIDE ? 'patchesConflictShapeWide'
+                        : 'patchesConflictShapeTall';
+                out.push({ rc, message: PC.i18n.t(key) });
+            }
+        }
+        return out;
+    }
+
+    /** Could `rc` still be grown (its bounding box only ever expands) into a
+     *  rectangle of the target shape? Blocked only by the board edge and
+     *  OTHER clue cells; other placed rectangles and the target number are
+     *  deliberately ignored (shape is judged on its own). */
+    function canReachShape(rc, ownIdx, shape, N, clues) {
+        if (shape === ANY) return true;
+        const rBot = rc.r + rc.h - 1;
+        const cRight = rc.c + rc.w - 1;
+        for (let r1 = 0; r1 <= rc.r; r1++) {
+            for (let r2 = rBot; r2 < N; r2++) {
+                for (let c1 = 0; c1 <= rc.c; c1++) {
+                    for (let c2 = cRight; c2 < N; c2++) {
+                        if (!shapeOK(shape, c2 - c1 + 1, r2 - r1 + 1)) continue;
+                        if (boxHasForeignClue(r1, c1, r2, c2, ownIdx, clues)) continue;
+                        return true;
+                    }
+                }
+            }
+        }
+        return false;
+    }
+
+    function boxHasForeignClue(r1, c1, r2, c2, ownIdx, clues) {
+        for (let i = 0; i < clues.length; i++) {
+            if (i === ownIdx) continue;
+            const cl = clues[i];
+            if (cl.r >= r1 && cl.r <= r2 && cl.c >= c1 && cl.c <= c2) return true;
+        }
+        return false;
+    }
+
+    function scheduleViolations() {
+        clearViolationDisplay();
+        if (state.won || shell.revealed || !state.placements.length) return;
+        state.violationTimer = setTimeout(showViolations, VIOLATION_DELAY_MS);
+    }
+
+    function showViolations() {
+        state.violationTimer = null;
+        if (state.won || shell.revealed) return;
+        const vs = findViolations();
+        for (const v of vs) {
+            const el = board.querySelector(
+                `.patch-rect[data-clue="${v.rc.clue}"]`);
+            if (el) el.classList.add('violation');
+        }
+        renderBubbles(vs);
+        shell.setViolationCount(vs.length);
+    }
+
+    function renderBubbles(vs) {
+        const layer = board.querySelector('#patch-bubbles');
+        if (!layer) return;
+        while (layer.firstChild) layer.removeChild(layer.firstChild);
+        const cs = cellSize();
+        const bw = 210;
+        const bh = 58;
+        for (const v of vs) {
+            const rc = v.rc;
+            const cx = (rc.c + rc.w / 2) * cs;
+            const x = PC.clamp(cx - bw / 2, 2, BOARD_SIZE - bw - 2);
+            let y = rc.r * cs - bh - 4;
+            if (y < 0) y = (rc.r + rc.h) * cs + 4;
+            const fo = PC.svgEl('foreignObject', {
+                x, y, width: bw, height: bh, class: 'patch-bubble-fo',
+            });
+            const div = document.createElementNS(
+                'http://www.w3.org/1999/xhtml', 'div');
+            div.setAttribute('class', 'patch-bubble');
+            div.textContent = v.message;
+            fo.appendChild(div);
+            layer.appendChild(fo);
+        }
+    }
+
+    function clearViolationDisplay() {
+        if (state.violationTimer) {
+            clearTimeout(state.violationTimer);
+            state.violationTimer = null;
+        }
+        if (!board) return;
+        const layer = board.querySelector('#patch-bubbles');
+        if (layer) while (layer.firstChild) layer.removeChild(layer.firstChild);
+        board.querySelectorAll('.patch-rect.violation')
+            .forEach((el) => el.classList.remove('violation'));
+        if (shell) shell.setViolationCount(0);
     }
 
     // -----------------------------------------------------------------
@@ -387,11 +539,18 @@
         ev.preventDefault();
         try { board.setPointerCapture(ev.pointerId); } catch (_) { /* ignore */ }
         const [r, c] = cell;
+        // Starting inside a placed rectangle picks it up to expand (grow-only);
+        // its box seeds the gesture so the preview continues from its edges.
+        const edit = state.placements.find((rc) => rectContainsCell(rc, r, c)) || null;
         state.drag = {
             pointerId: ev.pointerId,
             sr: r, sc: c,
-            minR: r, maxR: r, minC: c, maxC: c,
             moved: false,
+            editClue: edit ? edit.clue : -1,
+            minR: edit ? edit.r : r,
+            maxR: edit ? edit.r + edit.h - 1 : r,
+            minC: edit ? edit.c : c,
+            maxC: edit ? edit.c + edit.w - 1 : c,
         };
         repaintPreview();
     }
@@ -416,11 +575,12 @@
             && nMinC === d.minC && nMaxC === d.maxC) return;
         if (cluesInBox(nMinR, nMinC, nMaxR, nMaxC).count >= 2) return;
         // Reject growth that would overlap an already-placed rectangle —
-        // same guard style as the two-clue rule. Placements therefore stay
-        // non-overlapping; to change a rectangle, delete it first (click)
-        // then redraw.
+        // same guard style as the two-clue rule — so placements stay
+        // non-overlapping. The rectangle currently being expanded is exempt
+        // (its own box is where this gesture started).
         const cand = { r: nMinR, c: nMinC, w: nMaxC - nMinC + 1, h: nMaxR - nMinR + 1 };
         for (const rc of state.placements) {
+            if (rc.clue === d.editClue) continue;
             if (rectsOverlap(rc, cand)) return;
         }
         d.minR = nMinR; d.maxR = nMaxR; d.minC = nMinC; d.maxC = nMaxC;
@@ -480,22 +640,64 @@
         rebuildIndices();
         resetPlacements();
         renderBoard();
+        clearViolationDisplay();
         updateStatusRow();
+        if (DEMO) applyDemo();
+    }
+
+    // Demo affordance: grow a numbered clue's solution rectangle by one
+    // clue-free strip so its area exceeds the target — a guaranteed
+    // size-over violation, surfaced immediately for a quick look/screenshot.
+    function applyDemo() {
+        if (DEMO !== 'conflict') return;
+        const p = state.puzzle;
+        const N = p.size;
+        const numbered = p.solution.filter((s) => p.clues[s.clue].size != null);
+        for (const base of numbered) {
+            const grown = growByOne(base, N, base.clue, p.clues);
+            if (grown) {
+                grown.clue = base.clue;
+                state.placements = [grown];
+                repaintRects();
+                showViolations();
+                return;
+            }
+        }
+    }
+
+    function growByOne(base, N, ownIdx, clues) {
+        const opts = [
+            { r: base.r, c: base.c, w: base.w + 1, h: base.h },       // right
+            { r: base.r, c: base.c - 1, w: base.w + 1, h: base.h },   // left
+            { r: base.r, c: base.c, w: base.w, h: base.h + 1 },       // down
+            { r: base.r - 1, c: base.c, w: base.w, h: base.h + 1 },   // up
+        ];
+        for (const o of opts) {
+            if (o.r < 0 || o.c < 0 || o.r + o.h > N || o.c + o.w > N) continue;
+            if (boxHasForeignClue(o.r, o.c, o.r + o.h - 1, o.c + o.w - 1, ownIdx, clues)) {
+                continue;
+            }
+            return o;
+        }
+        return null;
     }
 
     function resetAction() {
         if (!state.puzzle) return;
         resetPlacements();
+        clearViolationDisplay();
         repaintRects();
         repaintClues();
         updateStatusRow();
     }
 
-    function onReveal() {
+    function onReveal(revealed) {
         // Cancel any in-flight drag when flipping into reveal mode.
         state.drag = null;
         repaintPreview();
         repaintRects();
+        if (revealed) clearViolationDisplay();
+        else scheduleViolations();
     }
 
     // -----------------------------------------------------------------

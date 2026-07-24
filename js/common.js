@@ -885,7 +885,7 @@
             patchesHelp3:
                 'If a clue shows a number, its rectangle must have exactly that many cells.',
             patchesHelp4:
-                'Drag across the board to draw a rectangle over a clue; release to place it. Click a placed rectangle to remove it.',
+                'Drag over a clue to draw its rectangle; drag from inside a placed rectangle to expand it. Click a placed rectangle to remove it.',
             patchesHelp5:
                 'Solved when every clue owns one valid rectangle and the rectangles fill the grid with no gaps or overlaps.',
             patchesHint1:
@@ -894,6 +894,13 @@
                 'The outlined shape has only one valid placement. Every other placement conflicts with another clue, so this is the only valid placement.',
             patchesHint3:
                 'The outlined cell can only belong to the highlighted shape\u2019s region. It can\u2019t connect to any other clue or region without breaking a rule, so it must go here.',
+            patchesConflictSizeOver: (x) =>
+                `This patch can hold at most ${x} cell${x === 1 ? '' : 's'}.`,
+            patchesConflictShapeSquare: 'This patch must be a square.',
+            patchesConflictShapeWide:
+                'This patch must be a wide rectangle (wider than tall).',
+            patchesConflictShapeTall:
+                'This patch must be a tall rectangle (taller than wide).',
         },
         zh: {
             menu: '選單',
@@ -1059,7 +1066,7 @@
             patchesHelp3:
                 '若提示上有數字，其矩形就必須剛好是那麼多格。',
             patchesHelp4:
-                '在盤面上拖曳畫出一個涵蓋某提示的矩形，放開即放置。點擊已放置的矩形可將它移除。',
+                '在盤面拖曳畫出涵蓋某提示的矩形；從已放置矩形內部拖曳可將它擴大。點擊已放置的矩形可移除它。',
             patchesHelp5:
                 '當每個提示都擁有一個合法矩形，且所有矩形不重疊、無空隙地填滿盤面時即過關。',
             patchesHint1:
@@ -1068,6 +1075,10 @@
                 '此外框形狀只有一個有效位置。由於其他位置皆與既有線索衝突，因此這是唯一的有效位置。',
             patchesHint3:
                 '畫出外框的格子只能屬於此醒目標示形狀的區域。在不違反規則的情況下，它無法與任何其他線索或區域相連，因此必須置於此處。',
+            patchesConflictSizeOver: (x) => `此有色區域最多只能有 ${x} 格。`,
+            patchesConflictShapeSquare: '此有色區域必須是正方形。',
+            patchesConflictShapeWide: '此有色區域必須是橫向長方形（寬 > 高）。',
+            patchesConflictShapeTall: '此有色區域必須是直向長方形（高 > 寬）。',
         },
     };
 
