@@ -72,58 +72,133 @@
     }
 
     // -----------------------------------------------------------------
-    // Random rectangle tiling (guillotine split).
+    // Random rectangle tiling (bottom-up merging).
     //
-    // Recursively slice a region into two, stopping (keeping the region
-    // as a leaf) with a probability that rises as the region shrinks.
-    // The split rule guarantees no leaf is ever 1×1: a 1×k strip is only
-    // split when k ≥ 4 (into two ≥1×2 halves), so every leaf has area ≥ 2.
+    // Start from all 1×1 cells and repeatedly merge two adjacent rectangles
+    // that share a full edge (so the union is again a rectangle), chosen at
+    // random, until the board is coarse enough. Unlike guillotine slicing
+    // this can reach non-sliceable layouts (far more variety) and, by never
+    // stopping above a target count, it can't produce a single giant patch.
+    // A max-area cap keeps any one patch from dominating, and 1×1 cells are
+    // cleared first so the result never contains one.
     // -----------------------------------------------------------------
 
-    function tileGrid(N, rng, difficulty) {
-        // Larger target area on easier boards → fewer, chunkier pieces
-        // that are gentler to reason about. Hard packs in more clues.
-        const stopBias = { easy: 0.72, medium: 0.55, hard: 0.42 }[difficulty]
-            || 0.55;
-        const rects = [];
+    function mergeParams(N, difficulty) {
+        // Average patch area → target patch count. Easier boards are a touch
+        // chunkier (fewer, larger); harder boards a touch finer. (A first cut
+        // — these are the natural knobs to tune difficulty with later.)
+        const avgArea = { easy: 5, medium: 4.3, hard: 3.6 }[difficulty] || 4.3;
+        const targetCount = Math.max(2, Math.round((N * N) / avgArea));
+        const maxArea = Math.max(6, Math.round(N * 1.6));
+        return { targetCount, maxArea };
+    }
 
+    function tryMergeTiling(N, rng, targetCount, maxArea) {
+        const owner = new Int32Array(N * N);
+        const rects = new Map(); // id → { r, c, w, h }
+        for (let r = 0; r < N; r++) {
+            for (let c = 0; c < N; c++) {
+                const id = r * N + c;
+                owner[id] = id;
+                rects.set(id, { r, c, w: 1, h: 1 });
+            }
+        }
+        const isUnit = (R) => R.w === 1 && R.h === 1;
+
+        // Every legal merge: a patch with its right or bottom neighbour when
+        // they line up into a clean rectangle (grid ownership guarantees the
+        // neighbour is flush, so matching top+height / left+width suffices).
+        function collectMerges() {
+            const out = [];
+            for (const [id, R] of rects) {
+                if (R.c + R.w < N) {
+                    const nb = owner[R.r * N + (R.c + R.w)];
+                    const B = rects.get(nb);
+                    if (B.r === R.r && B.h === R.h) {
+                        out.push({ a: id, b: nb, horiz: true, area: (R.w + B.w) * R.h });
+                    }
+                }
+                if (R.r + R.h < N) {
+                    const nb = owner[(R.r + R.h) * N + R.c];
+                    const B = rects.get(nb);
+                    if (B.c === R.c && B.w === R.w) {
+                        out.push({ a: id, b: nb, horiz: false, area: R.w * (R.h + B.h) });
+                    }
+                }
+            }
+            return out;
+        }
+        function apply(m) {
+            const A = rects.get(m.a);
+            const B = rects.get(m.b);
+            for (let r = B.r; r < B.r + B.h; r++) {
+                for (let c = B.c; c < B.c + B.w; c++) owner[r * N + c] = m.a;
+            }
+            if (m.horiz) A.w += B.w; else A.h += B.h;
+            rects.delete(m.b);
+        }
+
+        let guard = N * N * 4;
+        while (guard-- > 0) {
+            let anyUnit = false;
+            for (const R of rects.values()) { if (isUnit(R)) { anyUnit = true; break; } }
+            if (rects.size <= targetCount && !anyUnit) break;
+
+            const merges = collectMerges();
+            let pool;
+            if (anyUnit) {
+                // Clear 1×1s first (while neighbours are still fine-grained),
+                // so we never strand one that can't merge.
+                pool = merges.filter((m) => isUnit(rects.get(m.a)) || isUnit(rects.get(m.b)));
+                if (!pool.length) pool = merges.filter((m) => m.area <= maxArea);
+            } else {
+                pool = merges.filter((m) => m.area <= maxArea);
+            }
+            if (!pool.length) {
+                if (anyUnit) return null; // stranded 1×1 → caller retries
+                break;                    // no capped merges left; accept
+            }
+            apply(pool[PC.rng.pickInt(rng, 0, pool.length)]);
+        }
+
+        for (const R of rects.values()) if (isUnit(R)) return null;
+        return Array.from(rects.values(), (R) => ({ r: R.r, c: R.c, w: R.w, h: R.h }));
+    }
+
+    function tileGrid(N, rng, difficulty) {
+        const { targetCount, maxArea } = mergeParams(N, difficulty);
+        for (let attempt = 0; attempt < 40; attempt++) {
+            const t = tryMergeTiling(N, rng, targetCount, maxArea);
+            if (t) return t;
+        }
+        // Astronomically unlikely for N ≤ 12; fall back to a guaranteed tiling.
+        return guillotineTiling(N, rng);
+    }
+
+    // Emergency fallback only (see tileGrid): the original guillotine slicer,
+    // guaranteed to produce a valid no-1×1 tiling.
+    function guillotineTiling(N, rng) {
+        const rects = [];
         function recurse(r, c, w, h) {
             const area = w * h;
-            // Leaves must have area ≥ 2. A region can only keep splitting
-            // if at least one axis affords a legal cut.
             const canSplitV = w >= 2 && (h >= 2 || w >= 4);
             const canSplitH = h >= 2 && (w >= 2 || h >= 4);
             const canSplit = canSplitV || canSplitH;
-            // Stop chance grows as the piece shrinks toward area 2.
-            const stop = area <= 2
-                || (canSplit && rng() < stopBias * Math.min(1, 4 / area));
-            if (!canSplit || stop) {
-                rects.push({ r, c, w, h });
-                return;
-            }
-
-            // Choose an axis we're actually allowed to cut on.
+            const stop = area <= 2 || (canSplit && rng() < 0.5 * Math.min(1, 4 / area));
+            if (!canSplit || stop) { rects.push({ r, c, w, h }); return; }
             let vertical;
             if (canSplitV && canSplitH) vertical = rng() < w / (w + h);
             else vertical = canSplitV;
-
             if (vertical) {
-                // Split columns into [lo, w-lo]. If h === 1 both halves
-                // must be ≥ 2 wide (no 1×1); else any 1..w-1 is fine.
-                const lo = h === 1
-                    ? PC.rng.pickInt(rng, 2, w - 1)   // 2..w-2
-                    : PC.rng.pickInt(rng, 1, w);       // 1..w-1
+                const lo = h === 1 ? PC.rng.pickInt(rng, 2, w - 1) : PC.rng.pickInt(rng, 1, w);
                 recurse(r, c, lo, h);
                 recurse(r, c + lo, w - lo, h);
             } else {
-                const lo = w === 1
-                    ? PC.rng.pickInt(rng, 2, h - 1)
-                    : PC.rng.pickInt(rng, 1, h);
+                const lo = w === 1 ? PC.rng.pickInt(rng, 2, h - 1) : PC.rng.pickInt(rng, 1, h);
                 recurse(r, c, w, lo);
                 recurse(r + lo, c, w, h - lo);
             }
         }
-
         recurse(0, 0, N, N);
         return rects;
     }
@@ -510,6 +585,6 @@
     global.PuzzleGenerators.patchesInternals = {
         enumerateCandidates, propagate, countSolutions, isUnique,
         logicSolvable, tileGrid, cluesFromTiling, makeClueAt,
-        shapeOf, satisfiesShape, SHAPES,
+        digDifficulty, shapeOf, satisfiesShape, SHAPES,
     };
 })(typeof window !== 'undefined' ? window : this);
