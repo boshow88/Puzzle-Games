@@ -963,6 +963,23 @@
     animation: patch-violation-pulse 1s ease-in-out infinite;
 }
 
+/* Hint spotlight: dim every cell except the focused target/clue, then
+   outline the target. Deduction hints outline in blue; conflict/wrong in
+   the danger red. */
+.patch-hint-dim {
+    fill: rgba(0, 0, 0, 0.42);
+    pointer-events: none;
+}
+.patch-hint-outline {
+    fill: none;
+    stroke: #2563eb;
+    stroke-width: 4;
+    pointer-events: none;
+}
+.patch-hint-outline.danger {
+    stroke: var(--accent-danger);
+}
+
 /* Message bubble anchored to a violating rectangle (HTML inside an SVG
    foreignObject so it scales with the board and wraps text cleanly). */
 .patch-bubble-fo { overflow: visible; }

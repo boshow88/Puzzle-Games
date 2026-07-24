@@ -84,10 +84,13 @@
         // seeded to its bounds); otherwise it draws a fresh rectangle.
         drag: null,       // { pointerId, sr, sc, minR, maxR, minC, maxC, moved, editClue }
         violationTimer: null,
+        violationsShown: false,
+        hint: null,       // current hint descriptor, or null when hidden
     };
 
     let shell = null;
     let board = null;
+    let hintBanner = null;
     let clueAt = null;    // Map "r,c" -> clue index, rebuilt per puzzle
 
     function resetPlacements() {
@@ -209,6 +212,12 @@
         const clues = PC.svgEl('g', { class: 'clues' });
         clues.setAttribute('id', 'clues');
         svg.appendChild(clues);
+
+        // Layer: hint spotlight (dims non-focus cells — above the clues so
+        // unrelated clue glyphs dim too — plus the focus outline).
+        const hint = PC.svgEl('g', { class: 'hint-layer' });
+        hint.setAttribute('id', 'hint');
+        svg.appendChild(hint);
 
         // Layer: violation message bubbles (topmost).
         const bubbles = PC.svgEl('g', { class: 'patch-bubbles-layer' });
@@ -372,6 +381,7 @@
     }
 
     function commitChange() {
+        clearHint(); // any board change invalidates the shown hint
         repaintRects();
         if (!state.won && isWin()) {
             state.won = true;
@@ -401,7 +411,7 @@
             // still-too-small patch may just be mid-expansion. Judged on its
             // own, independent of shape.
             if (cl.size != null && area > cl.size) {
-                out.push({ rc, message: PC.i18n.t('patchesConflictSizeOver', cl.size) });
+                out.push({ rc, msgKey: 'patchesConflictSizeOver', msgArgs: [cl.size] });
                 continue;
             }
             // Shape: a wrong *current* shape is fine while the patch can still
@@ -414,7 +424,7 @@
                 const key = cl.shape === SQUARE ? 'patchesConflictShapeSquare'
                     : cl.shape === WIDE ? 'patchesConflictShapeWide'
                         : 'patchesConflictShapeTall';
-                out.push({ rc, message: PC.i18n.t(key) });
+                out.push({ rc, msgKey: key, msgArgs: [] });
             }
         }
         return out;
@@ -468,6 +478,7 @@
         }
         renderBubbles(vs);
         shell.setViolationCount(vs.length);
+        state.violationsShown = vs.length > 0;
     }
 
     function renderBubbles(vs) {
@@ -489,7 +500,7 @@
             const div = document.createElementNS(
                 'http://www.w3.org/1999/xhtml', 'div');
             div.setAttribute('class', 'patch-bubble');
-            div.textContent = v.message;
+            div.textContent = PC.i18n.t(v.msgKey, ...(v.msgArgs || []));
             fo.appendChild(div);
             layer.appendChild(fo);
         }
@@ -506,6 +517,242 @@
         board.querySelectorAll('.patch-rect.violation')
             .forEach((el) => el.classList.remove('violation'));
         if (shell) shell.setViolationCount(0);
+        state.violationsShown = false;
+    }
+
+    // -----------------------------------------------------------------
+    // Hints — conflict-first, then the three deduction tiers.
+    //   conflict : a placed rectangle already breaks its clue's rule.
+    //   wrong    : a rule-valid rectangle that isn't the solution's.
+    //   tier 1   : a clue whose rectangle is now forced only *because* of
+    //              the cells the player has already locked in.
+    //   tier 2   : a clue with a single valid placement intrinsically
+    //              (every other placement would hit another clue).
+    //   tier 3   : an empty cell only one clue's region can reach.
+    // -----------------------------------------------------------------
+
+    function onHint() {
+        if (!state.puzzle || state.won) return;
+        if (state.hint) { clearHint(); return; } // toggle off
+        const h = computeHint();
+        state.hint = h;
+        repaintHint();
+        setHintBanner(hintText(h));
+    }
+
+    /** Resolve a hint's message from its i18n key at call time, so a live
+     *  language switch re-renders it (see onLocaleChange). */
+    function hintText(h) {
+        if (!h || !h.msgKey) return '';
+        return PC.i18n.t(h.msgKey, ...(h.msgArgs || []));
+    }
+
+    // Re-render locale-dependent overlays when the language toggles.
+    function onLocaleChange() {
+        if (!state.puzzle) return;
+        if (state.hint) setHintBanner(hintText(state.hint));
+        if (state.violationsShown) showViolations();
+    }
+
+    function clearHint() {
+        state.hint = null;
+        const layer = board && board.querySelector('#hint');
+        if (layer) while (layer.firstChild) layer.removeChild(layer.firstChild);
+        setHintBanner(null);
+    }
+
+    function setHintBanner(text) {
+        if (!hintBanner) return;
+        hintBanner.textContent = text || '';
+        hintBanner.hidden = !text;
+    }
+
+    function computeHint() {
+        // 1) Rule violations take priority (conflict-first).
+        const vs = findViolations();
+        if (vs.length) {
+            return {
+                kind: 'conflict', rc: vs[0].rc, clue: vs[0].rc.clue,
+                msgKey: vs[0].msgKey, msgArgs: vs[0].msgArgs,
+            };
+        }
+        // 2) A rule-valid rectangle that doesn't match the unique solution.
+        const wrong = findWrongPlacement();
+        if (wrong) {
+            return { kind: 'wrong', rc: wrong, clue: wrong.clue, msgKey: 'patchesHintWrong' };
+        }
+        // 3) The next logical deduction.
+        return computeDeduction() || { kind: 'none', msgKey: 'patchesHintNone' };
+    }
+
+    function findWrongPlacement() {
+        const sol = new Map();
+        for (const s of state.puzzle.solution) sol.set(s.clue, s);
+        for (const rc of state.placements) {
+            const s = sol.get(rc.clue);
+            // Wrong only if it strays OUTSIDE its clue's solution rectangle.
+            // A rectangle fully inside is a valid partial that can still be
+            // expanded to the solution — a hint guides its completion instead.
+            if (!s || rc.r < s.r || rc.c < s.c
+                || rc.r + rc.h > s.r + s.h || rc.c + rc.w > s.c + s.w) return rc;
+        }
+        return null;
+    }
+
+    function computeDeduction() {
+        const p = state.puzzle;
+        const N = p.size;
+        const PI = window.PuzzleGenerators.patchesInternals;
+        const clueAtArr = PI.makeClueAt(N, p.clues);
+
+        const solMap = new Map();
+        for (const s of p.solution) solMap.set(s.clue, s);
+
+        // Cells locked in by the player. A placement equal to its solution
+        // rect is complete (skip); one strictly inside it is a valid partial
+        // still being built (a tier-1 completion candidate).
+        const owner = new Int32Array(N * N).fill(-1);
+        const placementByClue = new Map();
+        const fullyPlaced = new Set();
+        for (const rc of state.placements) {
+            placementByClue.set(rc.clue, rc);
+            for (let r = rc.r; r < rc.r + rc.h; r++) {
+                for (let c = rc.c; c < rc.c + rc.w; c++) owner[r * N + c] = rc.clue;
+            }
+            const s = solMap.get(rc.clue);
+            if (s && rc.r === s.r && rc.c === s.c && rc.w === s.w && rc.h === s.h) {
+                fullyPlaced.add(rc.clue);
+            }
+        }
+        // Usable by clue i iff it covers no cell owned by ANOTHER clue.
+        const freeFor = (R, i) => {
+            for (let r = R.r; r < R.r + R.h; r++) {
+                for (let c = R.c; c < R.c + R.w; c++) {
+                    const o = owner[r * N + c];
+                    if (o !== -1 && o !== i) return false;
+                }
+            }
+            return true;
+        };
+        const contains = (R, inner) => R.r <= inner.r && R.c <= inner.c
+            && R.r + R.h >= inner.r + inner.h && R.c + R.w >= inner.c + inner.w;
+
+        // Each not-fully-placed clue's still-valid rectangles: completions
+        // (⊇ the partial) for a partially-built clue, else placements.
+        const active = [];
+        for (let i = 0; i < p.clues.length; i++) {
+            if (fullyPlaced.has(i)) continue;
+            const partial = placementByClue.get(i) || null;
+            let cands = PI.enumerateCandidates(N, p.clues[i], i, clueAtArr)
+                .filter((R) => freeFor(R, i));
+            if (partial) cands = cands.filter((R) => contains(R, partial));
+            active.push({ i, partial, cands });
+        }
+
+        // Tier 1 — a partially-built clue with a single valid completion.
+        for (const a of active) {
+            if (a.partial && a.cands.length === 1) {
+                return {
+                    kind: 'deduce', rc: Object.assign({}, a.cands[0], { clue: a.i }),
+                    clue: a.i, tier: 1, msgKey: 'patchesHint1',
+                };
+            }
+        }
+        // Tier 2 — an unplaced clue with a single valid placement.
+        for (const a of active) {
+            if (!a.partial && a.cands.length === 1) {
+                return {
+                    kind: 'deduce', rc: Object.assign({}, a.cands[0], { clue: a.i }),
+                    clue: a.i, tier: 2, msgKey: 'patchesHint2',
+                };
+            }
+        }
+        // Tier 3 — a non-clue empty cell only one clue's region can reach.
+        const coverClue = new Int32Array(N * N).fill(-1);
+        const coverCount = new Int32Array(N * N);
+        for (const a of active) {
+            const seen = new Set();
+            for (const R of a.cands) {
+                for (let r = R.r; r < R.r + R.h; r++) {
+                    for (let c = R.c; c < R.c + R.w; c++) {
+                        const k = r * N + c;
+                        if (seen.has(k)) continue;
+                        seen.add(k);
+                        if (coverClue[k] !== a.i) { coverCount[k] += 1; coverClue[k] = a.i; }
+                    }
+                }
+            }
+        }
+        for (let k = 0; k < N * N; k++) {
+            if (owner[k] !== -1 || coverCount[k] !== 1) continue;
+            const r = (k / N) | 0;
+            const c = k % N;
+            if (clueIndexAt(r, c) >= 0) continue; // clue cells belong to self, trivially
+            const clue = coverClue[k];
+            const cl = p.clues[clue];
+            // Minimal rectangle you'd drag from the clue cell to reach here.
+            const rc = {
+                r: Math.min(cl.r, r), c: Math.min(cl.c, c),
+                w: Math.abs(cl.c - c) + 1, h: Math.abs(cl.r - r) + 1, clue,
+            };
+            return { kind: 'deduce-cell', rc, cell: [r, c], clue, tier: 3, msgKey: 'patchesHint3' };
+        }
+        return null;
+    }
+
+    function repaintHint() {
+        const layer = board.querySelector('#hint');
+        while (layer.firstChild) layer.removeChild(layer.firstChild);
+        const h = state.hint;
+        if (!h) return;
+        const p = state.puzzle;
+        const N = p.size;
+        const cs = cellSize();
+
+        // Cells that stay lit: the target rectangle / cell and its clue cell.
+        const focus = new Set();
+        if (h.rc) {
+            for (let r = h.rc.r; r < h.rc.r + h.rc.h; r++) {
+                for (let c = h.rc.c; c < h.rc.c + h.rc.w; c++) focus.add(r * N + c);
+            }
+        }
+        if (h.cell) focus.add(h.cell[0] * N + h.cell[1]);
+        if (h.clue != null) { const cl = p.clues[h.clue]; focus.add(cl.r * N + cl.c); }
+
+        for (let r = 0; r < N; r++) {
+            for (let c = 0; c < N; c++) {
+                if (focus.has(r * N + c)) continue;
+                layer.appendChild(PC.svgEl('rect', {
+                    class: 'patch-hint-dim',
+                    x: c * cs, y: r * cs, width: cs, height: cs,
+                }));
+            }
+        }
+
+        const danger = h.kind === 'conflict' || h.kind === 'wrong';
+        const cls = 'patch-hint-outline' + (danger ? ' danger' : '');
+        const inset = Math.max(2, cs * 0.06);
+        const rad = Math.max(3, cs * 0.1);
+        const outline = (r, c, w, h2) => layer.appendChild(PC.svgEl('rect', {
+            class: cls,
+            x: c * cs + inset, y: r * cs + inset,
+            width: w * cs - inset * 2, height: h2 * cs - inset * 2,
+            rx: rad, ry: rad,
+        }));
+        // The outline marks the "protagonist"; the lit (undimmed) area is the
+        // rectangle the hint wants the player to draw (h.rc).
+        //   tier 3         → outline the forced cell.
+        //   tier 1/2       → outline the clue (shape) cell, so "this outlined
+        //                    shape" points clearly at the clue itself.
+        //   conflict/wrong → outline the offending placed rectangle.
+        if (h.kind === 'deduce-cell' && h.cell) {
+            outline(h.cell[0], h.cell[1], 1, 1);
+        } else if (h.kind === 'deduce' && h.clue != null) {
+            const cl = p.clues[h.clue];
+            outline(cl.r, cl.c, 1, 1);
+        } else if (h.rc) {
+            outline(h.rc.r, h.rc.c, h.rc.w, h.rc.h);
+        }
     }
 
     // -----------------------------------------------------------------
@@ -641,14 +888,16 @@
         resetPlacements();
         renderBoard();
         clearViolationDisplay();
+        clearHint();
         updateStatusRow();
         if (DEMO) applyDemo();
     }
 
-    // Demo affordance: grow a numbered clue's solution rectangle by one
-    // clue-free strip so its area exceeds the target — a guaranteed
-    // size-over violation, surfaced immediately for a quick look/screenshot.
+    // Demo affordances (see ?patches_demo). 'hint' just opens a hint on the
+    // fresh board; 'conflict' plants a guaranteed size-over violation.
     function applyDemo() {
+        if (DEMO === 'hint') { onHint(); return; }
+        if (DEMO === 'hint3') { demoTier3(); return; }
         if (DEMO !== 'conflict') return;
         const p = state.puzzle;
         const N = p.size;
@@ -662,6 +911,20 @@
                 showViolations();
                 return;
             }
+        }
+    }
+
+    // Follow tier-1/2 hints (placing each forced rectangle) until a tier-3
+    // cell hint surfaces, then show it — for eyeballing the tier-3 visual.
+    function demoTier3() {
+        for (let step = 0; step < state.puzzle.clues.length; step++) {
+            const h = computeHint();
+            if (h.kind === 'deduce-cell') {
+                state.hint = h; repaintHint(); setHintBanner(hintText(h)); return;
+            }
+            if (h.kind !== 'deduce') return;
+            state.placements.push({ r: h.rc.r, c: h.rc.c, w: h.rc.w, h: h.rc.h, clue: h.rc.clue });
+            repaintRects();
         }
     }
 
@@ -686,6 +949,7 @@
         if (!state.puzzle) return;
         resetPlacements();
         clearViolationDisplay();
+        clearHint();
         repaintRects();
         repaintClues();
         updateStatusRow();
@@ -694,6 +958,7 @@
     function onReveal(revealed) {
         // Cancel any in-flight drag when flipping into reveal mode.
         state.drag = null;
+        clearHint();
         repaintPreview();
         repaintRects();
         if (revealed) clearViolationDisplay();
@@ -714,6 +979,9 @@
             onReveal,
         });
         board = shell.dom.board;
+        hintBanner = document.getElementById('hint-banner');
+        if (shell.dom.hintBtn) shell.dom.hintBtn.addEventListener('click', onHint);
+        PC.i18n.subscribe(onLocaleChange);
         board.classList.add('drag-board');
         board.addEventListener('pointerdown', onPointerDown);
         board.addEventListener('pointermove', onPointerMove);
