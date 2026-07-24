@@ -228,6 +228,10 @@
                     class: 'cell-bg',
                     x: c * cs, y: r * cs, width: cs, height: cs,
                     fill: '#ffffff',
+                    // The grid is drawn once, by the dedicated .grid-line layer
+                    // above the patches; suppress cell-bg's shared stroke so
+                    // there's a single grid source that fades cleanly on win.
+                    style: 'stroke: none',
                 }));
             }
         }
