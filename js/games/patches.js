@@ -819,25 +819,21 @@
             active.push({ i, partial, cands });
         }
 
-        // Tier 1 — a partially-built clue with a single valid completion.
+        // Gather every candidate deduction across all rules.
+        const candidates = [];
+        // Tier 1 (partial clue, single completion) & Tier 2 (unplaced clue,
+        // single placement) — both suggest that clue's full rectangle.
         for (const a of active) {
-            if (a.partial && a.cands.length === 1) {
-                return {
+            if (a.cands.length === 1) {
+                candidates.push({
                     kind: 'deduce', rc: Object.assign({}, a.cands[0], { clue: a.i }),
-                    clue: a.i, tier: 1, msgKey: 'patchesHint1',
-                };
+                    clue: a.i, tier: a.partial ? 1 : 2,
+                    msgKey: a.partial ? 'patchesHint1' : 'patchesHint2',
+                });
             }
         }
-        // Tier 2 — an unplaced clue with a single valid placement.
-        for (const a of active) {
-            if (!a.partial && a.cands.length === 1) {
-                return {
-                    kind: 'deduce', rc: Object.assign({}, a.cands[0], { clue: a.i }),
-                    clue: a.i, tier: 2, msgKey: 'patchesHint2',
-                };
-            }
-        }
-        // Tier 3 — a non-clue empty cell only one clue's region can reach.
+        // Tier 3 — non-clue empty cells only one clue's region can reach; the
+        // suggested rectangle is the minimal drag from the clue to that cell.
         const coverClue = new Int32Array(N * N).fill(-1);
         const coverCount = new Int32Array(N * N);
         for (const a of active) {
@@ -860,14 +856,39 @@
             if (clueIndexAt(r, c) >= 0) continue; // clue cells belong to self, trivially
             const clue = coverClue[k];
             const cl = p.clues[clue];
-            // Minimal rectangle you'd drag from the clue cell to reach here.
+            // Grow FROM the player's current shape: use its partial rectangle's
+            // bounds if one is placed (so the highlight includes what they've
+            // already drawn), else just the clue cell. The suggested rectangle
+            // is that base unioned with the target cell.
+            const base = placementByClue.get(clue);
+            const r0 = base ? base.r : cl.r;
+            const c0 = base ? base.c : cl.c;
+            const r1 = base ? base.r + base.h - 1 : cl.r;
+            const c1 = base ? base.c + base.w - 1 : cl.c;
+            const minR = Math.min(r0, r);
+            const minC = Math.min(c0, c);
+            const maxR = Math.max(r1, r);
+            const maxC = Math.max(c1, c);
             const rc = {
-                r: Math.min(cl.r, r), c: Math.min(cl.c, c),
-                w: Math.abs(cl.c - c) + 1, h: Math.abs(cl.r - r) + 1, clue,
+                r: minR, c: minC, w: maxC - minC + 1, h: maxR - minR + 1, clue,
             };
-            return { kind: 'deduce-cell', rc, cell: [r, c], clue, tier: 3, msgKey: 'patchesHint3' };
+            candidates.push({ kind: 'deduce-cell', rc, cell: [r, c], clue, tier: 3, msgKey: 'patchesHint3' });
         }
-        return null;
+
+        // Drop any hint dominated by a STRONGER hint on the SAME clue — one
+        // whose suggested rectangle strictly contains this one's (e.g. a small
+        // tier-3 drag box sitting inside that clue's full placement, or a
+        // shorter reach when a longer forced reach exists).
+        const area = (t) => t.w * t.h;
+        const encloses = (o, t) => o.r <= t.r && o.c <= t.c
+            && o.r + o.h >= t.r + t.h && o.c + o.w >= t.c + t.w;
+        const kept = candidates.filter((h) => !candidates.some((o) =>
+            o !== h && o.clue === h.clue && area(o.rc) > area(h.rc) && encloses(o.rc, h.rc)));
+
+        // Then honour the tier priority (1 → 2 → 3); Array.sort is stable, so
+        // ties keep their scan order (clue index, then row-major cells).
+        kept.sort((a, b) => a.tier - b.tier);
+        return kept[0] || null;
     }
 
     function repaintHint() {
