@@ -1041,7 +1041,7 @@
 }
 
 .clue-swatch.any {
-    stroke-width: 2;
+    stroke-width: 1.2;
 }
 
 /* Size number sitting on top of the swatch, in white. */

@@ -439,7 +439,7 @@
             class: 'patch-size-num',
             x: bx, y: by,
             'text-anchor': 'middle', 'dominant-baseline': 'middle',
-            dy: '0.02em', 'font-size': cs * 0.18, fill: colorHex,
+            dy: '0.08em', 'font-size': cs * 0.18, fill: colorHex,
         });
         text.textContent = String(num);
         layer.appendChild(text);
@@ -463,8 +463,9 @@
      *  wide+tall pair, per the spec. */
     function drawClueGlyph(layer, cx, cy, cs, clue, color) {
         const g = PC.svgEl('g', { class: 'clue-glyph' });
-        const unit = cs * 0.6;          // long side of the swatch
-        const shortSide = unit * 0.62;  // short side for wide/tall
+        const unit = cs * 0.74;          // long side of a wide/tall swatch (longer)
+        const shortSide = cs * 0.48;     // chunky short side (kept as-is)
+        const squareSide = cs * 0.58;    // a touch shorter than the long side
         const rx = Math.max(2, cs * 0.06);
 
         function swatch(w, h, extra) {
@@ -476,14 +477,14 @@
         }
 
         if (clue.shape === SQUARE) {
-            g.appendChild(swatch(unit, unit));
+            g.appendChild(swatch(squareSide, squareSide));
         } else if (clue.shape === WIDE) {
             g.appendChild(swatch(unit, shortSide));
         } else if (clue.shape === TALL) {
             g.appendChild(swatch(shortSide, unit));
         } else {
-            // any → overlapping dashed wide + tall, translucent.
-            const dash = `${Math.max(2, cs * 0.05)} ${Math.max(2, cs * 0.04)}`;
+            // any → overlapping dashed wide + tall, translucent, finer dash.
+            const dash = `${Math.max(1.5, cs * 0.04)} ${Math.max(1.5, cs * 0.03)}`;
             g.appendChild(swatch(unit, shortSide, {
                 class: 'clue-swatch any', fill: color,
                 'fill-opacity': 0.28, stroke: color, 'stroke-dasharray': dash,
@@ -500,8 +501,8 @@
                 x: cx, y: cy,
                 'text-anchor': 'middle',
                 'dominant-baseline': 'middle',
-                dy: '0.02em',
-                'font-size': Math.max(11, cs * 0.32),
+                dy: '0.08em',
+                'font-size': Math.max(12, cs * 0.36),
             });
             text.textContent = String(clue.size);
             g.appendChild(text);
