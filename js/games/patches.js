@@ -92,6 +92,23 @@
     let board = null;
     let hintBanner = null;
     let clueAt = null;    // Map "r,c" -> clue index, rebuilt per puzzle
+    let undoHistory = null;
+
+    // ----- Shared-puzzle URL (seed round-trips through ?size&difficulty&seed) -----
+    const VALID_SIZES = new Set([5, 6, 7, 8, 9, 10, 11, 12]);
+    const VALID_DIFFS = new Set(['easy', 'medium', 'hard']);
+
+    function readUrlInitial() {
+        if (!PC.share) return null;
+        const raw = PC.share.readParams();
+        if (!VALID_SIZES.has(raw.size)) return null;
+        if (!VALID_DIFFS.has(raw.difficulty)) return null;
+        if (!Number.isInteger(raw.seed)) return null;
+        return { size: raw.size, difficulty: raw.difficulty, seed: raw.seed };
+    }
+
+    const urlInitial = readUrlInitial();
+    let pendingSeed = urlInitial ? urlInitial.seed : null;
 
     function resetPlacements() {
         state.placements = [];
@@ -141,6 +158,51 @@
     function rectsOverlap(a, b) {
         return a.c < b.c + b.w && b.c < a.c + a.w
             && a.r < b.r + b.h && b.r < a.r + a.h;
+    }
+
+    // -----------------------------------------------------------------
+    // Undo (bounded snapshot history — one gesture = one step).
+    // -----------------------------------------------------------------
+
+    function clonePlacements(list) { return list.map((rc) => Object.assign({}, rc)); }
+
+    function snapshotState() { return { placements: clonePlacements(state.placements) }; }
+
+    function restoreSnapshot(snap) {
+        const wasWon = state.won;
+        state.placements = clonePlacements(snap.placements);
+        state.won = false;
+        if (wasWon) shell.clearWin(); // reverse win chrome, resume the clock
+        clearHint();
+        clearViolationDisplay();
+        repaintRects();
+        scheduleViolations();
+        updateStatusRow();
+    }
+
+    function pushUndo() {
+        if (!undoHistory || state.won) return;
+        undoHistory.push();
+        updateUndoButton();
+    }
+
+    // Undo stays available after winning (to review the last moves); it's
+    // only cleared on Reset-after-win / New Game.
+    function doUndo() {
+        if (!state.puzzle) return;
+        if (undoHistory && undoHistory.undo()) updateUndoButton();
+    }
+
+    function updateUndoButton() {
+        const btn = document.getElementById('undo-btn');
+        if (btn) btn.disabled = !(undoHistory && undoHistory.canUndo());
+    }
+
+    function placementIndexUnder(r, c) {
+        for (let i = state.placements.length - 1; i >= 0; i--) {
+            if (rectContainsCell(state.placements[i], r, c)) return i;
+        }
+        return -1;
     }
 
     // -----------------------------------------------------------------
@@ -391,6 +453,7 @@
         updateStatusRow();
         if (state.won) clearViolationDisplay();
         else scheduleViolations();
+        updateUndoButton();
     }
 
     // -----------------------------------------------------------------
@@ -840,6 +903,19 @@
         try { board.releasePointerCapture(ev.pointerId); } catch (_) { /* ignore */ }
         state.drag = null;
 
+        // Snapshot the pre-change board (one gesture = one undo step), but
+        // only when the gesture will actually mutate something.
+        let willChange;
+        if (!d.moved) {
+            willChange = placementIndexUnder(d.sr, d.sc) >= 0;
+        } else {
+            const w = d.maxC - d.minC + 1;
+            const h = d.maxR - d.minR + 1;
+            willChange = w * h >= 2
+                && cluesInBox(d.minR, d.minC, d.maxR, d.maxC).count === 1;
+        }
+        if (willChange) pushUndo();
+
         if (!d.moved) {
             // Click: delete the placed rectangle under the start cell.
             deleteAt(d.sr, d.sc);
@@ -882,15 +958,40 @@
     // -----------------------------------------------------------------
 
     async function startNewGame() {
-        const seed = (Date.now() ^ Math.floor(Math.random() * 0xffffffff)) >>> 0;
+        const seed = pendingSeed != null
+            ? pendingSeed
+            : ((Date.now() ^ Math.floor(Math.random() * 0xffffffff)) >>> 0);
+        pendingSeed = null;
         state.puzzle = await generatePuzzle(shell.size, shell.difficulty, seed);
         rebuildIndices();
         resetPlacements();
+        if (undoHistory) undoHistory.clear();
         renderBoard();
         clearViolationDisplay();
         clearHint();
         updateStatusRow();
+        updateUndoButton();
+        if (PC.share) {
+            PC.share.replaceUrl({
+                size: shell.size, difficulty: shell.difficulty, seed,
+            });
+        }
         if (DEMO) applyDemo();
+    }
+
+    async function onShareClick() {
+        if (!PC.share) return;
+        const ok = await PC.share.copyCurrentUrl();
+        if (PC.toast) PC.toast.show(PC.i18n.t(ok ? 'shareCopied' : 'shareFailed'));
+    }
+
+    function onKeyDown(ev) {
+        if (!state.puzzle) return;
+        if ((ev.ctrlKey || ev.metaKey) && !ev.shiftKey && !ev.altKey
+            && (ev.key === 'z' || ev.key === 'Z')) {
+            doUndo();
+            ev.preventDefault();
+        }
     }
 
     // Demo affordances (see ?patches_demo). 'hint' just opens a hint on the
@@ -947,12 +1048,17 @@
 
     function resetAction() {
         if (!state.puzzle) return;
+        // Mid-game Reset is undoable; a post-win Reset ends the session and
+        // discards its undo history.
+        if (state.won) { if (undoHistory) undoHistory.clear(); }
+        else pushUndo();
         resetPlacements();
         clearViolationDisplay();
         clearHint();
         repaintRects();
         repaintClues();
         updateStatusRow();
+        updateUndoButton();
     }
 
     function onReveal(revealed) {
@@ -972,8 +1078,11 @@
     function init() {
         shell = PC.shell.create({
             gameId: 'patches',
-            difficulty: { default: 'medium' },
-            size: { kind: 'slider', min: MIN_SIZE, max: MAX_SIZE, default: 8 },
+            difficulty: { default: urlInitial ? urlInitial.difficulty : 'medium' },
+            size: {
+                kind: 'slider', min: MIN_SIZE, max: MAX_SIZE,
+                default: urlInitial ? urlInitial.size : 8,
+            },
             onNewGame: startNewGame,
             onReset: resetAction,
             onReveal,
@@ -988,6 +1097,19 @@
         board.addEventListener('pointerup', onPointerUp);
         board.addEventListener('pointercancel', onPointerCancel);
         board.addEventListener('contextmenu', (ev) => ev.preventDefault());
+        window.addEventListener('keydown', onKeyDown);
+
+        undoHistory = PC.history.create({
+            limit: 20,
+            snapshot: snapshotState,
+            restore: restoreSnapshot,
+        });
+
+        const shareBtn = document.getElementById('share-btn');
+        if (shareBtn) shareBtn.addEventListener('click', onShareClick);
+        const undoBtn = document.getElementById('undo-btn');
+        if (undoBtn) undoBtn.addEventListener('click', doUndo);
+
         if (DEBUG) {
             window.__patches = { state, isWin, commitChange, repaintRects };
         }
