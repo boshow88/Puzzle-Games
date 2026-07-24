@@ -1018,6 +1018,21 @@
     box-shadow: 0 2px 6px rgba(0, 0, 0, 0.3);
 }
 
+/* Size badge on a placed rectangle: opaque (masks the grid line beneath),
+   filled inline with the rectangle's own colour, white number on top. */
+.patch-size {
+    stroke: rgba(0, 0, 0, 0.12);
+    stroke-width: 1;
+    pointer-events: none;
+}
+.patch-size-num {
+    /* fill is set inline to the patch's own (saturated) colour */
+    font-family: var(--font-body);
+    font-weight: 700;
+    pointer-events: none;
+    user-select: none;
+}
+
 /* Clue swatch — a small shape token tinted with the clue's colour. */
 .clue-swatch {
     stroke: rgba(0, 0, 0, 0.12);

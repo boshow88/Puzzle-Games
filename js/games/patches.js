@@ -54,6 +54,10 @@
             % PATCH_COLORS.length];
     }
 
+    // Matches CSS --accent-danger; used so a flagged rectangle's size badge
+    // turns red along with the rectangle.
+    const DANGER_HEX = '#dc3545';
+
     // -----------------------------------------------------------------
     // Generation wrapper (adapts the async generator to the shared
     // determinate progress bar — mirrors the other games).
@@ -256,6 +260,11 @@
         }
         svg.appendChild(grid);
 
+        // Layer: size badges (above the grid so they can mask a grid line).
+        const sizes = PC.svgEl('g', { class: 'patch-sizes-layer' });
+        sizes.setAttribute('id', 'patch-sizes');
+        svg.appendChild(sizes);
+
         // Layer: outer frame.
         const borders = PC.svgEl('g', { class: 'region-borders' });
         const W = N * cs;
@@ -305,15 +314,22 @@
         const { count, idx } = cluesInBox(d.minR, d.minC, d.maxR, d.maxC);
         const tinted = count === 1;
         const color = tinted ? clueColor(idx) : '#7a7a7a';
+        const w = d.maxC - d.minC + 1;
+        const h = d.maxR - d.minR + 1;
         layer.appendChild(PC.svgEl('rect', {
             class: 'patch-preview' + (tinted ? ' tinted' : ''),
             x: d.minC * cs + inset,
             y: d.minR * cs + inset,
-            width: (d.maxC - d.minC + 1) * cs - inset * 2,
-            height: (d.maxR - d.minR + 1) * cs - inset * 2,
+            width: w * cs - inset * 2,
+            height: h * cs - inset * 2,
             rx: radius, ry: radius,
             fill: color, stroke: color,
         }));
+        // Live size readout while dragging (matches the placed-rect badge).
+        if (w * h >= 2) {
+            drawSizeBadge(layer, { r: d.minR, c: d.minC, w, h }, w * h, color,
+                tinted ? 0.5 : 0.34, tinted ? state.puzzle.clues[idx] : null);
+        }
     }
 
     /** Draw the solution partition when Reveal is on (P2 will also draw
@@ -350,6 +366,83 @@
                 stroke: color,
             }));
         }
+
+        repaintSizes();
+    }
+
+    /** Size badges: each placed rectangle's current cell-count. Shown only
+     *  while actively playing (not on the reveal overlay, and gone on the
+     *  finished-quilt win state). A rectangle currently flagged as a
+     *  violation (red pulsing) gets a red badge to match. */
+    function repaintSizes() {
+        const sizeLayer = board && board.querySelector('#patch-sizes');
+        if (!sizeLayer) return;
+        while (sizeLayer.firstChild) sizeLayer.removeChild(sizeLayer.firstChild);
+        if (!state.puzzle || state.won || shell.revealed) return;
+        const violating = new Set();
+        board.querySelectorAll('.patch-rect.violation').forEach((el) => {
+            violating.add(parseInt(el.getAttribute('data-clue'), 10));
+        });
+        for (const rc of state.placements) {
+            const colorHex = violating.has(rc.clue) ? DANGER_HEX : clueColor(rc.clue);
+            drawSizeBadge(sizeLayer, rc, rc.w * rc.h, colorHex, 0.55,
+                state.puzzle.clues[rc.clue]);
+        }
+    }
+
+    /** The opaque colour a `hex` fill of the given `alpha` resolves to over
+     *  the white board — so a badge matches a translucent patch/preview
+     *  exactly while still masking the grid line beneath it. */
+    function compositeOverWhite(hex, alpha) {
+        let h = String(hex).replace('#', '');
+        if (h.length === 3) h = h.split('').map((ch) => ch + ch).join('');
+        const r = parseInt(h.slice(0, 2), 16);
+        const g = parseInt(h.slice(2, 4), 16);
+        const b = parseInt(h.slice(4, 6), 16);
+        const mix = (c) => Math.round(alpha * c + (1 - alpha) * 255);
+        return `rgb(${mix(r)}, ${mix(g)}, ${mix(b)})`;
+    }
+
+    /** Size badge for a box — a placed rectangle OR the live drag preview.
+     *  The frame is the box's own on-white colour (opaque, so it masks the
+     *  grid); the number is the saturated base colour (same family, readable —
+     *  not white). Dodges one cell if its centre lands on `dodgeClue`. */
+    function drawSizeBadge(layer, box, num, colorHex, alpha, dodgeClue) {
+        const cs = cellSize();
+        let bx = (box.c + box.w / 2) * cs;
+        let by = (box.r + box.h / 2) * cs;
+        if (dodgeClue) {
+            const clcx = (dodgeClue.c + 0.5) * cs;
+            const clcy = (dodgeClue.r + 0.5) * cs;
+            if (Math.abs(bx - clcx) < cs * 0.5 && Math.abs(by - clcy) < cs * 0.5) {
+                if (box.w > 1) {
+                    const right = (box.c + box.w - 1) - dodgeClue.c;
+                    const left = dodgeClue.c - box.c;
+                    bx += (right >= left ? 1 : -1) * cs;
+                } else {
+                    const down = (box.r + box.h - 1) - dodgeClue.r;
+                    const up = dodgeClue.r - box.r;
+                    by += (down >= up ? 1 : -1) * cs;
+                }
+            }
+        }
+        const digits = String(num).length;
+        const bh = cs * 0.26;
+        const bw = Math.max(bh, cs * (0.12 + 0.11 * digits));
+        const rx = bh * 0.42;
+        layer.appendChild(PC.svgEl('rect', {
+            class: 'patch-size',
+            x: bx - bw / 2, y: by - bh / 2, width: bw, height: bh,
+            rx, ry: rx, fill: compositeOverWhite(colorHex, alpha),
+        }));
+        const text = PC.svgEl('text', {
+            class: 'patch-size-num',
+            x: bx, y: by,
+            'text-anchor': 'middle', 'dominant-baseline': 'middle',
+            dy: '0.02em', 'font-size': cs * 0.18, fill: colorHex,
+        });
+        text.textContent = String(num);
+        layer.appendChild(text);
     }
 
     function repaintClues() {
@@ -553,6 +646,7 @@
         renderBubbles(vs);
         shell.setViolationCount(vs.length);
         state.violationsShown = vs.length > 0;
+        repaintSizes(); // recolour flagged rectangles' badges red
     }
 
     function renderBubbles(vs) {
@@ -592,6 +686,7 @@
             .forEach((el) => el.classList.remove('violation'));
         if (shell) shell.setViolationCount(0);
         state.violationsShown = false;
+        repaintSizes(); // restore badges to their clue colours
     }
 
     // -----------------------------------------------------------------
