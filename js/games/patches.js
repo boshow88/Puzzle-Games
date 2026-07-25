@@ -775,23 +775,16 @@
         const PI = window.PuzzleGenerators.patchesInternals;
         const clueAtArr = PI.makeClueAt(N, p.clues);
 
-        const solMap = new Map();
-        for (const s of p.solution) solMap.set(s.clue, s);
-
-        // Cells locked in by the player. A placement equal to its solution
-        // rect is complete (skip); one strictly inside it is a valid partial
-        // still being built (a tier-1 completion candidate).
+        // The player's committed cells are LOWER BOUNDS only — a placed patch
+        // may still grow. We deliberately don't consult the solution here, so
+        // every deduction is sound pure logic (no "this patch is done because
+        // the answer says so", which was making tier-3 reasoning wrong).
         const owner = new Int32Array(N * N).fill(-1);
         const placementByClue = new Map();
-        const fullyPlaced = new Set();
         for (const rc of state.placements) {
             placementByClue.set(rc.clue, rc);
             for (let r = rc.r; r < rc.r + rc.h; r++) {
                 for (let c = rc.c; c < rc.c + rc.w; c++) owner[r * N + c] = rc.clue;
-            }
-            const s = solMap.get(rc.clue);
-            if (s && rc.r === s.r && rc.c === s.c && rc.w === s.w && rc.h === s.h) {
-                fullyPlaced.add(rc.clue);
             }
         }
         // Usable by clue i iff it covers no cell owned by ANOTHER clue.
@@ -807,11 +800,14 @@
         const contains = (R, inner) => R.r <= inner.r && R.c <= inner.c
             && R.r + R.h >= inner.r + inner.h && R.c + R.w >= inner.c + inner.w;
 
-        // Each not-fully-placed clue's still-valid rectangles: completions
-        // (⊇ the partial) for a partially-built clue, else placements.
+        // Every clue's still-valid rectangles: those ⊇ its placement (if any)
+        // that cover no cell owned by another clue. A placed patch's possible
+        // EXPANSIONS are included, so it counts as able to reach nearby free
+        // cells — that's what fixes the bad tier-3 (a no-size neighbour that
+        // could grow to cover a cell is no longer ignored).
+        const sameRect = (a, b) => a.r === b.r && a.c === b.c && a.w === b.w && a.h === b.h;
         const active = [];
         for (let i = 0; i < p.clues.length; i++) {
-            if (fullyPlaced.has(i)) continue;
             const partial = placementByClue.get(i) || null;
             let cands = PI.enumerateCandidates(N, p.clues[i], i, clueAtArr)
                 .filter((R) => freeFor(R, i));
@@ -824,13 +820,16 @@
         // Tier 1 (partial clue, single completion) & Tier 2 (unplaced clue,
         // single placement) — both suggest that clue's full rectangle.
         for (const a of active) {
-            if (a.cands.length === 1) {
-                candidates.push({
-                    kind: 'deduce', rc: Object.assign({}, a.cands[0], { clue: a.i }),
-                    clue: a.i, tier: a.partial ? 1 : 2,
-                    msgKey: a.partial ? 'patchesHint1' : 'patchesHint2',
-                });
-            }
+            if (a.cands.length !== 1) continue;
+            const only = a.cands[0];
+            // A placed patch whose one rectangle is exactly what's already
+            // there is complete — nothing to suggest.
+            if (a.partial && sameRect(only, a.partial)) continue;
+            candidates.push({
+                kind: 'deduce', rc: Object.assign({}, only, { clue: a.i }),
+                clue: a.i, tier: a.partial ? 1 : 2,
+                msgKey: a.partial ? 'patchesHint1' : 'patchesHint2',
+            });
         }
         // Tier 3 — non-clue empty cells only one clue's region can reach; the
         // suggested rectangle is the minimal drag from the clue to that cell.
