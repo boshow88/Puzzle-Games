@@ -2,11 +2,11 @@
 <html lang="en">
 <head>
   <meta charset="utf-8" />
-  <title>Patches — hint soundness / no-leak self-test</title>
+  <title>Patches — hint soundness (solver-backed) self-test</title>
   <style>
     body { font: 14px/1.5 ui-monospace, Consolas, monospace; margin: 16px; }
     .pass { color: #128a12; } .fail { color: #c0272d; font-weight: 700; }
-    h2 { margin: 18px 0 6px; } pre { white-space: pre-wrap; }
+    pre { white-space: pre-wrap; }
   </style>
   <script src="../js/common.js"></script>
   <script src="../js/generators/patches.js"></script>
@@ -19,151 +19,87 @@
     const I = window.PuzzleGenerators.patchesInternals;
     const PC = window.PuzzleCommon;
     const S = I.SHAPES;
+    const TECH = I.TECHNIQUES_BY_DIFFICULTY;
     const out = [];
     let fails = 0;
-    const log = (s, ok) => { out.push((ok === undefined ? '' : (ok ? '  ok  ' : ' FAIL ')) + s); if (ok === false) fails++; };
+    const ok = (s, cond) => { out.push((cond ? '  ok  ' : ' FAIL ') + s); if (!cond) fails++; };
+    const note = (s) => out.push('       ' + s);
 
-    // --- copy of the game's computeDeduction (post-fix), parameterised ------
-    function clueIdxAt(clues, r, c) {
-      for (let i = 0; i < clues.length; i++) if (clues[i].r === r && clues[i].c === c) return i;
-      return -1;
-    }
-    function computeDeduction(clues, placements, N) {
-      const clueAtArr = I.makeClueAt(N, clues);
-      const owner = new Int32Array(N * N).fill(-1);
-      const placementByClue = new Map();
-      for (const rc of placements) {
-        placementByClue.set(rc.clue, rc);
-        for (let r = rc.r; r < rc.r + rc.h; r++)
-          for (let c = rc.c; c < rc.c + rc.w; c++) owner[r * N + c] = rc.clue;
-      }
-      const freeFor = (R, i) => {
-        for (let r = R.r; r < R.r + R.h; r++)
-          for (let c = R.c; c < R.c + R.w; c++) {
-            const o = owner[r * N + c]; if (o !== -1 && o !== i) return false;
-          }
-        return true;
-      };
-      const contains = (R, inner) => R.r <= inner.r && R.c <= inner.c
-        && R.r + R.h >= inner.r + inner.h && R.c + R.w >= inner.c + inner.w;
-      const sameRect = (a, b) => a.r === b.r && a.c === b.c && a.w === b.w && a.h === b.h;
-      const active = [];
-      for (let i = 0; i < clues.length; i++) {
-        const partial = placementByClue.get(i) || null;
-        let cands = I.enumerateCandidates(N, clues[i], i, clueAtArr).filter((R) => freeFor(R, i));
-        if (partial) cands = cands.filter((R) => contains(R, partial));
-        active.push({ i, partial, cands });
-      }
-      const candidates = [];
-      for (const a of active) {
-        if (a.cands.length !== 1) continue;
-        const only = a.cands[0];
-        if (a.partial && sameRect(only, a.partial)) continue;
-        candidates.push({ kind: 'deduce', rc: Object.assign({}, only, { clue: a.i }), clue: a.i, tier: a.partial ? 1 : 2 });
-      }
-      const coverClue = new Int32Array(N * N).fill(-1);
-      const coverCount = new Int32Array(N * N);
-      for (const a of active) {
-        const seen = new Set();
-        for (const R of a.cands)
-          for (let r = R.r; r < R.r + R.h; r++)
-            for (let c = R.c; c < R.c + R.w; c++) {
-              const k = r * N + c; if (seen.has(k)) continue; seen.add(k);
-              if (coverClue[k] !== a.i) { coverCount[k] += 1; coverClue[k] = a.i; }
-            }
-      }
-      for (let k = 0; k < N * N; k++) {
-        if (owner[k] !== -1 || coverCount[k] !== 1) continue;
-        const r = (k / N) | 0, c = k % N;
-        if (clueIdxAt(clues, r, c) >= 0) continue;
-        const clue = coverClue[k], cl = clues[clue], base = placementByClue.get(clue);
-        const r0 = base ? base.r : cl.r, c0 = base ? base.c : cl.c;
-        const r1 = base ? base.r + base.h - 1 : cl.r, c1 = base ? base.c + base.w - 1 : cl.c;
-        const minR = Math.min(r0, r), minC = Math.min(c0, c), maxR = Math.max(r1, r), maxC = Math.max(c1, c);
-        candidates.push({ kind: 'deduce-cell', rc: { r: minR, c: minC, w: maxC - minC + 1, h: maxR - minR + 1, clue }, cell: [r, c], clue, tier: 3 });
-      }
-      const area = (t) => t.w * t.h;
-      const encloses = (o, t) => o.r <= t.r && o.c <= t.c && o.r + o.h >= t.r + t.h && o.c + o.w >= t.c + t.w;
-      const kept = candidates.filter((h) => !candidates.some((o) => o !== h && o.clue === h.clue && area(o.rc) > area(h.rc) && encloses(o.rc, h.rc)));
-      kept.sort((a, b) => a.tier - b.tier);
-      return kept[0] || null;
-    }
-
-    // --- 1) explicit regression: a no-size neighbour that can grow to a -----
-    //         free cell must NOT let that cell be "forced" to another clue.
-    log('1) no-leak regression (a growable no-size neighbour blocks a false Tier 3)');
+    // --- 1) no-leak regression: a growable no-size neighbour that can reach a
+    //         shared cell must NOT let that cell be "forced" to another clue.
     {
       const N = 4;
-      // B = wide, NO size, clue at (1,0); A = any, size 2, clue at (0,3).
       const clues = [
-        { r: 1, c: 0, shape: S.WIDE, size: null },  // idx 0  (B)
-        { r: 0, c: 3, shape: S.ANY, size: 2 },       // idx 1  (A)
+        { r: 1, c: 0, shape: S.WIDE, size: null }, // idx 0 (B): wide, no size
+        { r: 0, c: 3, shape: S.ANY, size: 2 },      // idx 1 (A): any, size 2
       ];
-      // B placed as 1x3 (cols 0..2, row 1). Cell (1,3) is reachable by BOTH
-      // B (grow to 1x4) and A (vertical 2 down col 3) → must not be forced.
-      const placements = [{ r: 1, c: 0, w: 3, h: 1, clue: 0 }];
-      const h = computeDeduction(clues, placements, N);
-      const bad = h && h.kind === 'deduce-cell' && h.cell[0] === 1 && h.cell[1] === 3;
-      log('cell (1,3) is not falsely forced to clue A' + (h ? ' (got ' + h.kind + (h.cell ? ' @' + h.cell : '') + ')' : ' (got null)'), !bad);
+      const seed = [{ r: 1, c: 0, w: 3, h: 1, clue: 0 }]; // B as 1x3
+      const st = I.makeState(N, clues, seed);
+      const step = I.nextStep(st, TECH.hard);
+      const bad = step && step.kind === 'forceCell' && step.cell[0] === 1 && step.cell[1] === 3;
+      ok('cell (1,3) not falsely forced (B can grow 1x4 to reach it)'
+        + (step ? ` [got ${step.technique}/${step.kind}${step.cell ? ' @' + step.cell : ''}]` : ' [got null]'), !bad);
     }
 
-    // --- helpers for generated walkthroughs --------------------------------
-    function clueIndexFor(clues, rect) {
-      for (let i = 0; i < clues.length; i++)
-        if (rect.r <= clues[i].r && clues[i].r < rect.r + rect.h
-          && rect.c <= clues[i].c && clues[i].c < rect.c + rect.w) return i;
-      return -1;
-    }
-    function genPuzzle(N, diff, seed) {
-      const rng = PC.rng.make(seed >>> 0);
-      let rects = null, clues = null;
-      for (let a = 0; a < 40; a++) {
-        const rr = I.tileGrid(N, rng, diff), cc = I.cluesFromTiling(rr, rng);
-        if (I.isUnique(N, cc)) { rects = rr; clues = cc; break; }
-      }
-      if (!clues) { rects = I.tileGrid(N, rng, diff); clues = I.cluesFromTiling(rects, rng); }
-      I.digDifficulty(N, clues, diff, rng, Date.now() + 4000);
-      const solution = rects.map((rect) => ({ r: rect.r, c: rect.c, w: rect.w, h: rect.h, clue: clueIndexFor(clues, rect) }));
-      return { N, clues, solution };
-    }
+    // --- helpers ----------------------------------------------------------
+    const ownerOf = (N, rects) => {
+      const o = new Int32Array(N * N).fill(-1);
+      rects.forEach((rc, i) => { for (let r = rc.r; r < rc.r + rc.h; r++) for (let c = rc.c; c < rc.c + rc.w; c++) o[r * N + c] = i; });
+      return o;
+    };
+    const sol = {}; // filled per puzzle
     const inRect = (R, r, c) => R.r <= r && r < R.r + R.h && R.c <= c && c < R.c + R.w;
+    const eqRect = (a, b) => a.r === b.r && a.c === b.c && a.w === b.w && a.h === b.h;
+    function pickBase(N, seed, capMs) {
+      const rng = PC.rng.make(seed >>> 0); const dl = Date.now() + capMs;
+      let rects = null, clues = null;
+      for (let a = 0; a < 40; a++) { const rr = I.tileGrid(N, rng, 'hard'), cc = I.cluesFromTiling(rr, rng); if (I.isUnique(N, cc)) { rects = rr; clues = cc; break; } if (Date.now() > dl) { rects = rr; clues = cc; break; } }
+      if (!clues) { rects = I.tileGrid(N, rng, 'hard'); clues = I.cluesFromTiling(rects, rng); }
+      return { rng, clues, rects };
+    }
+    const cloneClues = (cs) => cs.map((c) => ({ ...c }));
 
-    // --- 2) generated walkthroughs: every hint sound + solves --------------
-    const configs = [
-      { N: 6, diff: 'easy' }, { N: 6, diff: 'medium' },
-      { N: 8, diff: 'easy' }, { N: 8, diff: 'medium' },
-      { N: 10, diff: 'easy' }, { N: 10, diff: 'medium' },
-    ];
-    for (const cfg of configs) {
-      let unsound = 0, unsolved = 0, ran = 0;
-      for (let s = 1; s <= 12; s++) {
-        let puz; try { puz = genPuzzle(cfg.N, cfg.diff, 7000 + s * 131 + cfg.N); } catch (e) { if (ran === 0 && s === 1) log('   (genPuzzle threw: ' + (e && e.message) + ' @ ' + (e && e.stack ? e.stack.split('\n')[1] : '?') + ')'); continue; }
-        ran++;
-        const solByClue = new Map(); puz.solution.forEach((r) => solByClue.set(r.clue, r));
-        const placed = new Map(); // clue -> solution rect
-        let steps = 0, ok = true;
-        while (steps++ < puz.clues.length + 4) {
-          const placements = [...placed.values()].map((r) => ({ r: r.r, c: r.c, w: r.w, h: r.h, clue: r.clue }));
-          const covered = placements.reduce((a, r) => a + r.w * r.h, 0);
-          if (covered === cfg.N * cfg.N) break; // solved
-          const h = computeDeduction(puz.clues, placements, cfg.N);
-          if (!h) { ok = false; break; } // stuck though not solved → incomplete
-          // soundness: the hint's conclusion must agree with the unique solution
-          const sol = solByClue.get(h.clue);
-          if (h.kind === 'deduce') {
-            if (!(h.rc.r === sol.r && h.rc.c === sol.c && h.rc.w === sol.w && h.rc.h === sol.h)) { unsound++; }
-          } else if (h.kind === 'deduce-cell') {
-            if (!inRect(sol, h.cell[0], h.cell[1])) { unsound++; }
-          }
-          // follow the hint: lock in that clue's full solution rectangle
-          placed.set(h.clue, sol);
+    // Mirror the game's step→conclusion soundness check against the solution.
+    function stepIsSound(step, solByClue) {
+      const s = solByClue.get(step.clue);
+      if (!s) return false;
+      if (step.kind === 'commit') return eqRect(step.rect, s);
+      if (step.kind === 'forceCell') return inRect(s, step.cell[0], step.cell[1]);
+      if (step.kind === 'elim') return !eqRect(step.rect, s); // the impossible cand isn't the true one
+      return false;
+    }
+
+    // --- 2) per-difficulty: every hint sound + hint-walkthrough solves -----
+    for (const N of [6, 8, 10]) {
+      let base; try { base = pickBase(N, 3100 + N, 1200); } catch (e) { ok(`pickBase ${N}`, false); continue; }
+      const solRects = base.rects.map((rc, i) => ({ ...rc, clue: i }));
+      const solByClue = new Map(solRects.map((r) => [r.clue, r]));
+      for (const diff of ['easy', 'medium', 'hard']) {
+        const clues = cloneClues(base.clues);
+        const rng = PC.rng.make(6000 + N * 13 + diff.length);
+        try { I.digDifficulty(N, clues, ownerOf(N, base.rects), diff, rng, Date.now() + 900); }
+        catch (e) { ok(`${N} ${diff} dig`, false); continue; }
+
+        // Walk the solver step-by-step (the same nextStep the game hint uses),
+        // asserting each step's CONCLUSION agrees with the unique solution, and
+        // that the sequence reaches a full cover. applyStep is used so that
+        // elimination (orphan) steps are honoured, not just placements.
+        const st = I.makeState(N, clues);
+        let unsound = 0, steps = 0;
+        let budget = N * N + 50;
+        for (let i = 0; i < st.K; i++) budget += st.cands[i].length;
+        while (steps++ < budget) {
+          if (st.dead) break;
+          const step = I.nextStep(st, TECH[diff]);
+          if (!step) break;
+          if (!stepIsSound(step, solByClue)) unsound++;
+          if (!I.applyStep(st, step)) break;
         }
-        const covered = [...placed.values()].reduce((a, r) => a + r.w * r.h, 0);
-        if (!ok || covered !== cfg.N * cfg.N) unsolved++;
+        let solved = !st.dead && st.remaining === 0;
+        if (solved) for (let k = 0; k < N * N; k++) if (st.owner[k] === -1) { solved = false; break; }
+        ok(`${N}x${N} ${diff}: every hint step sound`, unsound === 0);
+        ok(`${N}x${N} ${diff}: hint sequence solves fully`, solved);
       }
-      const tag = `2) ${cfg.N}x${cfg.N} ${cfg.diff}: ran ${ran}`;
-      log(`${tag} — every hint sound`, unsound === 0);
-      log(`${tag} — hint-walkthrough solves all`, unsolved === 0);
     }
 
     document.getElementById('out').textContent = out.join('\n');

@@ -23,7 +23,7 @@
     // the violation UI can be seen (and screenshotted) immediately.  [DEBUG-HOOK]
     const DEMO = (function () {
         if (typeof location === 'undefined') return null;
-        const m = /[?&]patches_demo=([a-z]+)/.exec(location.search);
+        const m = /[?&]patches_demo=([a-z0-9]+)/.exec(location.search);
         return m ? m[1] : null;
     })();
 
@@ -102,13 +102,16 @@
     const VALID_SIZES = new Set([5, 6, 7, 8, 9, 10, 11, 12]);
     const VALID_DIFFS = new Set(['easy', 'medium', 'hard']);
 
+    // Each field applies on its own — a bare ?diff=hard or ?size=10 (e.g. for a
+    // ?patches_demo=orphan URL) sets that control without needing a seed too.
     function readUrlInitial() {
         if (!PC.share) return null;
         const raw = PC.share.readParams();
-        if (!VALID_SIZES.has(raw.size)) return null;
-        if (!VALID_DIFFS.has(raw.difficulty)) return null;
-        if (!Number.isInteger(raw.seed)) return null;
-        return { size: raw.size, difficulty: raw.difficulty, seed: raw.seed };
+        const size = VALID_SIZES.has(raw.size) ? raw.size : null;
+        const difficulty = VALID_DIFFS.has(raw.difficulty) ? raw.difficulty : null;
+        const seed = Number.isInteger(raw.seed) ? raw.seed : null;
+        if (size == null && difficulty == null && seed == null) return null;
+        return { size, difficulty, seed };
     }
 
     const urlInitial = readUrlInitial();
@@ -773,121 +776,78 @@
         const p = state.puzzle;
         const N = p.size;
         const PI = window.PuzzleGenerators.patchesInternals;
-        const clueAtArr = PI.makeClueAt(N, p.clues);
+        const tech = PI.TECHNIQUES_BY_DIFFICULTY[p.difficulty]
+            || PI.TECHNIQUES_BY_DIFFICULTY.medium;
 
-        // The player's committed cells are LOWER BOUNDS only — a placed patch
-        // may still grow. We deliberately don't consult the solution here, so
-        // every deduction is sound pure logic (no "this patch is done because
-        // the answer says so", which was making tier-3 reasoning wrong).
-        const owner = new Int32Array(N * N).fill(-1);
-        const placementByClue = new Map();
-        for (const rc of state.placements) {
-            placementByClue.set(rc.clue, rc);
-            for (let r = rc.r; r < rc.r + rc.h; r++) {
-                for (let c = rc.c; c < rc.c + rc.w; c++) owner[r * N + c] = rc.clue;
-            }
-        }
-        // Usable by clue i iff it covers no cell owned by ANOTHER clue.
-        const freeFor = (R, i) => {
-            for (let r = R.r; r < R.r + R.h; r++) {
-                for (let c = R.c; c < R.c + R.w; c++) {
-                    const o = owner[r * N + c];
-                    if (o !== -1 && o !== i) return false;
-                }
-            }
-            return true;
-        };
-        const contains = (R, inner) => R.r <= inner.r && R.c <= inner.c
-            && R.r + R.h >= inner.r + inner.h && R.c + R.w >= inner.c + inner.w;
+        // The player's rectangles are LOWER BOUNDS (a patch may still grow).
+        // Hand them to the SHARED solver and ask for the single next deduction
+        // it would make at THIS difficulty's technique level, so hints match
+        // the generator exactly and harder boards (which need core/orphan
+        // reasoning) always have a next step to show. No solution peeking —
+        // every step is sound pure logic.
+        const seed = state.placements.map((rc) => ({
+            r: rc.r, c: rc.c, w: rc.w, h: rc.h, clue: rc.clue,
+        }));
+        const st = PI.makeState(N, p.clues, seed);
+        const res = PI.findAllDeductions(st, tech);
+        if (!res || !res.steps.length) return null;
 
-        // Every clue's still-valid rectangles: those ⊇ its placement (if any)
-        // that cover no cell owned by another clue. A placed patch's possible
-        // EXPANSIONS are included, so it counts as able to reach nearby free
-        // cells — that's what fixes the bad tier-3 (a no-size neighbour that
-        // could grow to cover a cell is no longer ignored).
-        const sameRect = (a, b) => a.r === b.r && a.c === b.c && a.w === b.w && a.h === b.h;
-        const active = [];
-        for (let i = 0; i < p.clues.length; i++) {
-            const partial = placementByClue.get(i) || null;
-            let cands = PI.enumerateCandidates(N, p.clues[i], i, clueAtArr)
-                .filter((R) => freeFor(R, i));
-            if (partial) cands = cands.filter((R) => contains(R, partial));
-            active.push({ i, partial, cands });
-        }
-
-        // Gather every candidate deduction across all rules.
-        const candidates = [];
-        // Tier 1 (partial clue, single completion) & Tier 2 (unplaced clue,
-        // single placement) — both suggest that clue's full rectangle.
-        for (const a of active) {
-            if (a.cands.length !== 1) continue;
-            const only = a.cands[0];
-            // A placed patch whose one rectangle is exactly what's already
-            // there is complete — nothing to suggest.
-            if (a.partial && sameRect(only, a.partial)) continue;
-            candidates.push({
-                kind: 'deduce', rc: Object.assign({}, only, { clue: a.i }),
-                clue: a.i, tier: a.partial ? 1 : 2,
-                msgKey: a.partial ? 'patchesHint1' : 'patchesHint2',
-            });
-        }
-        // Tier 3 — non-clue empty cells only one clue's region can reach; the
-        // suggested rectangle is the minimal drag from the clue to that cell.
-        const coverClue = new Int32Array(N * N).fill(-1);
-        const coverCount = new Int32Array(N * N);
-        for (const a of active) {
-            const seen = new Set();
-            for (const R of a.cands) {
-                for (let r = R.r; r < R.r + R.h; r++) {
-                    for (let c = R.c; c < R.c + R.w; c++) {
-                        const k = r * N + c;
-                        if (seen.has(k)) continue;
-                        seen.add(k);
-                        if (coverClue[k] !== a.i) { coverCount[k] += 1; coverClue[k] = a.i; }
-                    }
-                }
-            }
-        }
-        for (let k = 0; k < N * N; k++) {
-            if (owner[k] !== -1 || coverCount[k] !== 1) continue;
-            const r = (k / N) | 0;
-            const c = k % N;
-            if (clueIndexAt(r, c) >= 0) continue; // clue cells belong to self, trivially
-            const clue = coverClue[k];
+        const placedClue = new Set(state.placements.map((rc) => rc.clue));
+        // Minimal bounding box from a clue's current shape (its placement if
+        // any, else just its clue cell) unioned with a target cell — so the
+        // lit area includes what the player has already drawn. This IS the
+        // rectangle the hint suggests the player draw.
+        const boxToCell = (clue, r, c) => {
+            const base = state.placements.find((rc) => rc.clue === clue) || null;
             const cl = p.clues[clue];
-            // Grow FROM the player's current shape: use its partial rectangle's
-            // bounds if one is placed (so the highlight includes what they've
-            // already drawn), else just the clue cell. The suggested rectangle
-            // is that base unioned with the target cell.
-            const base = placementByClue.get(clue);
             const r0 = base ? base.r : cl.r;
             const c0 = base ? base.c : cl.c;
             const r1 = base ? base.r + base.h - 1 : cl.r;
             const c1 = base ? base.c + base.w - 1 : cl.c;
-            const minR = Math.min(r0, r);
-            const minC = Math.min(c0, c);
-            const maxR = Math.max(r1, r);
-            const maxC = Math.max(c1, c);
-            const rc = {
-                r: minR, c: minC, w: maxC - minC + 1, h: maxR - minR + 1, clue,
-            };
-            candidates.push({ kind: 'deduce-cell', rc, cell: [r, c], clue, tier: 3, msgKey: 'patchesHint3' });
-        }
+            const minR = Math.min(r0, r), minC = Math.min(c0, c);
+            const maxR = Math.max(r1, r), maxC = Math.max(c1, c);
+            return { r: minR, c: minC, w: maxC - minC + 1, h: maxR - minR + 1, clue };
+        };
+        const impliedRect = (s) => s.kind === 'commit'
+            ? Object.assign({}, s.rect, { clue: s.clue })
+            : boxToCell(s.clue, s.cell[0], s.cell[1]);
 
-        // Drop any hint dominated by a STRONGER hint on the SAME clue — one
-        // whose suggested rectangle strictly contains this one's (e.g. a small
-        // tier-3 drag box sitting inside that clue's full placement, or a
-        // shorter reach when a longer forced reach exists).
+        // Attach each step's implied rectangle, then DROP any step whose
+        // rectangle is fully contained in another step's for the SAME clue —
+        // never offer a weaker suggestion when a bigger one exists. Among what
+        // survives, keep scan order (already lowest-tier from the solver).
+        const withRc = res.steps.map((s) => ({ s, rc: impliedRect(s) }));
         const area = (t) => t.w * t.h;
-        const encloses = (o, t) => o.r <= t.r && o.c <= t.c
+        const covers = (o, t) => o.r <= t.r && o.c <= t.c
             && o.r + o.h >= t.r + t.h && o.c + o.w >= t.c + t.w;
-        const kept = candidates.filter((h) => !candidates.some((o) =>
-            o !== h && o.clue === h.clue && area(o.rc) > area(h.rc) && encloses(o.rc, h.rc)));
+        const kept = withRc.filter((h) => !withRc.some((o) =>
+            o !== h && o.s.clue === h.s.clue && area(o.rc) > area(h.rc) && covers(o.rc, h.rc)));
+        const pick = (kept[0] || withRc[0]);
+        const step = pick.s;
 
-        // Then honour the tier priority (1 → 2 → 3); Array.sort is stable, so
-        // ties keep their scan order (clue index, then row-major cells).
-        kept.sort((a, b) => a.tier - b.tier);
-        return kept[0] || null;
+        if (step.kind === 'commit') {
+            // Rule B: this clue is pinned to exactly one rectangle. Tier 1 if
+            // the player has a partial to complete, else tier 2 (fresh place).
+            const partial = placedClue.has(step.clue);
+            return {
+                kind: 'deduce',
+                rc: pick.rc,
+                clue: step.clue,
+                msgKey: partial ? 'patchesHint1' : 'patchesHint2',
+            };
+        }
+        // forceCell — the cell belongs to that clue. Rule A / core / orphan all
+        // present the same way (outline the cell, light the implied rectangle);
+        // only the explanation differs.
+        const msgKey = step.technique === 'core' ? 'patchesHintCore'
+            : step.technique === 'orphan' ? 'patchesHintOrphan' : 'patchesHint3';
+        return {
+            kind: 'deduce-cell',
+            rc: pick.rc,
+            cell: step.cell,
+            clue: step.clue,
+            msgKey,
+        };
     }
 
     function repaintHint() {
@@ -919,29 +879,27 @@
             }
         }
 
-        const danger = h.kind === 'conflict' || h.kind === 'wrong';
-        const cls = 'patch-hint-outline' + (danger ? ' danger' : '');
         const inset = Math.max(2, cs * 0.06);
         const rad = Math.max(3, cs * 0.1);
-        const outline = (r, c, w, h2) => layer.appendChild(PC.svgEl('rect', {
-            class: cls,
+        const outline = (r, c, w, h2, dngr) => layer.appendChild(PC.svgEl('rect', {
+            class: 'patch-hint-outline' + (dngr ? ' danger' : ''),
             x: c * cs + inset, y: r * cs + inset,
             width: w * cs - inset * 2, height: h2 * cs - inset * 2,
             rx: rad, ry: rad,
         }));
         // The outline marks the "protagonist"; the lit (undimmed) area is the
-        // rectangle the hint wants the player to draw (h.rc).
-        //   tier 3         → outline the forced cell.
-        //   tier 1/2       → outline the clue (shape) cell, so "this outlined
-        //                    shape" points clearly at the clue itself.
-        //   conflict/wrong → outline the offending placed rectangle.
+        // rectangle the hint suggests the player draw (h.rc).
+        //   deduce (tier 1/2)          → outline the clue (shape) cell.
+        //   deduce-cell (Rule A/core/  → outline the forced cell.
+        //     orphan)
+        //   conflict / wrong           → red-outline the offending rectangle.
         if (h.kind === 'deduce-cell' && h.cell) {
-            outline(h.cell[0], h.cell[1], 1, 1);
+            outline(h.cell[0], h.cell[1], 1, 1, false);
         } else if (h.kind === 'deduce' && h.clue != null) {
             const cl = p.clues[h.clue];
-            outline(cl.r, cl.c, 1, 1);
+            outline(cl.r, cl.c, 1, 1, false);
         } else if (h.rc) {
-            outline(h.rc.r, h.rc.c, h.rc.w, h.rc.h);
+            outline(h.rc.r, h.rc.c, h.rc.w, h.rc.h, h.kind === 'conflict' || h.kind === 'wrong');
         }
     }
 
@@ -1121,6 +1079,18 @@
         }
     }
 
+    // Which hint each ?patches_demo=<technique> targets (matched by msgKey).
+    // Like ?sudoku_demo: regenerate until the puzzle actually needs it, follow
+    // the forced placements up to it, then pop that hint. Use diff=hard for
+    // core/orphan. [DEBUG-HOOK]
+    const DEMO_TECH = {
+        commit: ['patchesHint1', 'patchesHint2'],
+        tier3: ['patchesHint3'],
+        core: ['patchesHintCore'],
+        orphan: ['patchesHintOrphan'],
+    };
+    let demoTries = 0;
+
     // Demo affordances (see ?patches_demo). 'hint' just opens a hint on the
     // fresh board; 'conflict' plants a guaranteed size-over violation.
     function applyDemo() {
@@ -1133,6 +1103,7 @@
             commitChange(); // triggers the win state + animation
             return;
         }
+        if (DEMO_TECH[DEMO]) { demoWalkToTechnique(DEMO_TECH[DEMO]); return; }
         if (DEMO !== 'conflict') return;
         const p = state.puzzle;
         const N = p.size;
@@ -1149,8 +1120,8 @@
         }
     }
 
-    // Follow tier-1/2 hints (placing each forced rectangle) until a tier-3
-    // cell hint surfaces, then show it — for eyeballing the tier-3 visual.
+    // Follow "place this rectangle" hints until a forced-cell hint surfaces
+    // (tier-3 / core / orphan — all `deduce-cell`), then show it.
     function demoTier3() {
         for (let step = 0; step < state.puzzle.clues.length; step++) {
             const h = computeHint();
@@ -1160,6 +1131,33 @@
             if (h.kind !== 'deduce') return;
             state.placements.push({ r: h.rc.r, c: h.rc.c, w: h.rc.w, h: h.rc.h, clue: h.rc.clue });
             repaintRects();
+        }
+    }
+
+    // Walk the current puzzle's forced placements until a hint whose msgKey is
+    // in `keys` appears, then show it. If this puzzle never needs it, spin up a
+    // fresh board and try again (bounded) — same spirit as ?sudoku_demo.
+    function demoWalkToTechnique(keys) {
+        for (let step = 0; step < state.puzzle.clues.length + 5; step++) {
+            const h = computeHint();
+            if (!h) break;
+            if (keys.includes(h.msgKey)) {
+                state.hint = h; repaintHint(); setHintBanner(hintText(h)); return;
+            }
+            if (h.kind !== 'deduce' && h.kind !== 'deduce-cell') break; // none/conflict/wrong
+            // Advance by locking in that clue's full solution rectangle.
+            const sol = state.puzzle.solution.find((s) => s.clue === h.clue);
+            if (!sol) break;
+            state.placements = state.placements.filter((rc) => rc.clue !== sol.clue);
+            state.placements.push({ r: sol.r, c: sol.c, w: sol.w, h: sol.h, clue: sol.clue });
+            repaintRects();
+        }
+        if (demoTries++ < 80) {
+            startNewGame();
+        } else {
+            /* eslint-disable no-console */
+            console.warn(`[patches demo] "${DEMO}" not reached — try diff=hard for core/orphan.`);
+            /* eslint-enable no-console */
         }
     }
 
@@ -1212,10 +1210,10 @@
     function init() {
         shell = PC.shell.create({
             gameId: 'patches',
-            difficulty: { default: urlInitial ? urlInitial.difficulty : 'medium' },
+            difficulty: { default: (urlInitial && urlInitial.difficulty) || 'medium' },
             size: {
                 kind: 'slider', min: MIN_SIZE, max: MAX_SIZE,
-                default: urlInitial ? urlInitial.size : 8,
+                default: (urlInitial && urlInitial.size) || 8,
             },
             onNewGame: startNewGame,
             onReset: resetAction,

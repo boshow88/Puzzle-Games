@@ -894,6 +894,10 @@
                 'The outlined shape has only one valid placement. Every other placement conflicts with another clue, so this is the only valid placement.',
             patchesHint3:
                 'The outlined cell can only belong to the highlighted shape\u2019s region. It can\u2019t connect to any other clue or region without breaking a rule, so it must go here.',
+            patchesHintCore:
+                'The outlined cell must belong to the highlighted shape\u2019s region: however that shape is finally drawn, it always covers this cell \u2014 so you can extend it here.',
+            patchesHintOrphan:
+                'The outlined cell can only belong to the highlighted shape\u2019s region: any other clue that reached it would leave some cell impossible to fill, so it must go here.',
             patchesConflictSizeOver: (x) =>
                 `This patch can hold at most ${x} cell${x === 1 ? '' : 's'}.`,
             patchesConflictShapeSquare: 'This patch must be a square.',
@@ -1078,6 +1082,10 @@
                 '此外框形狀只有一個有效位置。由於其他位置皆與既有線索衝突，因此這是唯一的有效位置。',
             patchesHint3:
                 '畫出外框的格子只能屬於此醒目標示形狀的區域。在不違反規則的情況下，它無法與任何其他線索或區域相連，因此必須置於此處。',
+            patchesHintCore:
+                '外框的格子必屬於此醒目標示形狀的區域：無論該形狀最後怎麼畫，都一定會涵蓋此格，因此可以先把它畫進來。',
+            patchesHintOrphan:
+                '畫出外框的格子只能屬於此醒目標示形狀的區域：其他任何線索若延伸過來覆蓋它，都會使某個格子再也無法被填入，因此它只能置於此處。',
             patchesConflictSizeOver: (x) => `此有色區域最多只能有 ${x} 格。`,
             patchesConflictShapeSquare: '此有色區域必須是正方形。',
             patchesConflictShapeWide: '此有色區域必須是橫向長方形（寬 > 高）。',

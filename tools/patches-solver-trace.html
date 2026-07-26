@@ -1,0 +1,163 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8" />
+  <title>Patches solver trace</title>
+  <style>
+    :root { --grid:#c9736e; --dim:rgba(255,255,255,0.72); }
+    body { font: 14px/1.5 system-ui, sans-serif; margin: 18px; color: #222;
+           display: grid; grid-template-columns: minmax(360px,520px) 1fr; gap: 22px; max-width: 1180px; }
+    h1 { grid-column: 1 / -1; font-size: 18px; margin: 0 0 6px; }
+    .controls { grid-column: 1 / -1; display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+    button, select, input { font: inherit; padding: 5px 10px; }
+    button:disabled { opacity: .4; cursor: default; }
+    .wrap { background:#fff; border:1px solid #e3d3d1; border-radius:8px; padding:10px; }
+    svg { display:block; width:100%; height:auto; }
+    .log { max-height: 620px; overflow-y:auto; font-size: 13px; }
+    .step { border-left: 4px solid #bbb; padding: 6px 10px; margin: 0 0 6px; background:#faf6f6; }
+    .step.single { border-color:#2e7d32; } .step.core { border-color:#1565c0; } .step.orphan { border-color:#c62828; }
+    .step.commit { border-color:#6a1b9a; }
+    .badge { display:inline-block; font-size:11px; color:#fff; border-radius:3px; padding:1px 6px; margin-right:6px; }
+    .single .badge{background:#2e7d32}.core .badge{background:#1565c0}.orphan .badge{background:#c62828}.commit .badge{background:#6a1b9a}
+    .meta { color:#666; font-size:12px; }
+    .done { color:#128a12; font-weight:700; }
+  </style>
+  <script src="../js/common.js"></script>
+  <script src="../js/generators/patches.js"></script>
+</head>
+<body>
+  <h1>Patches solver trace — 一步一步看 solver 怎麼推(single / core / orphan)</h1>
+  <div class="controls">
+    Size <select id="size"><option>6</option><option selected>8</option><option>10</option><option>12</option></select>
+    難度 <select id="diff"><option value="easy">easy</option><option value="medium">medium</option><option value="hard" selected>hard</option></select>
+    Seed <input id="seed" size="10" placeholder="(隨機)" />
+    <button id="gen">New / 生成</button>
+    <button id="next" disabled>Next ▶</button>
+    <button id="auto" disabled>Auto ⏩</button>
+    <label>lang <select id="lang"><option value="zh-Hant">中</option><option value="en">en</option></select></label>
+  </div>
+  <div class="wrap"><svg id="board" viewBox="0 0 480 480"></svg><div id="status" class="meta"></div></div>
+  <div class="wrap log" id="log"></div>
+
+  <script>
+  (function () {
+    const PC = window.PuzzleCommon;
+    const PS = window.PuzzleSolvers.patches;
+    const $ = (id) => document.getElementById(id);
+    const board = $('board'), logEl = $('log');
+    const SHAPES = PS.SHAPES;
+    const svg = (t, a) => { const e = document.createElementNS('http://www.w3.org/2000/svg', t); for (const k in a) e.setAttribute(k, a[k]); return e; };
+
+    // step → hint (mirror of the game's computeDeduction mapping).
+    const MSG = { commit2: 'patchesHint2', commit1: 'patchesHint1', single: 'patchesHint3', core: 'patchesHintCore', orphan: 'patchesHintOrphan' };
+    function stepClass(s) { return s.kind === 'commit' ? 'commit' : s.technique; }
+    function stepMsgKey(s) {
+      if (s.kind === 'commit') return MSG.commit2;
+      return s.technique === 'core' ? MSG.core : s.technique === 'orphan' ? MSG.orphan : MSG.single;
+    }
+
+    let cur = null; // { N, clues, solution, tech, st, steps }
+    const clueColor = (i) => `hsl(${(i * 137.5) % 360} 60% ${52}%)`;
+    const clueColorSoft = (i) => `hsl(${(i * 137.5) % 360} 60% 82%)`;
+
+    function glyph(cl) {
+      const sh = cl.shape === SHAPES.SQUARE ? '◼' : cl.shape === SHAPES.WIDE ? '▬'
+        : cl.shape === SHAPES.TALL ? '▮' : '◇';
+      return sh + (cl.size != null ? cl.size : '');
+    }
+
+    function render(highlight) {
+      while (board.firstChild) board.removeChild(board.firstChild);
+      const N = cur.N, cs = 480 / N, st = cur.st;
+      // owner-colored cells
+      for (let r = 0; r < N; r++) for (let c = 0; c < N; c++) {
+        const o = st.owner[r * N + c];
+        board.appendChild(svg('rect', { x: c * cs, y: r * cs, width: cs, height: cs,
+          fill: o >= 0 ? clueColorSoft(o) : '#fff', stroke: 'var(--grid)', 'stroke-width': 1 }));
+      }
+      // dim non-highlighted
+      if (highlight) {
+        const lit = new Set();
+        if (highlight.rc) for (let r = highlight.rc.r; r < highlight.rc.r + highlight.rc.h; r++) for (let c = highlight.rc.c; c < highlight.rc.c + highlight.rc.w; c++) lit.add(r * N + c);
+        if (highlight.cell) lit.add(highlight.cell[0] * N + highlight.cell[1]);
+        if (highlight.clue != null) lit.add(cur.clues[highlight.clue].r * N + cur.clues[highlight.clue].c);
+        for (let r = 0; r < N; r++) for (let c = 0; c < N; c++) if (!lit.has(r * N + c))
+          board.appendChild(svg('rect', { x: c * cs, y: r * cs, width: cs, height: cs, fill: 'var(--dim)' }));
+      }
+      // clue glyphs
+      cur.clues.forEach((cl, i) => {
+        const t = svg('text', { x: (cl.c + 0.5) * cs, y: (cl.r + 0.5) * cs, 'text-anchor': 'middle',
+          'dominant-baseline': 'central', 'font-size': cs * 0.34, fill: clueColor(i), 'font-weight': 700 });
+        t.textContent = glyph(cl); board.appendChild(t);
+      });
+      // highlight outlines
+      if (highlight) {
+        const rect = (r, c, w, h, col) => board.appendChild(svg('rect', { x: c * cs + 3, y: r * cs + 3,
+          width: w * cs - 6, height: h * cs - 6, fill: 'none', stroke: col, 'stroke-width': 3, rx: 5 }));
+        if (highlight.kind === 'orphan') { if (highlight.rc) rect(highlight.rc.r, highlight.rc.c, highlight.rc.w, highlight.rc.h, '#c62828'); if (highlight.cell) rect(highlight.cell[0], highlight.cell[1], 1, 1, '#333'); }
+        else if (highlight.kind === 'forceCell') rect(highlight.cell[0], highlight.cell[1], 1, 1, '#333');
+        else if (highlight.kind === 'commit') { const cl = cur.clues[highlight.clue]; rect(cl.r, cl.c, 1, 1, '#333'); if (highlight.rc) rect(highlight.rc.r, highlight.rc.c, highlight.rc.w, highlight.rc.h, '#1565c0'); }
+      }
+    }
+
+    function addLog(s, msg) {
+      const cls = stepClass(s);
+      const div = document.createElement('div');
+      div.className = 'step ' + cls;
+      const label = s.kind === 'commit' ? 'COMMIT' : s.kind === 'elim' ? 'ORPHAN' : s.technique.toUpperCase();
+      div.innerHTML = `<span class="badge">${label}</span> clue #${s.clue}` +
+        (s.cell ? ` @(${s.cell[0]},${s.cell[1]})` : s.rect ? ` rect ${s.rect.w}×${s.rect.h}@(${s.rect.r},${s.rect.c})` : '') +
+        `<div class="meta">${msg}</div>`;
+      logEl.insertBefore(div, logEl.firstChild);
+    }
+
+    function toHighlight(s) {
+      // Build the same rc/cell the game would light for this step.
+      if (s.kind === 'commit') return { kind: 'commit', clue: s.clue, rc: s.rect };
+      if (s.kind === 'forceCell') {
+        const cl = cur.clues[s.clue];
+        const minR = Math.min(cl.r, s.cell[0]), minC = Math.min(cl.c, s.cell[1]);
+        const maxR = Math.max(cl.r, s.cell[0]), maxC = Math.max(cl.c, s.cell[1]);
+        return { kind: 'forceCell', clue: s.clue, cell: s.cell, rc: { r: minR, c: minC, w: maxC - minC + 1, h: maxR - minR + 1 } };
+      }
+      return { kind: 'orphan', clue: s.clue, cell: s.cell, rc: s.rect };
+    }
+
+    function doNext() {
+      const s = PS.nextStep(cur.st, cur.tech);
+      if (!s) { $('status').innerHTML = '<span class="done">solver 已無下一步(remaining=' + cur.st.remaining + ')</span>'; $('next').disabled = true; $('auto').disabled = true; return false; }
+      const h = toHighlight(s);
+      render(h);
+      const msg = PC.i18n.t(stepMsgKey(s));
+      addLog(s, msg);
+      PS.applyStep(cur.st, s);
+      $('status').textContent = `remaining=${cur.st.remaining}`;
+      return true;
+    }
+
+    async function generate() {
+      $('next').disabled = $('auto').disabled = true;
+      logEl.innerHTML = ''; $('status').textContent = '生成中…';
+      const N = +$('size').value, diff = $('diff').value;
+      let seed = $('seed').value.trim();
+      seed = seed === '' ? (Math.random() * 2 ** 31) >>> 0 : (parseInt(seed, 36) >>> 0 || (+seed >>> 0));
+      $('seed').value = (seed >>> 0).toString(36);
+      const puz = await window.PuzzleGenerators.patches(N, diff, seed);
+      cur = { N, clues: puz.clues, solution: puz.solution, tech: PS.TECHNIQUES_BY_DIFFICULTY[diff], st: PS.makeState(N, puz.clues) };
+      render(null);
+      const num = puz.clues.filter(c => c.size != null).length;
+      $('status').textContent = `${puz.clues.length} clues (${num} numbered, ${puz.clues.length - num} no-size). seed=${(seed >>> 0).toString(36)}`;
+      $('next').disabled = $('auto').disabled = false;
+    }
+
+    $('gen').onclick = generate;
+    $('next').onclick = doNext;
+    $('auto').onclick = () => { let n = 0; while (n++ < 2000 && doNext()) { /* run */ } };
+    $('lang').onchange = () => { PC.i18n.setLocale($('lang').value); };
+    // default locale
+    if (PC.i18n && PC.i18n.setLocale) PC.i18n.setLocale('zh-Hant');
+    generate();
+  })();
+  </script>
+</body>
+</html>

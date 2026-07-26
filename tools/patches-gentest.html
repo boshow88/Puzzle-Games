@@ -1,0 +1,108 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Patches — leveled solver / difficulty self-test</title>
+  <style>
+    body { font: 13px/1.5 ui-monospace, Consolas, monospace; margin: 16px; }
+    .pass { color: #128a12; } .fail { color: #c0272d; font-weight: 700; }
+    table { border-collapse: collapse; margin: 10px 0; }
+    th, td { border: 1px solid #ccc; padding: 2px 8px; text-align: right; }
+    th:first-child, td:first-child { text-align: left; }
+    pre { white-space: pre-wrap; }
+  </style>
+  <script src="../js/common.js"></script>
+  <script src="../js/generators/patches.js"></script>
+</head>
+<body>
+  <h1 id="verdict">running…</h1>
+  <div id="tbl"></div>
+  <pre id="out"></pre>
+  <script>
+  (function () {
+    const I = window.PuzzleGenerators.patchesInternals;
+    const PC = window.PuzzleCommon;
+    const TECH = I.TECHNIQUES_BY_DIFFICULTY;
+    const WEAKER = { hard: 'medium', medium: 'easy', easy: null };
+    const out = [];
+    let fails = 0;
+    const fail = (m) => { out.push(' FAIL ' + m); fails++; };
+
+    const ownerOf = (N, rects) => {
+      const o = new Int32Array(N * N).fill(-1);
+      rects.forEach((rc, i) => { for (let r = rc.r; r < rc.r + rc.h; r++) for (let c = rc.c; c < rc.c + rc.w; c++) o[r * N + c] = i; });
+      return o;
+    };
+    const same = (a, b) => { for (let k = 0; k < a.length; k++) if (a[k] !== b[k]) return false; return true; };
+    const cloneClues = (cs) => cs.map((c) => ({ ...c }));
+
+    // One base tiling per size (deadline-bounded, like generate()).
+    function pickBase(N, seed, capMs) {
+      const rng = PC.rng.make(seed >>> 0);
+      const dl = Date.now() + capMs;
+      let rects = null, clues = null;
+      for (let a = 0; a < 40; a++) {
+        const rr = I.tileGrid(N, rng, 'hard'), cc = I.cluesFromTiling(rr, rng);
+        if (I.isUnique(N, cc)) { rects = rr; clues = cc; break; }
+        if (Date.now() > dl) { rects = rr; clues = cc; break; }
+      }
+      if (!clues) { rects = I.tileGrid(N, rng, 'hard'); clues = I.cluesFromTiling(rects, rng); }
+      return { rng, clues, solutionOwner: ownerOf(N, rects) };
+    }
+
+    const rows = [];
+    for (const N of [6, 8, 10]) {
+      let base; try { base = pickBase(N, 3100 + N, 1200); } catch (e) { fail(`pickBase ${N}: ${e && e.message}`); continue; }
+      for (const diff of ['easy', 'medium', 'hard']) {
+        const clues = cloneClues(base.clues);
+        const rng = PC.rng.make(5000 + N * 7 + diff.length);
+        let t0 = performance.now();
+        try { I.digDifficulty(N, clues, base.solutionOwner, diff, rng, Date.now() + 900); }
+        catch (e) { fail(`dig ${N} ${diff}: ${e && e.message}`); continue; }
+        const digMs = performance.now() - t0;
+
+        // (a) must be solvable at its own tier AND resolve to the base solution
+        const res = I.solveWithTechniques(N, clues, TECH[diff]);
+        if (!res.solved) fail(`${N} ${diff}: NOT solvable at its own tier`);
+        else if (!same(res.owner, base.solutionOwner)) fail(`${N} ${diff}: solves to a DIFFERENT tiling (unsound!)`);
+
+        // (b) difficulty distinction: does it genuinely need the stronger tier?
+        const w = WEAKER[diff];
+        let needsStronger = '—';
+        if (w) {
+          const rw = I.solveWithTechniques(N, clues, TECH[w]);
+          needsStronger = (rw.solved && same(rw.owner, base.solutionOwner)) ? 'no' : 'YES';
+        }
+        const numbered = clues.filter((c) => c.size != null).length;
+        const anys = clues.filter((c) => c.shape === 'any').length;
+        const uses = Object.entries(res.counts).map(([k, v]) => `${k}:${v}`).join(' ');
+        rows.push({
+          key: `${N}x${N} ${diff}`, clues: clues.length, numbered, anys,
+          digMs: digMs.toFixed(0), solved: res.solved ? 'yes' : 'NO',
+          needsStronger, uses,
+        });
+      }
+    }
+
+    // Micro-benchmark: single hard solve on FULL 12x12 clues (worst case).
+    let big = '';
+    try {
+      const rng = PC.rng.make(4242); const dl = Date.now() + 1500; let rects = null, clues = null;
+      for (let a = 0; a < 40; a++) { const rr = I.tileGrid(12, rng, 'hard'), cc = I.cluesFromTiling(rr, rng); if (I.isUnique(12, cc)) { rects = rr; clues = cc; break; } if (Date.now() > dl) { rects = rr; clues = cc; break; } }
+      const t0 = performance.now(); const r = I.solveWithTechniques(12, clues, TECH.hard); const ms = performance.now() - t0;
+      big = `bench: single hard solve on FULL 12x12 clues = ${ms.toFixed(1)}ms (solved=${r.solved})`;
+    } catch (e) { big = 'bench threw: ' + (e && e.message); }
+
+    let html = '<table><tr><th>config</th><th>clues</th><th>#num</th><th>#any</th><th>dig ms</th><th>solved@tier</th><th>needs stronger</th><th>techniques used</th></tr>';
+    for (const r of rows) html += `<tr><td>${r.key}</td><td>${r.clues}</td><td>${r.numbered}</td><td>${r.anys}</td><td>${r.digMs}</td><td>${r.solved}</td><td>${r.needsStronger}</td><td style="text-align:left">${r.uses}</td></tr>`;
+    html += '</table>';
+    document.getElementById('tbl').innerHTML = html;
+    out.unshift(big);
+    document.getElementById('out').textContent = out.join('\n');
+    const v = document.getElementById('verdict');
+    v.textContent = fails === 0 ? 'ALL SOLVABILITY/SOUNDNESS CHECKS PASSED' : (fails + ' CHECK(S) FAILED');
+    v.className = fails === 0 ? 'pass' : 'fail';
+  })();
+  </script>
+</body>
+</html>

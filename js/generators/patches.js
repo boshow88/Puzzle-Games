@@ -262,19 +262,38 @@
     }
 
     // -----------------------------------------------------------------
-    // Logic solver (technique-bounded constraint propagation).
+    // Logic solver (technique-bounded, single-step model — mirrors the
+    // structure of sudoku.js so the SAME techniques drive both the
+    // generator's difficulty grading and the in-game hints).
     //
-    // State: per-clue candidate lists + an `owner` grid (which clue is
-    // proven to cover each cell, or -1). Two deductions, run to a
-    // fixpoint:
-    //   B  (single candidate): a clue with one candidate left → commit it.
-    //   A  (single cover)    : a still-free cell coverable by candidates
-    //                          of exactly one clue → that clue must cover
-    //                          it, so prune the clue to candidates that do.
-    // Neither guesses. If it commits every clue and fills the grid, the
-    // puzzle is logic-solvable; otherwise it's 'stuck' (or 'contradiction'
-    // if a cell can't be covered at all).
+    // State (see makeState): per-clue candidate rectangle lists + an
+    // `owner` grid (which clue is proven to cover each cell, or -1).
+    // `nextStep` returns the single easiest applicable deduction (or null);
+    // `solveWithTechniques` applies steps to a fixpoint. Difficulty just
+    // selects which techniques are switched on.
+    //
+    // Techniques, weakest first (each tier a strict superset):
+    //   single : Rule B (a clue with one candidate left → commit it) and
+    //            Rule A (a free cell only one clue can reach → that clue
+    //            must cover it, so prune to candidates that do).
+    //   core   : if EVERY candidate of a clue covers cell X, then X is that
+    //            clue's no matter how it is finally drawn — lock X and forbid
+    //            other clues there. (Rule B is the extreme single-candidate
+    //            case of this.)
+    //   orphan : 1-ply reachability. If placing a candidate would leave some
+    //            free cell with no possible cover at all, that candidate
+    //            can't be in any tiling — drop it. ("put it there and that
+    //            corner can never be filled.")
+    // Every technique is sound (it only removes rectangles that cannot be in
+    // ANY tiling), so a bounded solve that reaches a full cover proves that
+    // cover is the unique solution — the digger relies on exactly this.
     // -----------------------------------------------------------------
+
+    const TECHNIQUES_BY_DIFFICULTY = {
+        easy: { single: true },
+        medium: { single: true, core: true },
+        hard: { single: true, core: true, orphan: true },
+    };
 
     function makeClueAt(N, clues) {
         const clueAt = new Int32Array(N * N).fill(-1);
@@ -282,98 +301,303 @@
         return clueAt;
     }
 
-    function propagate(N, clues, clueAt) {
+    /** Does `outer` fully cover the smaller rect `inner`? */
+    function coversRect(outer, inner) {
+        return outer.r <= inner.r && outer.c <= inner.c
+            && outer.r + outer.h >= inner.r + inner.h
+            && outer.c + outer.w >= inner.c + inner.w;
+    }
+
+    /** True iff `rect` covers no cell already owned by a DIFFERENT clue. */
+    function fitsOwner(st, rect, i) {
+        for (let r = rect.r; r < rect.r + rect.h; r++) {
+            for (let c = rect.c; c < rect.c + rect.w; c++) {
+                const o = st.owner[r * st.N + c];
+                if (o !== -1 && o !== i) return false;
+            }
+        }
+        return true;
+    }
+
+    /** Build a fresh solver state. `seed` (optional) is a list of player
+     *  placements {r,c,w,h,clue} treated as LOWER BOUNDS: each clue's
+     *  candidates are restricted to rectangles that cover its placement and
+     *  the placement's cells are marked owned, but the clue may still grow.
+     *  The in-game hint engine passes the player's current rectangles here. */
+    function makeState(N, clues, seed) {
         const K = clues.length;
+        const clueAt = makeClueAt(N, clues);
         const cands = clues.map((cl, i) => enumerateCandidates(N, cl, i, clueAt));
         const owner = new Int32Array(N * N).fill(-1);
-        const committed = new Array(K).fill(null);
-        let remaining = K;
-
-        for (let i = 0; i < K; i++) {
-            if (cands[i].length === 0) return { status: 'contradiction' };
-        }
-
-        function commit(i, rect) {
-            committed[i] = rect;
-            for (let r = rect.r; r < rect.r + rect.h; r++) {
-                for (let c = rect.c; c < rect.c + rect.w; c++) owner[r * N + c] = i;
-            }
-            cands[i] = [rect];
-            remaining -= 1;
-        }
-
-        // Drop candidates of other clues that now overlap a committed cell.
-        function prunePlaced(placedRect, placedIdx) {
-            for (let i = 0; i < K; i++) {
-                if (committed[i]) continue;
-                cands[i] = cands[i].filter((rc) => !rectsOverlap(rc, placedRect));
-                if (cands[i].length === 0) return false;
-            }
-            return true;
-        }
-
-        let changed = true;
-        while (changed && remaining > 0) {
-            changed = false;
-
-            // Rule B — a clue pinned to a single candidate.
-            for (let i = 0; i < K; i++) {
-                if (committed[i]) continue;
-                if (cands[i].length === 1) {
-                    const rect = cands[i][0];
-                    commit(i, rect);
-                    if (!prunePlaced(rect, i)) return { status: 'contradiction' };
-                    changed = true;
+        const st = {
+            N, K, clues, clueAt, cands, owner,
+            committed: new Array(K).fill(null), remaining: K, dead: false,
+        };
+        if (seed) {
+            for (const pl of seed) {
+                const i = pl.clue;
+                cands[i] = cands[i].filter((rc) => coversRect(rc, pl));
+                for (let r = pl.r; r < pl.r + pl.h; r++) {
+                    for (let c = pl.c; c < pl.c + pl.w; c++) owner[r * N + c] = i;
                 }
             }
-            if (remaining === 0) break;
-
-            // Rule A — a free cell only one clue can reach.
-            // coverCount[cell] = # distinct clues with a candidate covering it.
-            const coverClue = new Int32Array(N * N).fill(-1);
-            const coverCount = new Int32Array(N * N);
             for (let i = 0; i < K; i++) {
-                if (committed[i]) continue;
-                // Mark, per clue, which cells this clue can still cover.
-                const seen = new Set();
-                for (const rc of cands[i]) {
-                    for (let r = rc.r; r < rc.r + rc.h; r++) {
-                        for (let c = rc.c; c < rc.c + rc.w; c++) {
-                            const k = r * N + c;
-                            if (seen.has(k)) continue;
-                            seen.add(k);
-                            if (coverClue[k] !== i) {
-                                coverCount[k] += 1;
-                                coverClue[k] = i;
-                            }
-                        }
+                cands[i] = cands[i].filter((rc) => fitsOwner(st, rc, i));
+            }
+            // A seeded clue that can no longer grow (its only candidate is
+            // exactly what's already drawn) is DONE — commit it so nextStep
+            // won't keep re-suggesting an already-placed rectangle.
+            for (const pl of seed) {
+                const i = pl.clue;
+                const only = cands[i][0];
+                if (cands[i].length === 1 && only.r === pl.r && only.c === pl.c
+                    && only.w === pl.w && only.h === pl.h && !st.committed[i]) {
+                    st.committed[i] = only;
+                    st.remaining -= 1;
+                }
+            }
+        }
+        for (let i = 0; i < K; i++) if (cands[i].length === 0) st.dead = true;
+        return st;
+    }
+
+    /** coverClue[cell] / coverCount[cell] over the UNCOMMITTED clues. */
+    function coverage(st) {
+        const N = st.N;
+        const clue = new Int32Array(N * N).fill(-1);
+        const count = new Int32Array(N * N);
+        for (let i = 0; i < st.K; i++) {
+            if (st.committed[i]) continue;
+            const seen = new Set();
+            for (const rc of st.cands[i]) {
+                for (let r = rc.r; r < rc.r + rc.h; r++) {
+                    for (let c = rc.c; c < rc.c + rc.w; c++) {
+                        const k = r * N + c;
+                        if (seen.has(k)) continue;
+                        seen.add(k);
+                        if (clue[k] !== i) { count[k] += 1; clue[k] = i; }
                     }
                 }
             }
+        }
+        return { clue, count };
+    }
 
-            for (let k = 0; k < N * N; k++) {
-                if (owner[k] !== -1) continue;
-                if (coverCount[k] === 0) return { status: 'contradiction' };
-                if (coverCount[k] === 1) {
-                    const i = coverClue[k];
-                    if (committed[i]) continue;
-                    const r = (k / N) | 0;
-                    const c = k % N;
-                    const before = cands[i].length;
-                    cands[i] = cands[i].filter((rc) => rectContains(rc, r, c));
-                    if (cands[i].length === 0) return { status: 'contradiction' };
-                    if (cands[i].length !== before) changed = true;
+    function otherCanCover(st, r, c, i) {
+        for (let j = 0; j < st.K; j++) {
+            if (j === i || st.committed[j]) continue;
+            for (const rc of st.cands[j]) if (rectContains(rc, r, c)) return true;
+        }
+        return false;
+    }
+
+    // --- techniques: each COLLECTS every deduction of its kind, so the hint
+    //     layer can drop suggestions dominated by a bigger one before picking
+    //     (mirrors tango's findLowestAvailableTier). ----------------------
+
+    function singleDeductions(st) {
+        const commits = [];
+        for (let i = 0; i < st.K; i++) {
+            if (st.committed[i]) continue;
+            if (st.cands[i].length === 1) {
+                commits.push({ technique: 'single', kind: 'commit', clue: i, rect: st.cands[i][0] });
+            }
+        }
+        const forceCells = [];
+        const cov = coverage(st);
+        for (let k = 0; k < st.N * st.N; k++) {
+            if (st.owner[k] !== -1) continue;
+            if (cov.count[k] === 0) { st.dead = true; return { commits, forceCells }; }
+            if (cov.count[k] !== 1) continue;
+            const i = cov.clue[k];
+            if (st.committed[i]) continue;
+            const r = (k / st.N) | 0, c = k % st.N;
+            if (st.cands[i].some((rc) => !rectContains(rc, r, c))) {
+                forceCells.push({ technique: 'single', kind: 'forceCell', clue: i, cell: [r, c] });
+            }
+        }
+        return { commits, forceCells };
+    }
+
+    function coreDeductions(st) {
+        const N = st.N;
+        const out = [];
+        for (let i = 0; i < st.K; i++) {
+            if (st.committed[i]) continue;
+            const list = st.cands[i];
+            if (list.length < 2) continue; // length 1 → Rule B; 0 → dead
+            const cnt = new Map();
+            for (const rc of list) {
+                for (let r = rc.r; r < rc.r + rc.h; r++) {
+                    for (let c = rc.c; c < rc.c + rc.w; c++) {
+                        const k = r * N + c;
+                        cnt.set(k, (cnt.get(k) || 0) + 1);
+                    }
+                }
+            }
+            for (const [k, n] of cnt) {
+                if (n !== list.length) continue;   // not covered by EVERY candidate
+                if (st.owner[k] === i) continue;    // already locked to i
+                const r = (k / N) | 0, c = k % N;
+                // Only interesting when another clue could also reach k (else
+                // Rule A already handles it); applying prunes those clues.
+                if (otherCanCover(st, r, c, i)) {
+                    out.push({ technique: 'core', kind: 'forceCell', clue: i, cell: [r, c] });
                 }
             }
         }
+        return out;
+    }
 
-        if (remaining === 0) {
-            for (let k = 0; k < N * N; k++) {
-                if (owner[k] === -1) return { status: 'contradiction' };
+    // 1-ply reachability, restricted to "fragile" free cells (reachable by only
+    // a few clues) so the scan stays cheap. Collect every candidate whose
+    // placement would strand such a cell — those can't be in any tiling.
+    const ORPHAN_MAX_COVER = 3;
+    function collectDeadCandidates(st) {
+        const N = st.N;
+        const cov = coverage(st);
+        const dead = new Set();
+        for (let k = 0; k < N * N; k++) {
+            if (st.owner[k] !== -1) continue;
+            const cnt = cov.count[k];
+            if (cnt < 2 || cnt > ORPHAN_MAX_COVER) continue;
+            const kr = (k / N) | 0, kc = k % N;
+            const groups = [];
+            for (let i = 0; i < st.K; i++) {
+                if (st.committed[i]) continue;
+                let reach = null;
+                for (const rc of st.cands[i]) {
+                    if (rectContains(rc, kr, kc)) (reach || (reach = [])).push(rc);
+                }
+                if (reach) groups.push({ i, reach });
             }
-            return { status: 'solved', owner, committed };
+            if (groups.length !== cnt) continue; // defensive
+            for (let i = 0; i < st.K; i++) {
+                if (st.committed[i]) continue;
+                for (const rc of st.cands[i]) {
+                    if (dead.has(rc) || rectContains(rc, kr, kc)) continue;
+                    let kills = true;
+                    for (const g of groups) {
+                        if (g.i === i) continue; // i becomes rc → its reach is gone
+                        if (g.reach.some((br) => !rectsOverlap(br, rc))) { kills = false; break; }
+                    }
+                    if (kills) dead.add(rc);
+                }
+            }
         }
-        return { status: 'stuck', owner, cands };
+        return dead;
+    }
+
+    // Orphan expressed as POSITIVE deductions. A bare "this candidate is
+    // impossible" elimination is useless to a Patches player — unlike sudoku
+    // there are no candidate-notes to cross off. So instead: drop every dead
+    // candidate, and whatever single/core placement that NEWLY enables is the
+    // orphan result ("this cell must be X — any other clue reaching it would
+    // strand a cell"). That's an actionable placement, not an elimination.
+    function orphanDeductions(st) {
+        const dead = collectDeadCandidates(st);
+        if (dead.size === 0) return [];
+        const shadow = {
+            N: st.N, K: st.K, clues: st.clues, clueAt: st.clueAt,
+            owner: st.owner, committed: st.committed, remaining: st.remaining, dead: false,
+            cands: st.cands.map((list) => list.filter((rc) => !dead.has(rc))),
+        };
+        const single = singleDeductions(shadow);
+        const core = coreDeductions(shadow);
+        const all = single.commits.concat(single.forceCells, core);
+        return all.map((s) => Object.assign({}, s, { technique: 'orphan' }));
+    }
+
+    // Every deduction at the LOWEST firing tier (single → core → orphan),
+    // gated by `tech`. { tier, steps } or null.
+    function findAllDeductions(st, tech) {
+        const t = tech || TECHNIQUES_BY_DIFFICULTY.hard;
+        if (st.dead) return null;
+        if (t.single) {
+            const { commits, forceCells } = singleDeductions(st);
+            if (st.dead) return null;
+            if (commits.length) return { tier: 'single', steps: commits };
+            if (forceCells.length) return { tier: 'single', steps: forceCells };
+        }
+        if (t.core) {
+            const fc = coreDeductions(st);
+            if (fc.length) return { tier: 'core', steps: fc };
+        }
+        if (t.orphan) {
+            const fc = orphanDeductions(st);
+            if (fc.length) return { tier: 'orphan', steps: fc };
+        }
+        return null;
+    }
+
+    function nextStep(st, tech) {
+        const r = findAllDeductions(st, tech);
+        return r ? r.steps[0] : null;
+    }
+
+    function commitClue(st, i, rect) {
+        const N = st.N;
+        st.committed[i] = rect;
+        for (let r = rect.r; r < rect.r + rect.h; r++) {
+            for (let c = rect.c; c < rect.c + rect.w; c++) st.owner[r * N + c] = i;
+        }
+        st.cands[i] = [rect];
+        st.remaining -= 1;
+        for (let j = 0; j < st.K; j++) {
+            if (j === i || st.committed[j]) continue;
+            st.cands[j] = st.cands[j].filter((rc) => !rectsOverlap(rc, rect));
+            if (st.cands[j].length === 0) st.dead = true;
+        }
+    }
+
+    /** Apply a step in place; returns whether it changed anything. */
+    function applyStep(st, step) {
+        const N = st.N;
+        if (step.kind === 'commit') { commitClue(st, step.clue, step.rect); return true; }
+        if (step.kind === 'forceCell') {
+            const i = step.clue, r = step.cell[0], c = step.cell[1];
+            if (step.technique === 'core' || step.technique === 'orphan') {
+                // Cell (r,c) is proven to belong to clue i — settle it: lock the
+                // owner, keep only i's candidates covering it (no-op for core),
+                // and forbid every other clue there.
+                st.owner[r * N + c] = i;
+                st.cands[i] = st.cands[i].filter((rc) => rectContains(rc, r, c));
+                if (st.cands[i].length === 0) st.dead = true;
+                for (let j = 0; j < st.K; j++) {
+                    if (j === i || st.committed[j]) continue;
+                    st.cands[j] = st.cands[j].filter((rc) => !rectContains(rc, r, c));
+                    if (st.cands[j].length === 0) st.dead = true;
+                }
+                return true;
+            }
+            const before = st.cands[i].length;
+            st.cands[i] = st.cands[i].filter((rc) => rectContains(rc, r, c));
+            if (st.cands[i].length === 0) st.dead = true;
+            return st.cands[i].length !== before;
+        }
+        return false;
+    }
+
+    /** Solve as far as the allowed techniques reach.
+     *  Returns { solved, owner, remaining, counts, state }. */
+    function solveWithTechniques(N, clues, tech, seed) {
+        const st = makeState(N, clues, seed);
+        const counts = {};
+        // Elimination steps don't fill a clue, so bound by candidate count.
+        let budget = N * N + 50;
+        for (let i = 0; i < st.K; i++) budget += st.cands[i].length;
+        for (let step = 0; step < budget; step++) {
+            if (st.dead) break;
+            const s = nextStep(st, tech);
+            if (!s) break;
+            counts[s.technique] = (counts[s.technique] || 0) + 1;
+            if (!applyStep(st, s)) break;
+        }
+        let solved = !st.dead && st.remaining === 0;
+        if (solved) {
+            for (let k = 0; k < N * N; k++) if (st.owner[k] === -1) { solved = false; break; }
+        }
+        return { solved, owner: st.owner, remaining: st.remaining, counts, state: st };
     }
 
     // -----------------------------------------------------------------
@@ -460,29 +684,42 @@
 
     // -----------------------------------------------------------------
     // Difficulty — start from full clues, then strip information while the
-    // solution stays unique (and, for easy/medium, stays logic-solvable so
-    // the tier actually matches the promised difficulty).
+    // puzzle stays solvable by EXACTLY the tier's technique set AND still
+    // resolves to the SAME tiling. Solving back to the known solution is
+    // both the uniqueness guarantee (sound techniques + full cover ⇒ unique)
+    // and a soundness guard against a buggy technique (mirrors sudoku.js's
+    // "solve must match the solution" acceptance test).
     // -----------------------------------------------------------------
 
-    function logicSolvable(N, clues) {
-        return propagate(N, clues, makeClueAt(N, clues)).status === 'solved';
+    function logicSolvable(N, clues, tech) {
+        return solveWithTechniques(N, clues, tech).solved;
     }
 
-    function digDifficulty(N, clues, difficulty, rng, deadline) {
-        const requireLogic = difficulty !== 'hard';
+    function digDifficulty(N, clues, solutionOwner, difficulty, rng, deadline) {
+        const tech = TECHNIQUES_BY_DIFFICULTY[difficulty]
+            || TECHNIQUES_BY_DIFFICULTY.medium;
         // Whether shape degradation to 'any' is on the table.
         const degradeShapes = difficulty !== 'easy';
+
+        const solvesToSolution = () => {
+            const res = solveWithTechniques(N, clues, tech);
+            if (!res.solved) return false;
+            for (let k = 0; k < N * N; k++) {
+                if (res.owner[k] !== solutionOwner[k]) return false;
+            }
+            return true;
+        };
 
         const order = clues.map((_, i) => i);
         PC.rng.shuffle(order, rng);
 
-        // Pass 1: drop the number from as many clues as stays valid.
+        // Pass 1: drop the number from as many clues as the tier allows.
         for (const i of order) {
             if (Date.now() > deadline) return clues;
             if (clues[i].size == null) continue;
             const saved = clues[i].size;
             clues[i].size = null;
-            if (!accept(N, clues, requireLogic)) clues[i].size = saved;
+            if (!solvesToSolution()) clues[i].size = saved;
         }
 
         // Pass 2 (medium/hard): relax shape → 'any'.
@@ -493,16 +730,10 @@
                 if (clues[i].shape === SHAPES.ANY) continue;
                 const saved = clues[i].shape;
                 clues[i].shape = SHAPES.ANY;
-                if (!accept(N, clues, requireLogic)) clues[i].shape = saved;
+                if (!solvesToSolution()) clues[i].shape = saved;
             }
         }
         return clues;
-    }
-
-    function accept(N, clues, requireLogic) {
-        if (!isUnique(N, clues)) return false;
-        if (requireLogic && !logicSolvable(N, clues)) return false;
-        return true;
     }
 
     // -----------------------------------------------------------------
@@ -541,9 +772,19 @@
 
         if (onProgress) await onProgress(0.4);
 
+        // Cell → clue index for the (known) solution tiling. cluesFromTiling
+        // maps rects → clues in order, so rect i is clue i. The digger keeps
+        // only strips that still resolve back to exactly this owner grid.
+        const solutionOwner = new Int32Array(N * N).fill(-1);
+        rects.forEach((rect, i) => {
+            for (let r = rect.r; r < rect.r + rect.h; r++) {
+                for (let c = rect.c; c < rect.c + rect.w; c++) solutionOwner[r * N + c] = i;
+            }
+        });
+
         // 2) Strip information down to the difficulty target (bounded by the
         //    deadline).
-        digDifficulty(N, clues, difficulty, rng, deadline);
+        digDifficulty(N, clues, solutionOwner, difficulty, rng, deadline);
 
         if (onProgress) await onProgress(1);
 
@@ -583,8 +824,31 @@
     global.PuzzleGenerators.patches = generate;
     // Expose internals for the (future) solver-trace dev tool.  [DEBUG-HOOK]
     global.PuzzleGenerators.patchesInternals = {
-        enumerateCandidates, propagate, countSolutions, isUnique,
-        logicSolvable, tileGrid, cluesFromTiling, makeClueAt,
+        enumerateCandidates, countSolutions, isUnique,
+        makeState, nextStep, applyStep, findAllDeductions, solveWithTechniques, coverage,
+        TECHNIQUES_BY_DIFFICULTY, logicSolvable,
+        tileGrid, cluesFromTiling, makeClueAt,
         digDifficulty, shapeOf, satisfiesShape, SHAPES,
+    };
+
+    // Solver surface, aligned with PuzzleSolvers.sudoku / .tango so games and
+    // dev tools reach every game's solver the same way. `nextDeduction` is the
+    // single-step convenience (mirrors tango): seed the state with the player's
+    // placements and return the next step at the given technique set, or null.
+    if (!global.PuzzleSolvers) global.PuzzleSolvers = {};
+    global.PuzzleSolvers.patches = {
+        TECHNIQUES_BY_DIFFICULTY,
+        makeState, nextStep, applyStep, findAllDeductions, solveWithTechniques,
+        coverage, enumerateCandidates, makeClueAt, SHAPES,
+        nextDeduction(N, clues, placements, tech) {
+            return nextStep(makeState(N, clues, placements || []),
+                tech || TECHNIQUES_BY_DIFFICULTY.hard);
+        },
+        // All deductions at the lowest firing tier for the given player
+        // placements — the hint layer drops dominated suggestions then picks.
+        allDeductions(N, clues, placements, tech) {
+            return findAllDeductions(makeState(N, clues, placements || []),
+                tech || TECHNIQUES_BY_DIFFICULTY.hard);
+        },
     };
 })(typeof window !== 'undefined' ? window : this);
