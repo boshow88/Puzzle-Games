@@ -520,6 +520,7 @@
     function solveWithTechniques(N, clues, tech, seed) {
         const st = makeState(N, clues, seed);
         const counts = {};
+        const steps = []; // ordered log: { technique, kind, clue } — for scoring
         // Elimination steps don't fill a clue, so bound by candidate count.
         let budget = N * N + 50;
         for (let i = 0; i < st.K; i++) budget += st.cands[i].length;
@@ -528,13 +529,49 @@
             const s = nextStep(st, tech);
             if (!s) break;
             counts[s.technique] = (counts[s.technique] || 0) + 1;
+            steps.push({ technique: s.technique, kind: s.kind, clue: s.clue });
             if (!applyStep(st, s)) break;
         }
         let solved = !st.dead && st.remaining === 0;
         if (solved) {
             for (let k = 0; k < N * N; k++) if (st.owner[k] === -1) { solved = false; break; }
         }
-        return { solved, owner: st.owner, remaining: st.remaining, counts, state: st };
+        return { solved, owner: st.owner, remaining: st.remaining, counts, steps, state: st };
+    }
+
+    // -----------------------------------------------------------------
+    // Difficulty score (drives best-of-K selection).
+    //   • per-step weight  : commit 1, tier-3 forceCell 1.5, core 3.
+    //   • scatter          : per clue, the RMS of the gaps between its
+    //                        successive solve-steps (a clue built in one shot
+    //                        scores 0; one whose steps are spread far apart
+    //                        across the solve scores high — it "felt" hard to
+    //                        keep coming back to). Summed over clues.
+    // Higher = harder. Returns -Infinity if the clue set doesn't resolve to
+    // the intended tiling (shouldn't happen for a dug puzzle).
+    // -----------------------------------------------------------------
+    const STEP_WEIGHT = { commit: 1, forceCell: 1.5, core: 3 };
+    const SCATTER_WEIGHT = 1;
+    function scorePuzzle(N, clues, solutionOwner, tech) {
+        const res = solveWithTechniques(N, clues, tech);
+        if (!res.solved) return -Infinity;
+        for (let k = 0; k < N * N; k++) if (res.owner[k] !== solutionOwner[k]) return -Infinity;
+        let tierScore = 0;
+        const idxByClue = new Map();
+        res.steps.forEach((s, i) => {
+            tierScore += s.kind === 'commit' ? STEP_WEIGHT.commit
+                : s.technique === 'core' ? STEP_WEIGHT.core : STEP_WEIGHT.forceCell;
+            let a = idxByClue.get(s.clue); if (!a) idxByClue.set(s.clue, (a = []));
+            a.push(i);
+        });
+        let scatter = 0;
+        for (const idxs of idxByClue.values()) {
+            if (idxs.length < 2) continue;
+            let sumSq = 0;
+            for (let j = 1; j < idxs.length; j++) { const g = idxs[j] - idxs[j - 1]; sumSq += g * g; }
+            scatter += Math.sqrt(sumSq / (idxs.length - 1));
+        }
+        return tierScore + SCATTER_WEIGHT * scatter;
     }
 
     // -----------------------------------------------------------------
@@ -685,6 +722,15 @@
         return base + Math.max(0, N - 8) * 400;
     }
 
+    // Carve-pool size. Easy is a single carve (its weak technique set already
+    // keeps it easy). Medium and hard share ONE pool of this size and differ
+    // only in which they ship — hard takes the hardest carve, medium the
+    // median — so the tiers separate even though they share techniques.
+    function bestOfK(N, difficulty) {
+        if (difficulty === 'easy') return 1;
+        return N <= 8 ? 16 : N <= 10 ? 10 : 6;
+    }
+
     async function generate(size, difficulty, seed, onProgress) {
         const N = size;
         const rng = PC.rng.make(seed >>> 0);
@@ -719,9 +765,35 @@
             }
         });
 
-        // 2) Strip information down to the difficulty target (bounded by the
-        //    deadline).
-        digDifficulty(N, clues, solutionOwner, difficulty, rng, deadline);
+        // 2) Carve a pool from the SAME full-clue tiling, score each, and ship
+        //    by difficulty: hard → the hardest carve, medium → the median,
+        //    easy → its single (weak-technique) carve. (Bounded by deadline.)
+        const tech = TECHNIQUES_BY_DIFFICULTY[difficulty] || TECHNIQUES_BY_DIFFICULTY.medium;
+        const fullClues = clues;
+        const K = bestOfK(N, difficulty);
+        const carves = [];
+        for (let k = 0; k < K; k++) {
+            if (k > 0 && Date.now() > deadline) break;
+            const cand = fullClues.map((c) => Object.assign({}, c));
+            const digRng = PC.rng.make((seed ^ ((k + 1) * 0x9e3779b9)) >>> 0);
+            digDifficulty(N, cand, solutionOwner, difficulty, digRng, deadline);
+            carves.push({ clues: cand, score: scorePuzzle(N, cand, solutionOwner, tech) });
+            if (onProgress) await onProgress(0.4 + 0.55 * (k + 1) / K);
+        }
+        let chosen;
+        if (!carves.length) { // deadline hit before any carve finished.
+            const cand = fullClues.map((c) => Object.assign({}, c));
+            digDifficulty(N, cand, solutionOwner, difficulty, rng, deadline);
+            chosen = { clues: cand, score: scorePuzzle(N, cand, solutionOwner, tech) };
+        } else {
+            carves.sort((a, b) => a.score - b.score);
+            const idx = difficulty === 'medium'
+                ? Math.floor((carves.length - 1) * 0.5)   // median
+                : carves.length - 1;                       // hardest (hard/easy)
+            chosen = carves[idx];
+        }
+        clues = chosen.clues;
+        const bestScore = chosen.score;
 
         if (onProgress) await onProgress(1);
 
@@ -736,7 +808,7 @@
             const anys = best.clues.filter((c) => c.shape === SHAPES.ANY).length;
             /* eslint-disable no-console */
             console.log(`[patches] N=${N} ${difficulty}: ${best.clues.length} clues, `
-                + `${withNum} numbered, ${anys} any`);
+                + `${withNum} numbered, ${anys} any, hardness=${bestScore.toFixed(1)}`);
             /* eslint-enable no-console */
         }
 
@@ -763,7 +835,7 @@
     global.PuzzleGenerators.patchesInternals = {
         enumerateCandidates, countSolutions, isUnique,
         makeState, nextStep, applyStep, findAllDeductions, solveWithTechniques, coverage,
-        TECHNIQUES_BY_DIFFICULTY, logicSolvable,
+        TECHNIQUES_BY_DIFFICULTY, logicSolvable, scorePuzzle, bestOfK,
         tileGrid, cluesFromTiling, makeClueAt,
         digDifficulty, shapeOf, satisfiesShape, SHAPES,
     };

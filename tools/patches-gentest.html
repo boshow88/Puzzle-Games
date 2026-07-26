@@ -51,36 +51,44 @@
     }
 
     const rows = [];
+    const hardnessOf = {};
     for (const N of [6, 8, 10]) {
       let base; try { base = pickBase(N, 3100 + N, 1200); } catch (e) { fail(`pickBase ${N}: ${e && e.message}`); continue; }
       for (const diff of ['easy', 'medium', 'hard']) {
-        const clues = cloneClues(base.clues);
-        const rng = PC.rng.make(5000 + N * 7 + diff.length);
-        let t0 = performance.now();
-        try { I.digDifficulty(N, clues, base.solutionOwner, diff, rng, Date.now() + 900); }
-        catch (e) { fail(`dig ${N} ${diff}: ${e && e.message}`); continue; }
-        const digMs = performance.now() - t0;
-
-        // (a) must be solvable at its own tier AND resolve to the base solution
+        // Carve a pool (as generate() does): hard ships the hardest carve,
+        // medium the median, easy its single carve. Dig seed is difficulty-
+        // INDEPENDENT so medium & hard share one pool → hard ≥ medium.
+        const K = I.bestOfK(N, diff);
+        const carves = []; let totalMs = 0;
+        for (let k = 0; k < K; k++) {
+          const cand = cloneClues(base.clues);
+          const rng = PC.rng.make(5000 + N * 7 + k * 131);
+          const t0 = performance.now();
+          try { I.digDifficulty(N, cand, base.solutionOwner, diff, rng, Date.now() + 500); }
+          catch (e) { fail(`dig ${N} ${diff}: ${e && e.message}`); continue; }
+          totalMs += performance.now() - t0;
+          carves.push({ clues: cand, score: I.scorePuzzle(N, cand, base.solutionOwner, TECH[diff]) });
+        }
+        if (!carves.length) { fail(`${N} ${diff}: no valid carve`); continue; }
+        carves.sort((a, b) => a.score - b.score);
+        const chosen = carves[diff === 'medium' ? Math.floor((carves.length - 1) * 0.5) : carves.length - 1];
+        const clues = chosen.clues;
+        const bestScore = chosen.score;
         const res = I.solveWithTechniques(N, clues, TECH[diff]);
         if (!res.solved) fail(`${N} ${diff}: NOT solvable at its own tier`);
         else if (!same(res.owner, base.solutionOwner)) fail(`${N} ${diff}: solves to a DIFFERENT tiling (unsound!)`);
-
-        // (b) difficulty distinction: does it genuinely need the stronger tier?
-        const w = WEAKER[diff];
-        let needsStronger = '—';
-        if (w) {
-          const rw = I.solveWithTechniques(N, clues, TECH[w]);
-          needsStronger = (rw.solved && same(rw.owner, base.solutionOwner)) ? 'no' : 'YES';
-        }
-        const numbered = clues.filter((c) => c.size != null).length;
-        const anys = clues.filter((c) => c.shape === 'any').length;
-        const uses = Object.entries(res.counts).map(([k, v]) => `${k}:${v}`).join(' ');
+        hardnessOf[`${N}${diff}`] = bestScore;
         rows.push({
-          key: `${N}x${N} ${diff}`, clues: clues.length, numbered, anys,
-          digMs: digMs.toFixed(0), solved: res.solved ? 'yes' : 'NO',
-          needsStronger, uses,
+          key: `${N}x${N} ${diff}`, K, numbered: clues.filter((c) => c.size != null).length,
+          anys: clues.filter((c) => c.shape === 'any').length,
+          ms: totalMs.toFixed(0), hardness: bestScore.toFixed(1),
+          solved: res.solved && same(res.owner, base.solutionOwner) ? 'yes' : 'NO',
         });
+      }
+      // Difficulty must climb: hard ≥ medium ≥ easy (by hardness score).
+      const e = hardnessOf[`${N}easy`], m = hardnessOf[`${N}medium`], h = hardnessOf[`${N}hard`];
+      if (e != null && m != null && h != null && !(h >= m && m >= e)) {
+        fail(`${N}: hardness not monotonic (easy ${e.toFixed(1)}, medium ${m.toFixed(1)}, hard ${h.toFixed(1)})`);
       }
     }
 
@@ -93,8 +101,8 @@
       big = `bench: single hard solve on FULL 12x12 clues = ${ms.toFixed(1)}ms (solved=${r.solved})`;
     } catch (e) { big = 'bench threw: ' + (e && e.message); }
 
-    let html = '<table><tr><th>config</th><th>clues</th><th>#num</th><th>#any</th><th>dig ms</th><th>solved@tier</th><th>needs stronger</th><th>techniques used</th></tr>';
-    for (const r of rows) html += `<tr><td>${r.key}</td><td>${r.clues}</td><td>${r.numbered}</td><td>${r.anys}</td><td>${r.digMs}</td><td>${r.solved}</td><td>${r.needsStronger}</td><td style="text-align:left">${r.uses}</td></tr>`;
+    let html = '<table><tr><th>config</th><th>K</th><th>#num</th><th>#any</th><th>total ms</th><th>hardness</th><th>solved</th></tr>';
+    for (const r of rows) html += `<tr><td>${r.key}</td><td>${r.K}</td><td>${r.numbered}</td><td>${r.anys}</td><td>${r.ms}</td><td>${r.hardness}</td><td>${r.solved}</td></tr>`;
     html += '</table>';
     document.getElementById('tbl').innerHTML = html;
     out.unshift(big);
