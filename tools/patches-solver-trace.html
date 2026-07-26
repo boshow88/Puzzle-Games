@@ -84,8 +84,7 @@
         const lit = new Set();
         if (highlight.rc) for (let r = highlight.rc.r; r < highlight.rc.r + highlight.rc.h; r++) for (let c = highlight.rc.c; c < highlight.rc.c + highlight.rc.w; c++) lit.add(r * N + c);
         if (highlight.cell) lit.add(highlight.cell[0] * N + highlight.cell[1]);
-        if (highlight.victim) lit.add(highlight.victim[0] * N + highlight.victim[1]);
-        if (highlight.ghost) for (let r = highlight.ghost.r; r < highlight.ghost.r + highlight.ghost.h; r++) for (let c = highlight.ghost.c; c < highlight.ghost.c + highlight.ghost.w; c++) lit.add(r * N + c);
+        if (highlight.rivals) for (const rv of highlight.rivals) { lit.add(cur.clues[rv.clue].r * N + cur.clues[rv.clue].c); lit.add(rv.victim[0] * N + rv.victim[1]); }
         if (highlight.clue != null) lit.add(cur.clues[highlight.clue].r * N + cur.clues[highlight.clue].c);
         for (let r = 0; r < N; r++) for (let c = 0; c < N; c++) if (!lit.has(r * N + c))
           board.appendChild(svg('rect', { x: c * cs, y: r * cs, width: cs, height: cs, fill: 'var(--dim)' }));
@@ -98,13 +97,13 @@
       });
       // highlight outlines
       if (highlight) {
-        const rect = (r, c, w, h, col) => board.appendChild(svg('rect', { x: c * cs + 3, y: r * cs + 3,
-          width: w * cs - 6, height: h * cs - 6, fill: 'none', stroke: col, 'stroke-width': 3, rx: 5 }));
-        if (highlight.ghost) board.appendChild(svg('rect', { x: highlight.ghost.c * cs + 3, y: highlight.ghost.r * cs + 3,
-          width: highlight.ghost.w * cs - 6, height: highlight.ghost.h * cs - 6, fill: 'rgba(200,60,50,0.12)', stroke: 'rgba(200,60,50,0.6)', 'stroke-width': 2, 'stroke-dasharray': '6 4', rx: 5 }));
-        if (highlight.kind === 'orphan') { if (highlight.rc) rect(highlight.rc.r, highlight.rc.c, highlight.rc.w, highlight.rc.h, '#c62828'); if (highlight.cell) rect(highlight.cell[0], highlight.cell[1], 1, 1, '#333'); }
-        else if (highlight.kind === 'forceCell') { rect(highlight.cell[0], highlight.cell[1], 1, 1, '#333'); if (highlight.victim) rect(highlight.victim[0], highlight.victim[1], 1, 1, '#c62828'); }
-        else if (highlight.kind === 'commit') { const cl = cur.clues[highlight.clue]; rect(cl.r, cl.c, 1, 1, '#333'); if (highlight.rc) rect(highlight.rc.r, highlight.rc.c, highlight.rc.w, highlight.rc.h, '#1565c0'); }
+        const rect = (r, c, w, h, col, dashed) => board.appendChild(svg('rect', Object.assign({ x: c * cs + 3, y: r * cs + 3,
+          width: w * cs - 6, height: h * cs - 6, fill: 'none', stroke: col, 'stroke-width': 3, rx: 5 }, dashed ? { 'stroke-dasharray': '6 4' } : {})));
+        const PAL = ['#e8710a', '#8e24aa', '#00897b', '#c2185b', '#5e35b1', '#00838f', '#6d4c41', '#f9a825'];
+        if (highlight.kind === 'forceCell') {
+          rect(highlight.cell[0], highlight.cell[1], 1, 1, '#1565c0');
+          if (highlight.rivals) highlight.rivals.forEach((rv, j) => { const col = PAL[j % PAL.length]; const cl = cur.clues[rv.clue]; rect(cl.r, cl.c, 1, 1, col); rect(rv.victim[0], rv.victim[1], 1, 1, col, true); });
+        } else if (highlight.kind === 'commit') { const cl = cur.clues[highlight.clue]; rect(cl.r, cl.c, 1, 1, '#333'); if (highlight.rc) rect(highlight.rc.r, highlight.rc.c, highlight.rc.w, highlight.rc.h, '#1565c0'); }
       }
     }
 
@@ -126,9 +125,9 @@
         const cl = cur.clues[s.clue];
         const minR = Math.min(cl.r, s.cell[0]), minC = Math.min(cl.c, s.cell[1]);
         const maxR = Math.max(cl.r, s.cell[0]), maxC = Math.max(cl.c, s.cell[1]);
-        return { kind: 'forceCell', clue: s.clue, cell: s.cell, victim: s.victim, ghost: s.ghost, rc: { r: minR, c: minC, w: maxC - minC + 1, h: maxR - minR + 1 } };
+        return { kind: 'forceCell', clue: s.clue, cell: s.cell, rivals: s.rivals, rc: { r: minR, c: minC, w: maxC - minC + 1, h: maxR - minR + 1 } };
       }
-      return { kind: 'orphan', clue: s.clue, cell: s.cell, rc: s.rect };
+      return { kind: 'forceCell', clue: s.clue, cell: s.cell, rivals: s.rivals, rc: null };
     }
 
     async function autoTo(target) {

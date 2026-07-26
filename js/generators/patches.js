@@ -449,80 +449,87 @@
         return out;
     }
 
-    // 1-ply reachability, restricted to "fragile" free cells (reachable by only
-    // a few clues) so the scan stays cheap. Collect every candidate whose
-    // placement would strand such a cell — those can't be in any tiling.
-    const ORPHAN_MAX_COVER = 3;
-    // Returns Map(candidateRect → { strand:[r,c], clue }) — each dead candidate
-    // paired with the fragile cell its placement would strand (and whose clue
-    // it belongs to), so the hint can point at the victim.
-    function collectDeadCandidates(st) {
+    // -----------------------------------------------------------------
+    // Orphan (positive, per-cell). A free cell whose EVERY rival owner can be
+    // ruled out belongs to the one clue left standing. A rival Y is ruled out
+    // from cell k when EVERY Y-candidate that covers k would strand some other
+    // cell — i.e. each such rectangle, if it were Y's final shape, seals a cell
+    // off from all its owners. (Full candidates, so no "absorb" hole: whichever
+    // shape Y ends up as when covering k, a cell dies → Y can't own k. Sound;
+    // the digger's "solve == solution" guard is the backstop.)
+    //
+    // A "stranded" cell is capped to a few possible owners so the scan stays
+    // cheap (a cell reachable by many clues is very hard to seal off anyway).
+    // Each ruled-out rival keeps one witness cell so the hint can show, per
+    // rival, exactly which cell that rival would strand.
+    // -----------------------------------------------------------------
+    const STRAND_MAX_COVER = 4;
+    function orphanDeductions(st) {
         const N = st.N;
         const cov = coverage(st);
-        const dead = new Map();
-        for (let k = 0; k < N * N; k++) {
-            if (st.owner[k] !== -1) continue;
-            const cnt = cov.count[k];
-            if (cnt < 2 || cnt > ORPHAN_MAX_COVER) continue;
-            const kr = (k / N) | 0, kc = k % N;
-            const groups = [];
-            for (let i = 0; i < st.K; i++) {
-                if (st.committed[i]) continue;
-                let reach = null;
-                for (const rc of st.cands[i]) {
-                    if (rectContains(rc, kr, kc)) (reach || (reach = [])).push(rc);
-                }
-                if (reach) groups.push({ i, reach });
-            }
-            if (groups.length !== cnt) continue; // defensive
-            for (let i = 0; i < st.K; i++) {
-                if (st.committed[i]) continue;
-                for (const rc of st.cands[i]) {
-                    if (dead.has(rc) || rectContains(rc, kr, kc)) continue;
-                    let kills = true;
-                    for (const g of groups) {
-                        if (g.i === i) continue; // i becomes rc → its reach is gone
-                        if (g.reach.some((br) => !rectsOverlap(br, rc))) { kills = false; break; }
+
+        // Coverers per empty cell: Map(clue -> [candidates covering it]).
+        const coverersOf = new Array(N * N).fill(null);
+        for (let i = 0; i < st.K; i++) {
+            if (st.committed[i]) continue;
+            for (const rc of st.cands[i]) {
+                for (let r = rc.r; r < rc.r + rc.h; r++) {
+                    for (let c = rc.c; c < rc.c + rc.w; c++) {
+                        const k = r * N + c;
+                        if (st.owner[k] !== -1) continue;
+                        let e = coverersOf[k]; if (!e) e = coverersOf[k] = new Map();
+                        let lst = e.get(i); if (!lst) e.set(i, (lst = []));
+                        lst.push(rc);
                     }
-                    if (kills) dead.set(rc, { strand: [kr, kc], clue: i });
                 }
             }
         }
-        return dead;
-    }
 
-    // Orphan expressed as POSITIVE deductions. A bare "this candidate is
-    // impossible" elimination is useless to a Patches player — unlike sudoku
-    // there are no candidate-notes to cross off. So instead: drop every dead
-    // candidate, and whatever single/core placement that NEWLY enables is the
-    // orphan result ("this cell must be X — any other clue reaching it would
-    // strand a cell"). That's an actionable placement, not an elimination.
-    function orphanDeductions(st) {
-        const dead = collectDeadCandidates(st);
-        if (dead.size === 0) return [];
-        const shadow = {
-            N: st.N, K: st.K, clues: st.clues, clueAt: st.clueAt,
-            owner: st.owner, committed: st.committed, remaining: st.remaining, dead: false,
-            cands: st.cands.map((list) => list.filter((rc) => !dead.has(rc))),
-        };
-        const single = singleDeductions(shadow);
-        const core = coreDeductions(shadow);
-        const out = single.commits.map((s) => Object.assign({}, s, { technique: 'orphan' }));
-        for (const s of single.forceCells.concat(core)) {
-            const o = Object.assign({}, s, { technique: 'orphan' });
-            // The cell is forced because every OTHER clue that could reach it
-            // has only dead candidates there. Surface one such victim — the
-            // cell that would be stranded — plus the clue that would strand it.
-            const [r, c] = s.cell;
-            for (const [rc, info] of dead) {
-                if (info.clue !== s.clue && rectContains(rc, r, c)) {
-                    o.victim = info.strand;          // the cell that gets stranded
-                    o.viaClue = info.clue;           // the rival clue
-                    o.ghost = { r: rc.r, c: rc.c, w: rc.w, h: rc.h }; // its would-be reach
-                    break;
+        // dead: candidate rectangle → a cell it would strand (fragile victim).
+        const dead = new Map();
+        for (let m = 0; m < N * N; m++) {
+            if (st.owner[m] !== -1) continue;
+            const cnt = cov.count[m];
+            if (cnt < 2 || cnt > STRAND_MAX_COVER) continue;
+            const groups = coverersOf[m];
+            if (!groups || groups.size !== cnt) continue; // defensive
+            const mr = (m / N) | 0, mc = m % N;
+            for (let i = 0; i < st.K; i++) {
+                if (st.committed[i]) continue;
+                for (const rc of st.cands[i]) {
+                    if (dead.has(rc) || rectContains(rc, mr, mc)) continue;
+                    let kills = true;
+                    for (const [Z, rects] of groups) {
+                        if (Z === i) continue; // i becomes rc → its reach is gone
+                        if (rects.some((br) => !rectsOverlap(br, rc))) { kills = false; break; }
+                    }
+                    if (kills) dead.set(rc, [mr, mc]);
                 }
             }
-            out.push(o);
+        }
+
+        // A coverer whose EVERY k-covering candidate is dead can't own k.
+        const out = [];
+        for (let k = 0; k < N * N; k++) {
+            if (st.owner[k] !== -1) continue;
+            const coverers = coverersOf[k];
+            if (!coverers || coverers.size < 2) continue;
+            const kr = (k / N) | 0, kc = k % N;
+            const rivals = [];
+            let survivor = -1, survivorCount = 0;
+            for (const [Y, ycands] of coverers) {
+                let allDead = true, victim = null;
+                for (const rc of ycands) {
+                    const m = dead.get(rc);
+                    if (!m) { allDead = false; break; }
+                    if (!victim) victim = m;
+                }
+                if (allDead) rivals.push({ clue: Y, victim });
+                else { survivorCount++; survivor = Y; }
+            }
+            if (survivorCount === 1 && rivals.length >= 1) {
+                out.push({ technique: 'orphan', kind: 'forceCell', clue: survivor, cell: [kr, kc], rivals });
+            }
         }
         return out;
     }
