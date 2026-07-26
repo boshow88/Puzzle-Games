@@ -453,10 +453,13 @@
     // a few clues) so the scan stays cheap. Collect every candidate whose
     // placement would strand such a cell — those can't be in any tiling.
     const ORPHAN_MAX_COVER = 3;
+    // Returns Map(candidateRect → { strand:[r,c], clue }) — each dead candidate
+    // paired with the fragile cell its placement would strand (and whose clue
+    // it belongs to), so the hint can point at the victim.
     function collectDeadCandidates(st) {
         const N = st.N;
         const cov = coverage(st);
-        const dead = new Set();
+        const dead = new Map();
         for (let k = 0; k < N * N; k++) {
             if (st.owner[k] !== -1) continue;
             const cnt = cov.count[k];
@@ -481,7 +484,7 @@
                         if (g.i === i) continue; // i becomes rc → its reach is gone
                         if (g.reach.some((br) => !rectsOverlap(br, rc))) { kills = false; break; }
                     }
-                    if (kills) dead.add(rc);
+                    if (kills) dead.set(rc, { strand: [kr, kc], clue: i });
                 }
             }
         }
@@ -504,8 +507,23 @@
         };
         const single = singleDeductions(shadow);
         const core = coreDeductions(shadow);
-        const all = single.commits.concat(single.forceCells, core);
-        return all.map((s) => Object.assign({}, s, { technique: 'orphan' }));
+        const out = single.commits.map((s) => Object.assign({}, s, { technique: 'orphan' }));
+        for (const s of single.forceCells.concat(core)) {
+            const o = Object.assign({}, s, { technique: 'orphan' });
+            // The cell is forced because every OTHER clue that could reach it
+            // has only dead candidates there. Surface one such victim — the
+            // cell that would be stranded — plus the clue that would strand it.
+            const [r, c] = s.cell;
+            for (const [rc, info] of dead) {
+                if (info.clue !== s.clue && rectContains(rc, r, c)) {
+                    o.victim = info.strand;
+                    o.viaClue = info.clue;
+                    break;
+                }
+            }
+            out.push(o);
+        }
+        return out;
     }
 
     // Every deduction at the LOWEST firing tier (single → core → orphan),

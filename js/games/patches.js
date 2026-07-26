@@ -841,13 +841,17 @@
         // only the explanation differs.
         const msgKey = step.technique === 'core' ? 'patchesHintCore'
             : step.technique === 'orphan' ? 'patchesHintOrphan' : 'patchesHint3';
-        return {
+        const hint = {
             kind: 'deduce-cell',
             rc: pick.rc,
             cell: step.cell,
             clue: step.clue,
             msgKey,
         };
+        // Orphan: the cell that would be stranded if another clue took this
+        // one — highlighted in red so the "why" is visible (Tango-style).
+        if (step.victim) hint.victim = step.victim;
+        return hint;
     }
 
     function repaintHint() {
@@ -867,6 +871,7 @@
             }
         }
         if (h.cell) focus.add(h.cell[0] * N + h.cell[1]);
+        if (h.victim) focus.add(h.victim[0] * N + h.victim[1]);
         if (h.clue != null) { const cl = p.clues[h.clue]; focus.add(cl.r * N + cl.c); }
 
         for (let r = 0; r < N; r++) {
@@ -895,6 +900,8 @@
         //   conflict / wrong           → red-outline the offending rectangle.
         if (h.kind === 'deduce-cell' && h.cell) {
             outline(h.cell[0], h.cell[1], 1, 1, false);
+            // Orphan victim — the cell that would be stranded — marked in red.
+            if (h.victim) outline(h.victim[0], h.victim[1], 1, 1, true);
         } else if (h.kind === 'deduce' && h.clue != null) {
             const cl = p.clues[h.clue];
             outline(cl.r, cl.c, 1, 1, false);

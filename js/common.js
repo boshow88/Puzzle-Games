@@ -897,7 +897,7 @@
             patchesHintCore:
                 'The outlined cell must belong to the highlighted shape\u2019s region: however that shape is finally drawn, it always covers this cell \u2014 so you can extend it here.',
             patchesHintOrphan:
-                'The outlined cell can only belong to the highlighted shape\u2019s region: any other clue that reached it would leave some cell impossible to fill, so it must go here.',
+                'The outlined cell can only belong to the highlighted shape\u2019s region: if any other clue reached it instead, the red cell could no longer be filled, so it must go here.',
             patchesConflictSizeOver: (x) =>
                 `This patch can hold at most ${x} cell${x === 1 ? '' : 's'}.`,
             patchesConflictShapeSquare: 'This patch must be a square.',
@@ -1085,7 +1085,7 @@
             patchesHintCore:
                 '外框的格子必屬於此醒目標示形狀的區域：無論該形狀最後怎麼畫，都一定會涵蓋此格，因此可以先把它畫進來。',
             patchesHintOrphan:
-                '畫出外框的格子只能屬於此醒目標示形狀的區域：其他任何線索若延伸過來覆蓋它，都會使某個格子再也無法被填入，因此它只能置於此處。',
+                '畫出外框的格子只能屬於此醒目標示形狀的區域：若改由其他線索延伸過來覆蓋它，紅色格子將再也無法被填入，因此它只能置於此處。',
             patchesConflictSizeOver: (x) => `此有色區域最多只能有 ${x} 格。`,
             patchesConflictShapeSquare: '此有色區域必須是正方形。',
             patchesConflictShapeWide: '此有色區域必須是橫向長方形（寬 > 高）。',
