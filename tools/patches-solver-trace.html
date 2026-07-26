@@ -49,11 +49,11 @@
     const svg = (t, a) => { const e = document.createElementNS('http://www.w3.org/2000/svg', t); for (const k in a) e.setAttribute(k, a[k]); return e; };
 
     // step → hint (mirror of the game's computeDeduction mapping).
-    const MSG = { commit2: 'patchesHint2', commit1: 'patchesHint1', single: 'patchesHint3', core: 'patchesHintCore', orphan: 'patchesHintOrphan' };
+    const MSG = { commit2: 'patchesHint2', commit1: 'patchesHint1', single: 'patchesHint3', core: 'patchesHintCore' };
     function stepClass(s) { return s.kind === 'commit' ? 'commit' : s.technique; }
     function stepMsgKey(s) {
       if (s.kind === 'commit') return MSG.commit2;
-      return s.technique === 'core' ? MSG.core : s.technique === 'orphan' ? MSG.orphan : MSG.single;
+      return s.technique === 'core' ? MSG.core : MSG.single;
     }
 
     // ?tech=orphan|core|tier3|commit — auto-step (regenerating if needed) to the

@@ -839,27 +839,18 @@
         // forceCell — the cell belongs to that clue. Rule A / core / orphan all
         // present the same way (outline the cell, light the implied rectangle);
         // only the explanation differs.
-        const msgKey = step.technique === 'core' ? 'patchesHintCore'
-            : step.technique === 'orphan' ? 'patchesHintOrphan' : 'patchesHint3';
-        const hint = {
+        // forceCell — the cell belongs to that clue. Rule A / core present the
+        // same way (outline the cell, light the implied rectangle); only the
+        // explanation differs.
+        const msgKey = step.technique === 'core' ? 'patchesHintCore' : 'patchesHint3';
+        return {
             kind: 'deduce-cell',
             rc: pick.rc,
             cell: step.cell,
             clue: step.clue,
             msgKey,
         };
-        // Orphan: every OTHER clue that could take this cell is a `rival`, each
-        // paired with the cell it would strand. The hint colour-codes each
-        // rival's clue cell with its stranded victim so the player sees, for
-        // every alternative, exactly which cell it would doom.
-        if (step.rivals) hint.rivals = step.rivals;
-        return hint;
     }
-
-    // Distinct hues for orphan rivals (kept clear of the blue protagonist ring
-    // and the red danger ring). Cycled if a cell somehow has more rivals.
-    const RIVAL_COLORS = ['#e8710a', '#8e24aa', '#00897b', '#c2185b',
-        '#5e35b1', '#00838f', '#6d4c41', '#f9a825'];
 
     function repaintHint() {
         const layer = board.querySelector('#hint');
@@ -878,13 +869,6 @@
             }
         }
         if (h.cell) focus.add(h.cell[0] * N + h.cell[1]);
-        if (h.rivals) {
-            for (const rv of h.rivals) {
-                const rc = p.clues[rv.clue];
-                focus.add(rc.r * N + rc.c);
-                focus.add(rv.victim[0] * N + rv.victim[1]);
-            }
-        }
         if (h.clue != null) { const cl = p.clues[h.clue]; focus.add(cl.r * N + cl.c); }
 
         for (let r = 0; r < N; r++) {
@@ -899,41 +883,24 @@
 
         const inset = Math.max(2, cs * 0.06);
         const rad = Math.max(3, cs * 0.1);
-        const outline = (r, c, w, h2, opts) => {
-            const a = {
-                x: c * cs + inset, y: r * cs + inset,
-                width: w * cs - inset * 2, height: h2 * cs - inset * 2, rx: rad, ry: rad,
-            };
-            if (opts && opts.color) {
-                a.class = 'patch-hint-outline';
-                a.style = `stroke:${opts.color}` + (opts.dashed ? ';stroke-dasharray:6 4' : '');
-            } else {
-                a.class = 'patch-hint-outline' + (opts && opts.danger ? ' danger' : '');
-            }
-            layer.appendChild(PC.svgEl('rect', a));
-        };
-        // The blue outline marks the "protagonist"; the lit (undimmed) area is
-        // the rectangle the hint suggests the player draw (h.rc).
+        const outline = (r, c, w, h2, dngr) => layer.appendChild(PC.svgEl('rect', {
+            class: 'patch-hint-outline' + (dngr ? ' danger' : ''),
+            x: c * cs + inset, y: r * cs + inset,
+            width: w * cs - inset * 2, height: h2 * cs - inset * 2,
+            rx: rad, ry: rad,
+        }));
+        // The outline marks the "protagonist"; the lit (undimmed) area is the
+        // rectangle the hint suggests the player draw (h.rc).
         //   deduce (tier 1/2)   → outline the clue (shape) cell.
-        //   deduce-cell         → outline the forced cell; for orphan, also
-        //                         colour each rival clue cell + the cell it
-        //                         would strand (dashed), matched by colour.
+        //   deduce-cell         → outline the forced cell.
         //   conflict / wrong    → red-outline the offending rectangle.
         if (h.kind === 'deduce-cell' && h.cell) {
-            outline(h.cell[0], h.cell[1], 1, 1);
-            if (h.rivals) {
-                h.rivals.forEach((rv, j) => {
-                    const col = RIVAL_COLORS[j % RIVAL_COLORS.length];
-                    const cl = p.clues[rv.clue];
-                    outline(cl.r, cl.c, 1, 1, { color: col });
-                    outline(rv.victim[0], rv.victim[1], 1, 1, { color: col, dashed: true });
-                });
-            }
+            outline(h.cell[0], h.cell[1], 1, 1, false);
         } else if (h.kind === 'deduce' && h.clue != null) {
             const cl = p.clues[h.clue];
-            outline(cl.r, cl.c, 1, 1);
+            outline(cl.r, cl.c, 1, 1, false);
         } else if (h.rc) {
-            outline(h.rc.r, h.rc.c, h.rc.w, h.rc.h, { danger: h.kind === 'conflict' || h.kind === 'wrong' });
+            outline(h.rc.r, h.rc.c, h.rc.w, h.rc.h, h.kind === 'conflict' || h.kind === 'wrong');
         }
     }
 
@@ -1121,7 +1088,6 @@
         commit: ['patchesHint1', 'patchesHint2'],
         tier3: ['patchesHint3'],
         core: ['patchesHintCore'],
-        orphan: ['patchesHintOrphan'],
     };
     let demoTries = 0;
 

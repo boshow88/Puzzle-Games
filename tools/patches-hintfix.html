@@ -82,10 +82,9 @@
 
         // Walk the solver step-by-step (the same nextStep the game hint uses),
         // asserting each step's CONCLUSION agrees with the unique solution, and
-        // that the sequence reaches a full cover. applyStep is used so that
-        // elimination (orphan) steps are honoured, not just placements.
+        // that the sequence reaches a full cover.
         const st = I.makeState(N, clues);
-        let unsound = 0, steps = 0, orphanFC = 0, orphanVic = 0;
+        let unsound = 0, steps = 0;
         let budget = N * N + 50;
         for (let i = 0; i < st.K; i++) budget += st.cands[i].length;
         while (steps++ < budget) {
@@ -93,57 +92,13 @@
           const step = I.nextStep(st, TECH[diff]);
           if (!step) break;
           if (!stepIsSound(step, solByClue)) unsound++;
-          if (step.technique === 'orphan' && step.kind === 'forceCell') {
-            orphanFC++;
-            if (Array.isArray(step.rivals) && step.rivals.length >= 1) orphanVic++;
-          }
           if (!I.applyStep(st, step)) break;
         }
         let solved = !st.dead && st.remaining === 0;
         if (solved) for (let k = 0; k < N * N; k++) if (st.owner[k] === -1) { solved = false; break; }
         ok(`${N}x${N} ${diff}: every hint step sound`, unsound === 0);
         ok(`${N}x${N} ${diff}: hint sequence solves fully`, solved);
-        if (orphanFC > 0) ok(`${N}x${N} ${diff}: orphan force-cells carry rivals (${orphanVic}/${orphanFC})`, orphanVic === orphanFC);
       }
-    }
-
-    // --- 3) orphan force-cells must carry a victim (the stranded cell) ------
-    // Search several dug hard puzzles, solve from empty, and check every
-    // orphan force-cell reports a valid victim cell for the hint to highlight.
-    {
-      let seen = 0, good = 0, bad = 0;
-      for (const N of [8, 10]) {
-        const base = pickBase(N, 4200 + N, 1200);
-        const solOwner = ownerOf(N, base.rects);
-        for (let s = 1; s <= 8; s++) {
-          const clues = cloneClues(base.clues);
-          const rng = PC.rng.make(9000 + N * 17 + s * 101);
-          try { I.digDifficulty(N, clues, solOwner, 'hard', rng, Date.now() + 700); } catch (e) { continue; }
-          const st = I.makeState(N, clues);
-          let budget = N * N + 50; for (let i = 0; i < st.K; i++) budget += st.cands[i].length;
-          for (let step = 0; step < budget; step++) {
-            if (st.dead) break;
-            const s2 = I.nextStep(st, TECH.hard);
-            if (!s2) break;
-            if (s2.technique === 'orphan' && s2.kind === 'forceCell') {
-              seen++;
-              const trueOwnerK = solOwner[s2.cell[0] * N + s2.cell[1]];
-              const rivals = s2.rivals;
-              let okStep = Array.isArray(rivals) && rivals.length >= 1 && s2.clue === trueOwnerK;
-              if (okStep) for (const rv of rivals) {
-                const v = rv.victim;
-                const vOk = v && Number.isInteger(v[0]) && v[0] >= 0 && v[0] < N
-                  && v[1] >= 0 && v[1] < N && !(v[0] === s2.cell[0] && v[1] === s2.cell[1]);
-                if (!vOk || rv.clue === trueOwnerK) { okStep = false; break; }
-              }
-              if (okStep) good++; else bad++;
-            }
-            if (!I.applyStep(st, s2)) break;
-          }
-        }
-      }
-      note(`orphan force-cells seen=${seen}, sound(survivor+rivals)=${good}, bad=${bad}`);
-      ok('orphan: survivor is the true owner & every rival has a valid victim', seen === 0 ? true : bad === 0);
     }
 
     document.getElementById('out').textContent = out.join('\n');
