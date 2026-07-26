@@ -1000,6 +1000,16 @@
 .patch-hint-outline.danger {
     stroke: var(--accent-danger);
 }
+/* Orphan hint: the rival clue's hypothetical expansion (a "what if"), dashed
+   and faintly tinted toward the danger colour so it reads as the cause of the
+   red victim cell rather than a real placement. */
+.patch-hint-ghost {
+    fill: rgba(200, 60, 50, 0.12);
+    stroke: rgba(200, 60, 50, 0.55);
+    stroke-width: 2.5;
+    stroke-dasharray: 7 5;
+    pointer-events: none;
+}
 
 /* Message bubble anchored to a violating rectangle (HTML inside an SVG
    foreignObject so it scales with the board and wraps text cleanly). */

@@ -516,8 +516,9 @@
             const [r, c] = s.cell;
             for (const [rc, info] of dead) {
                 if (info.clue !== s.clue && rectContains(rc, r, c)) {
-                    o.victim = info.strand;
-                    o.viaClue = info.clue;
+                    o.victim = info.strand;          // the cell that gets stranded
+                    o.viaClue = info.clue;           // the rival clue
+                    o.ghost = { r: rc.r, c: rc.c, w: rc.w, h: rc.h }; // its would-be reach
                     break;
                 }
             }

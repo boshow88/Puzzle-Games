@@ -848,9 +848,12 @@
             clue: step.clue,
             msgKey,
         };
-        // Orphan: the cell that would be stranded if another clue took this
-        // one — highlighted in red so the "why" is visible (Tango-style).
+        // Orphan: show the reasoning chain (Tango-style). `victim` is the cell
+        // that would be stranded (red); `ghost` is the rival clue's would-be
+        // expansion that reaches this cell and seals the victim off (shown as a
+        // faded hypothetical), so the player sees WHY the red cell is excluded.
         if (step.victim) hint.victim = step.victim;
+        if (step.ghost) hint.ghost = step.ghost;
         return hint;
     }
 
@@ -872,6 +875,11 @@
         }
         if (h.cell) focus.add(h.cell[0] * N + h.cell[1]);
         if (h.victim) focus.add(h.victim[0] * N + h.victim[1]);
+        if (h.ghost) {
+            for (let r = h.ghost.r; r < h.ghost.r + h.ghost.h; r++) {
+                for (let c = h.ghost.c; c < h.ghost.c + h.ghost.w; c++) focus.add(r * N + c);
+            }
+        }
         if (h.clue != null) { const cl = p.clues[h.clue]; focus.add(cl.r * N + cl.c); }
 
         for (let r = 0; r < N; r++) {
@@ -892,6 +900,17 @@
             width: w * cs - inset * 2, height: h2 * cs - inset * 2,
             rx: rad, ry: rad,
         }));
+        // Orphan reasoning chain: the rival clue's HYPOTHETICAL expansion that
+        // would reach the forced cell and seal the victim off. Drawn faded and
+        // dashed so it reads as "what if this happened", not a placed piece.
+        if (h.ghost) {
+            layer.appendChild(PC.svgEl('rect', {
+                class: 'patch-hint-ghost',
+                x: h.ghost.c * cs + inset, y: h.ghost.r * cs + inset,
+                width: h.ghost.w * cs - inset * 2, height: h.ghost.h * cs - inset * 2,
+                rx: rad, ry: rad,
+            }));
+        }
         // The outline marks the "protagonist"; the lit (undimmed) area is the
         // rectangle the hint suggests the player draw (h.rc).
         //   deduce (tier 1/2)          → outline the clue (shape) cell.

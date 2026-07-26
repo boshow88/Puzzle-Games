@@ -127,18 +127,20 @@
             if (!s2) break;
             if (s2.technique === 'orphan' && s2.kind === 'forceCell') {
               seen++;
-              const v2 = s2.victim;
-              if (v2 && Number.isInteger(v2[0]) && Number.isInteger(v2[1])
+              const v2 = s2.victim, g = s2.ghost;
+              const vicOk = v2 && Number.isInteger(v2[0]) && Number.isInteger(v2[1])
                 && v2[0] >= 0 && v2[0] < N && v2[1] >= 0 && v2[1] < N
-                && !(v2[0] === s2.cell[0] && v2[1] === s2.cell[1])) withVic++;
-              else badVic++;
+                && !(v2[0] === s2.cell[0] && v2[1] === s2.cell[1]);
+              const ghostOk = g && s2.cell[0] >= g.r && s2.cell[0] < g.r + g.h
+                && s2.cell[1] >= g.c && s2.cell[1] < g.c + g.w;
+              if (vicOk && ghostOk) withVic++; else badVic++;
             }
             if (!I.applyStep(st, s2)) break;
           }
         }
       }
-      note(`orphan force-cells seen=${seen}, with valid victim=${withVic}, bad=${badVic}`);
-      ok('orphan force-cells all carry a valid victim cell', seen === 0 ? true : badVic === 0);
+      note(`orphan force-cells seen=${seen}, with valid victim+ghost=${withVic}, bad=${badVic}`);
+      ok('orphan force-cells all carry a valid victim + rival-expansion ghost', seen === 0 ? true : badVic === 0);
     }
 
     document.getElementById('out').textContent = out.join('\n');
