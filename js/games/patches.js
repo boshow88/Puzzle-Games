@@ -833,15 +833,18 @@
             });
             const area = (b) => (b.R - b.r + 1) * (b.C - b.c + 1);
             const holds = (o, m) => o.r <= m.r && o.c <= m.c && o.R >= m.R && o.C >= m.C;
-            // FRONTIER only: drop any forced cell whose box is contained in
-            // another forced cell's bigger box (i.e. collinear cells "on the
-            // way" to a farther one — already implied by it). Different-
-            // direction cells don't contain each other, so they all survive
-            // and genuinely deserve the merged multi-cell hint.
-            const cells = g.cells.filter((m) => !g.cells.some((o) => {
-                if (o === m) return false;
-                const bo = boxOf(o[0], o[1]), bm = boxOf(m[0], m[1]);
-                return holds(bo, bm) && area(bo) > area(bm);
+            // Keep only cells that CONTRIBUTE a distinct implied rectangle.
+            // Drop a cell whose box is contained in another cell's BIGGER box
+            // (collinear "on the way" cells), and drop DUPLICATES when several
+            // cells imply the SAME box (keep just the earliest — the player
+            // drags a rectangle, so one supporting cell is enough to draw it).
+            // What survives is the minimal set of corners the merged rectangle
+            // needs; genuinely different-direction cells all remain.
+            const boxes = g.cells.map(([r, c]) => boxOf(r, c));
+            const cells = g.cells.filter((m, i) => !g.cells.some((o, j) => {
+                if (j === i || !holds(boxes[j], boxes[i])) return false;
+                const ao = area(boxes[j]), am = area(boxes[i]);
+                return ao > am || (ao === am && j < i);
             }));
             let minR = br0, minC = bc0, maxR = br1, maxC = bc1;
             for (const [r, c] of cells) {
