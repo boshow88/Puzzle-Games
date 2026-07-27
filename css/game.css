@@ -73,7 +73,11 @@
 
 .game-toolbar {
     display: grid;
-    grid-template-columns: 1fr 1fr auto;
+    /* minmax(0, …) so the selector columns may shrink below their content's
+       intrinsic width instead of blowing the grid out — otherwise a wide
+       control (e.g. Patches' range slider) forces overflow and the action
+       column spills past the shell edge. */
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) auto;
     align-items: end;
     gap: var(--space-md);
     background: var(--bg-secondary);
@@ -169,10 +173,12 @@
     display: flex;
     align-items: center;
     gap: var(--space-sm);
+    min-width: 0; /* allow the column (and slider) to shrink, not overflow */
 }
 
 .size-control input[type="range"] {
     flex: 1;
+    min-width: 0; /* range inputs default to a wide min — let it shrink */
     accent-color: var(--game-color, var(--accent-primary));
 }
 
