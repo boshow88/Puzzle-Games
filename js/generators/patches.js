@@ -681,8 +681,12 @@
     function digDifficulty(N, clues, solutionOwner, difficulty, rng, deadline) {
         const tech = TECHNIQUES_BY_DIFFICULTY[difficulty]
             || TECHNIQUES_BY_DIFFICULTY.medium;
-        // Whether shape degradation to 'any' is on the table.
-        const degradeShapes = difficulty !== 'easy';
+        // Sudoku-style easing: dig to the LIMIT (below), then on easy hand a
+        // little info back — split between numbers and shapes — so it stays
+        // gentle. Snapshot the full info first.
+        const EASY_ADD_BACK = 0.6; // share of clues to restore some info on (easy)
+        const origSize = clues.map((c) => c.size);
+        const origShape = clues.map((c) => c.shape);
 
         const solvesToSolution = () => {
             const res = solveWithTechniques(N, clues, tech);
@@ -696,7 +700,7 @@
         const order = clues.map((_, i) => i);
         PC.rng.shuffle(order, rng);
 
-        // Pass 1: drop the number from as many clues as the tier allows.
+        // Pass 1: drop the number from as many clues as the solver allows.
         for (const i of order) {
             if (Date.now() > deadline) return clues;
             if (clues[i].size == null) continue;
@@ -705,15 +709,47 @@
             if (!solvesToSolution()) clues[i].size = saved;
         }
 
-        // Pass 2 (medium/hard): relax shape → 'any'.
-        if (degradeShapes) {
-            PC.rng.shuffle(order, rng);
-            for (const i of order) {
-                if (Date.now() > deadline) return clues;
-                if (clues[i].shape === SHAPES.ANY) continue;
-                const saved = clues[i].shape;
-                clues[i].shape = SHAPES.ANY;
-                if (!solvesToSolution()) clues[i].shape = saved;
+        // Pass 2 (all tiers): relax shape → 'any'.
+        PC.rng.shuffle(order, rng);
+        for (const i of order) {
+            if (Date.now() > deadline) return clues;
+            if (clues[i].shape === SHAPES.ANY) continue;
+            const saved = clues[i].shape;
+            clues[i].shape = SHAPES.ANY;
+            if (!solvesToSolution()) clues[i].shape = saved;
+        }
+
+        // Easy: dug-to-limit is too hard, so hand a little info back. The
+        // budget is split between restoring NUMBERS and un-relaxing SHAPES
+        // (any → concrete), and a piece is only restored if it actually SHRINKS
+        // that clue's candidate-rectangle count — a restore that cuts no
+        // candidate wouldn't make the clue any easier, so we skip it and spend
+        // the budget elsewhere. Restoring only re-adds solution info, so the
+        // unique solution is preserved (no re-check needed).
+        if (difficulty === 'easy') {
+            const clueAt = makeClueAt(N, clues);
+            const candCount = (i) => enumerateCandidates(N, clues[i], i, clueAt).length;
+            const budget = Math.round(clues.length * EASY_ADD_BACK);
+            const pool = order.slice();
+            PC.rng.shuffle(pool, rng);
+            let done = 0;
+            for (const i of pool) {
+                if (done >= budget) break;
+                const before = candCount(i);
+                const tryNum = () => {
+                    if (clues[i].size != null) return false;
+                    clues[i].size = origSize[i];
+                    if (candCount(i) < before) return true;
+                    clues[i].size = null; return false;
+                };
+                const tryShape = () => {
+                    if (clues[i].shape !== SHAPES.ANY || origShape[i] === SHAPES.ANY) return false;
+                    clues[i].shape = origShape[i];
+                    if (candCount(i) < before) return true;
+                    clues[i].shape = SHAPES.ANY; return false;
+                };
+                const attempts = rng() < 0.5 ? [tryNum, tryShape] : [tryShape, tryNum];
+                if (attempts[0]() || attempts[1]()) done += 1;
             }
         }
         return clues;
@@ -776,8 +812,10 @@
 
         // 2) Carve a pool from the SAME full-clue tiling, score each, and ship
         //    by difficulty: hard → the hardest carve, medium → the median,
-        //    easy → its single (weak-technique) carve. (Bounded by deadline.)
-        const tech = TECHNIQUES_BY_DIFFICULTY[difficulty] || TECHNIQUES_BY_DIFFICULTY.medium;
+        //    easy → its single carve. All tiers are SCORED with the same solver
+        //    (single+core) so their hardness is on one comparable scale even
+        //    though easy is dug with a weaker solver.
+        const scoreTech = TECHNIQUES_BY_DIFFICULTY.medium;
         const fullClues = clues;
         const K = bestOfK(N, difficulty);
         const carves = [];
@@ -786,14 +824,14 @@
             const cand = fullClues.map((c) => Object.assign({}, c));
             const digRng = PC.rng.make((seed ^ ((k + 1) * 0x9e3779b9)) >>> 0);
             digDifficulty(N, cand, solutionOwner, difficulty, digRng, deadline);
-            carves.push({ clues: cand, score: scorePuzzle(N, cand, solutionOwner, tech) });
+            carves.push({ clues: cand, score: scorePuzzle(N, cand, solutionOwner, scoreTech) });
             if (onProgress) await onProgress(0.4 + 0.55 * (k + 1) / K);
         }
         let chosen;
         if (!carves.length) { // deadline hit before any carve finished.
             const cand = fullClues.map((c) => Object.assign({}, c));
             digDifficulty(N, cand, solutionOwner, difficulty, rng, deadline);
-            chosen = { clues: cand, score: scorePuzzle(N, cand, solutionOwner, tech) };
+            chosen = { clues: cand, score: scorePuzzle(N, cand, solutionOwner, scoreTech) };
         } else {
             carves.sort((a, b) => a.score - b.score);
             const idx = difficulty === 'medium'

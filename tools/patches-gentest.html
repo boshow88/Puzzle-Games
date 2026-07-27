@@ -67,7 +67,9 @@
           try { I.digDifficulty(N, cand, base.solutionOwner, diff, rng, Date.now() + 500); }
           catch (e) { fail(`dig ${N} ${diff}: ${e && e.message}`); continue; }
           totalMs += performance.now() - t0;
-          carves.push({ clues: cand, score: I.scorePuzzle(N, cand, base.solutionOwner, TECH[diff]) });
+          // Score every tier with the same solver (single+core) for a
+          // comparable hardness scale, even though easy is dug single-only.
+          carves.push({ clues: cand, score: I.scorePuzzle(N, cand, base.solutionOwner, TECH.medium) });
         }
         if (!carves.length) { fail(`${N} ${diff}: no valid carve`); continue; }
         carves.sort((a, b) => a.score - b.score);
