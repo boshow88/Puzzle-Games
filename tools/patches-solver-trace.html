@@ -15,10 +15,10 @@
     svg { display:block; width:100%; height:auto; }
     .log { max-height: 620px; overflow-y:auto; font-size: 13px; }
     .step { border-left: 4px solid #bbb; padding: 6px 10px; margin: 0 0 6px; background:#faf6f6; }
-    .step.single { border-color:#2e7d32; } .step.core { border-color:#1565c0; } .step.orphan { border-color:#c62828; }
+    .step.single { border-color:#2e7d32; } .step.core { border-color:#1565c0; }
     .step.commit { border-color:#6a1b9a; }
     .badge { display:inline-block; font-size:11px; color:#fff; border-radius:3px; padding:1px 6px; margin-right:6px; }
-    .single .badge{background:#2e7d32}.core .badge{background:#1565c0}.orphan .badge{background:#c62828}.commit .badge{background:#6a1b9a}
+    .single .badge{background:#2e7d32}.core .badge{background:#1565c0}.commit .badge{background:#6a1b9a}
     .meta { color:#666; font-size:12px; }
     .done { color:#128a12; font-weight:700; }
   </style>
@@ -26,7 +26,7 @@
   <script src="../js/generators/patches.js"></script>
 </head>
 <body>
-  <h1>Patches solver trace — 一步一步看 solver 怎麼推(single / core / orphan)</h1>
+  <h1>Patches solver trace — 一步一步看 solver 怎麼推(single / core)</h1>
   <div class="controls">
     Size <select id="size"><option>6</option><option selected>8</option><option>10</option><option>12</option></select>
     難度 <select id="diff"><option value="easy">easy</option><option value="medium">medium</option><option value="hard" selected>hard</option></select>
@@ -56,7 +56,7 @@
       return s.technique === 'core' ? MSG.core : MSG.single;
     }
 
-    // ?tech=orphan|core|tier3|commit — auto-step (regenerating if needed) to the
+    // ?tech=core|tier3|commit — auto-step (regenerating if needed) to the
     // first such hint and stop there, so you can eyeball that visual directly.
     const TECHPARAM = new URL(location.href).searchParams.get('tech');
     let autoTries = 0;

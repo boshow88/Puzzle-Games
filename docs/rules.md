@@ -1,6 +1,6 @@
 # Game Rules
 
-A central reference for the four puzzles in this collection. Each game
+A central reference for the five puzzles in this collection. Each game
 page already shows a short *How to play* footer; this document is the
 long form — the complete rule set and the controls that map to them.
 
@@ -9,7 +9,7 @@ algorithms, file layout) live elsewhere.
 
 ## Shared conventions
 
-All four games share the same chrome and the same control vocabulary,
+All five games share the same chrome and the same control vocabulary,
 so the rule sections below only mention game-specific deviations.
 
 - **Difficulty** (Easy / Medium / Hard): controls how heavily the
