@@ -1104,7 +1104,12 @@
    ---------------------------------------------------------------- */
 
 @media (max-width: 560px) {
-    .game-toolbar {
+    /* Collapse to a single column so Difficulty / Board size / actions each
+       get their own row. The .toolbar-stack-action override must be repeated
+       here (same specificity, later source) or it would keep its two-column
+       desktop layout and crush the slider on phones. */
+    .game-toolbar,
+    .game-toolbar.toolbar-stack-action {
         grid-template-columns: 1fr;
     }
     .topbar-spacer { display: none; }
