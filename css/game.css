@@ -88,6 +88,18 @@
     margin-bottom: var(--space-md);
 }
 
+/* When the size control is a wide slider (Patches), drop the New Game / Share
+   actions onto their own full-width row so the two selector columns — and thus
+   the slider — get the full toolbar width instead of being squeezed by a third
+   action column. */
+.game-toolbar.toolbar-stack-action {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+}
+
+.game-toolbar.toolbar-stack-action .toolbar-action {
+    grid-column: 1 / -1;
+}
+
 /* New Game lives in the toolbar so changing size or difficulty
    without applying is visually obvious. Aligned to the bottom of
    the toolbar so it lines up with the segmented controls instead
