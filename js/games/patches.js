@@ -749,27 +749,33 @@
                 msgKey: vs[0].msgKey, msgArgs: vs[0].msgArgs,
             };
         }
-        // 2) A rule-valid rectangle that doesn't match the unique solution.
-        const wrong = findWrongPlacement();
-        if (wrong) {
-            return { kind: 'wrong', rc: wrong, clue: wrong.clue, msgKey: 'patchesHintWrong' };
+        // 2) Rule-valid rectangles that don't match the unique solution.
+        //    Show ALL of them at once (not one at a time) so the player can
+        //    clear every dead placement in one pass.
+        const wrong = findWrongPlacements();
+        if (wrong.length) {
+            return {
+                kind: 'wrong', rc: wrong[0], rcs: wrong, clue: wrong[0].clue,
+                msgKey: wrong.length > 1 ? 'patchesHintWrongMulti' : 'patchesHintWrong',
+            };
         }
         // 3) The next logical deduction.
         return computeDeduction() || { kind: 'none', msgKey: 'patchesHintNone' };
     }
 
-    function findWrongPlacement() {
+    function findWrongPlacements() {
         const sol = new Map();
         for (const s of state.puzzle.solution) sol.set(s.clue, s);
+        const wrong = [];
         for (const rc of state.placements) {
             const s = sol.get(rc.clue);
             // Wrong only if it strays OUTSIDE its clue's solution rectangle.
             // A rectangle fully inside is a valid partial that can still be
             // expanded to the solution — a hint guides its completion instead.
             if (!s || rc.r < s.r || rc.c < s.c
-                || rc.r + rc.h > s.r + s.h || rc.c + rc.w > s.c + s.w) return rc;
+                || rc.r + rc.h > s.r + s.h || rc.c + rc.w > s.c + s.w) wrong.push(rc);
         }
-        return null;
+        return wrong;
     }
 
     function computeDeduction() {
@@ -878,11 +884,12 @@
         const N = p.size;
         const cs = cellSize();
 
-        // Cells that stay lit: the target rectangle / cell and its clue cell.
+        // Cells that stay lit: the target rectangle(s) / cell and its clue cell.
         const focus = new Set();
-        if (h.rc) {
-            for (let r = h.rc.r; r < h.rc.r + h.rc.h; r++) {
-                for (let c = h.rc.c; c < h.rc.c + h.rc.w; c++) focus.add(r * N + c);
+        const rcs = h.rcs || (h.rc ? [h.rc] : []);
+        for (const rc of rcs) {
+            for (let r = rc.r; r < rc.r + rc.h; r++) {
+                for (let c = rc.c; c < rc.c + rc.w; c++) focus.add(r * N + c);
             }
         }
         if (h.cells) for (const [r, c] of h.cells) focus.add(r * N + c);
@@ -910,14 +917,17 @@
         // rectangle the hint suggests the player draw (h.rc).
         //   deduce (tier 1/2)   → outline the clue (shape) cell.
         //   deduce-cell         → outline every forced cell (may be several).
-        //   conflict / wrong    → red-outline the offending rectangle.
+        //   wrong               → red-outline EVERY offending rectangle.
+        //   conflict            → red-outline the offending rectangle.
         if (h.kind === 'deduce-cell' && h.cells) {
             for (const [r, c] of h.cells) outline(r, c, 1, 1, false);
         } else if (h.kind === 'deduce' && h.clue != null) {
             const cl = p.clues[h.clue];
             outline(cl.r, cl.c, 1, 1, false);
+        } else if (h.kind === 'wrong') {
+            for (const rc of rcs) outline(rc.r, rc.c, rc.w, rc.h, true);
         } else if (h.rc) {
-            outline(h.rc.r, h.rc.c, h.rc.w, h.rc.h, h.kind === 'conflict' || h.kind === 'wrong');
+            outline(h.rc.r, h.rc.c, h.rc.w, h.rc.h, h.kind === 'conflict');
         }
     }
 

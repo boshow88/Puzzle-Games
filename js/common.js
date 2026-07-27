@@ -909,6 +909,8 @@
                 'This patch must be a tall rectangle (taller than wide).',
             patchesHintWrong:
                 'This rectangle can\u2019t be part of the solution — remove it and try another shape.',
+            patchesHintWrongMulti:
+                'None of these rectangles can be part of the solution — remove them and try other shapes.',
             patchesHintNone: 'No further deductions available right now.',
         },
         zh: {
@@ -1095,6 +1097,7 @@
             patchesConflictShapeWide: '此有色區域必須是橫向長方形（寬 > 高）。',
             patchesConflictShapeTall: '此有色區域必須是直向長方形（高 > 寬）。',
             patchesHintWrong: '這個矩形不可能是解答的一部分，把它移除再試試別的形狀。',
+            patchesHintWrongMulti: '這些矩形都不可能是解答的一部分，把它們移除再試試別的形狀。',
             patchesHintNone: '目前沒有更進一步可推論的地方了。',
         },
     };
