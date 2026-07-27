@@ -83,13 +83,17 @@
     // cleared first so the result never contains one.
     // -----------------------------------------------------------------
 
-    function mergeParams(N, difficulty) {
-        // Average patch area → target patch count. Easier boards are a touch
-        // chunkier (fewer, larger); harder boards a touch finer. (A first cut
-        // — these are the natural knobs to tune difficulty with later.)
-        const avgArea = { easy: 5, medium: 4.3, hard: 3.6 }[difficulty] || 4.3;
+    function mergeParams(N, difficulty, rng) {
+        // Average patch area → target patch count (bigger avg = fewer, chunkier
+        // patches = less dense). The per-difficulty value is the DENSE floor;
+        // each puzzle samples a random amount sparser on top, so most boards
+        // are chunkier than before and density varies from board to board (the
+        // old fixed density is now only the dense end of the range).
+        const floor = { easy: 5, medium: 4.3, hard: 3.6 }[difficulty] || 4.3;
+        const avgArea = floor + (rng ? rng() : 0) * 2.4;
         const targetCount = Math.max(2, Math.round((N * N) / avgArea));
-        const maxArea = Math.max(6, Math.round(N * 1.6));
+        // Allow bigger single patches so the low target count is reachable.
+        const maxArea = Math.max(8, Math.round(N * 2.2));
         return { targetCount, maxArea };
     }
 
@@ -166,7 +170,7 @@
     }
 
     function tileGrid(N, rng, difficulty) {
-        const { targetCount, maxArea } = mergeParams(N, difficulty);
+        const { targetCount, maxArea } = mergeParams(N, difficulty, rng);
         for (let attempt = 0; attempt < 40; attempt++) {
             const t = tryMergeTiling(N, rng, targetCount, maxArea);
             if (t) return t;

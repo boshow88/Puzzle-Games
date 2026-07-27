@@ -101,6 +101,16 @@
       big = `bench: single hard solve on FULL 12x12 clues = ${ms.toFixed(1)}ms (solved=${r.solved})`;
     } catch (e) { big = 'bench threw: ' + (e && e.message); }
 
+    // Density: sample many tilings per size and report the piece-count spread
+    // (should be lower on average than the old fixed density, with variety).
+    for (const N of [8, 10, 12]) {
+      const rng = PC.rng.make(7770 + N);
+      let sum = 0, mn = 1e9, mx = 0;
+      const S = 30;
+      for (let s = 0; s < S; s++) { const p = I.tileGrid(N, rng, 'medium').length; sum += p; mn = Math.min(mn, p); mx = Math.max(mx, p); }
+      out.push(`density ${N}x${N}: pieces avg ${(sum / S).toFixed(1)} (min ${mn}, max ${mx}, of ${N * N} cells)`);
+    }
+
     let html = '<table><tr><th>config</th><th>K</th><th>#num</th><th>#any</th><th>total ms</th><th>hardness</th><th>solved</th></tr>';
     for (const r of rows) html += `<tr><td>${r.key}</td><td>${r.K}</td><td>${r.numbered}</td><td>${r.anys}</td><td>${r.ms}</td><td>${r.hardness}</td><td>${r.solved}</td></tr>`;
     html += '</table>';
