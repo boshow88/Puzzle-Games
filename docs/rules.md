@@ -237,3 +237,63 @@ retract back past the offending checkpoint to clear the red.
 
 The path covers every open cell, visits the checkpoints in order,
 and ends at checkpoint `K`.
+
+---
+
+## Patches
+
+**Goal.** Cover the whole N×N board with non-overlapping rectangles —
+exactly one per clue — where each rectangle matches its clue's shape
+(and size, if the clue gives one).
+
+### Board
+
+- N×N grid, with N from **5×5** to **12×12**.
+- Most cells are blank. A few carry a **clue** glyph; each clue is the
+  seed of exactly one rectangle. The glyph states the required shape:
+  - **Square** — the rectangle must be a square (width = height).
+  - **Wide** — wider than tall (width > height).
+  - **Tall** — taller than wide (height > width).
+  - **Any** (dashed composite glyph) — any rectangle shape.
+- If the glyph also shows a **number**, the rectangle's **area** must
+  equal it (e.g. `6` → 1×6, 2×3, 3×2 or 6×1, subject to the shape). No
+  number means any size.
+- Each clue (and its rectangle) has its own colour; blank cells are
+  neutral until a rectangle is drawn over them.
+
+### Rules
+
+1. Every clue is covered by exactly **one** rectangle, and every
+   rectangle contains exactly **one** clue (a one-to-one pairing).
+2. Each rectangle satisfies its clue's **shape** (square / wide / tall
+   / any).
+3. If the clue carries a **number**, the rectangle's area equals it.
+4. **No 1×1 rectangles** — every rectangle covers at least two cells.
+5. Rectangles **never overlap**.
+6. The rectangles **fill the whole board** — no cell left uncovered.
+
+### Controls
+
+- **Drag from a blank cell** to draw a rectangle. A grey preview grows
+  toward the pointer (within one gesture it only ever grows). When it
+  covers exactly one clue it tints to that clue's colour; the drag
+  refuses to grow so that it would cover a **second** clue or **overlap
+  an existing rectangle**.
+- **Release**:
+  - preview covering **no** clue → discarded (nothing placed);
+  - preview covering **one** clue → placed.
+  - Shortly after placing, a rectangle that already breaks its clue
+    (too big for the stated size, or a shape it can no longer become)
+    flashes **red** with a small bubble explaining why.
+- **Drag from inside a placed rectangle** to resize it — grow-only;
+  releasing replaces the old rectangle.
+- **Click a placed rectangle** (a tap, no drag) to remove it.
+- Each placed rectangle shows a small **size badge** (current W×H).
+- **Hint**: highlights the next deduction (conflict-first, then the
+  forced placement / cell). Press again to dismiss.
+- **Reveal (?)**: shows the intended solution rectangles.
+
+### Win
+
+Every clue owns one valid rectangle and the rectangles tile the grid
+with no gaps or overlaps.
