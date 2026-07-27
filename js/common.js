@@ -1096,8 +1096,8 @@
             patchesConflictShapeSquare: '此有色區域必須是正方形。',
             patchesConflictShapeWide: '此有色區域必須是橫向長方形（寬 > 高）。',
             patchesConflictShapeTall: '此有色區域必須是直向長方形（高 > 寬）。',
-            patchesHintWrong: '這個矩形不可能是解答的一部分，把它移除再試試別的形狀。',
-            patchesHintWrongMulti: '這些矩形都不可能是解答的一部分，把它們移除再試試別的形狀。',
+            patchesHintWrong: '這個矩形不是解答的一部分，把它移除再試試別的形狀。',
+            patchesHintWrongMulti: '這些矩形都不是解答的一部分，把它們移除再試試別的形狀。',
             patchesHintNone: '目前沒有更進一步可推論的地方了。',
         },
     };
