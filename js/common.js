@@ -653,7 +653,10 @@
                     () => setSize(btn.dataset.value));
             });
         } else if (sizeCfg.kind === 'slider' && dom.sizeSlider) {
-            dom.sizeSlider.addEventListener('change',
+            // 'input' (not 'change') so the "current → pending" readout updates
+            // live as the player drags, before releasing — setSize only stages
+            // the size (no board work), so this is cheap to fire every step.
+            dom.sizeSlider.addEventListener('input',
                 (ev) => setSize(ev.target.value));
         }
 
