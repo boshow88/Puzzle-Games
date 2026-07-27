@@ -824,27 +824,43 @@
         const groups = [...byClue.values()].map((g) => {
             const base = state.placements.find((rc) => rc.clue === g.clue) || null;
             const cl = p.clues[g.clue];
-            let minR = base ? base.r : cl.r;
-            let minC = base ? base.c : cl.c;
-            let maxR = base ? base.r + base.h - 1 : cl.r;
-            let maxC = base ? base.c + base.w - 1 : cl.c;
-            for (const [r, c] of g.cells) {
+            const br0 = base ? base.r : cl.r, bc0 = base ? base.c : cl.c;
+            const br1 = base ? base.r + base.h - 1 : cl.r, bc1 = base ? base.c + base.w - 1 : cl.c;
+            // Box of the clue's current shape unioned with cell (r,c).
+            const boxOf = (r, c) => ({
+                r: Math.min(br0, r), c: Math.min(bc0, c),
+                R: Math.max(br1, r), C: Math.max(bc1, c),
+            });
+            const area = (b) => (b.R - b.r + 1) * (b.C - b.c + 1);
+            const holds = (o, m) => o.r <= m.r && o.c <= m.c && o.R >= m.R && o.C >= m.C;
+            // FRONTIER only: drop any forced cell whose box is contained in
+            // another forced cell's bigger box (i.e. collinear cells "on the
+            // way" to a farther one — already implied by it). Different-
+            // direction cells don't contain each other, so they all survive
+            // and genuinely deserve the merged multi-cell hint.
+            const cells = g.cells.filter((m) => !g.cells.some((o) => {
+                if (o === m) return false;
+                const bo = boxOf(o[0], o[1]), bm = boxOf(m[0], m[1]);
+                return holds(bo, bm) && area(bo) > area(bm);
+            }));
+            let minR = br0, minC = bc0, maxR = br1, maxC = bc1;
+            for (const [r, c] of cells) {
                 minR = Math.min(minR, r); minC = Math.min(minC, c);
                 maxR = Math.max(maxR, r); maxC = Math.max(maxC, c);
             }
-            return { g, rc: { r: minR, c: minC, w: maxC - minC + 1, h: maxR - minR + 1, clue: g.clue } };
+            return { g, cells, rc: { r: minR, c: minC, w: maxC - minC + 1, h: maxR - minR + 1, clue: g.clue } };
         });
-        groups.sort((a, b) => b.g.cells.length - a.g.cells.length
+        groups.sort((a, b) => b.cells.length - a.cells.length
             || (b.rc.w * b.rc.h) - (a.rc.w * a.rc.h));
         const chosen = groups[0];
-        const multi = chosen.g.cells.length > 1;
+        const multi = chosen.cells.length > 1;
         const msgKey = chosen.g.technique === 'core'
             ? (multi ? 'patchesHintCoreMulti' : 'patchesHintCore')
             : (multi ? 'patchesHint3Multi' : 'patchesHint3');
         return {
             kind: 'deduce-cell',
             rc: chosen.rc,
-            cells: chosen.g.cells,
+            cells: chosen.cells,
             clue: chosen.g.clue,
             msgKey,
         };
