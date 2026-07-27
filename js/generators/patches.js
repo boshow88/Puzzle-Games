@@ -777,15 +777,16 @@
     }
 
     // Target hardness window for MEDIUM, per board size — calibrated from the
-    // full-dug hardness distribution (tools/_measure). A single full dig
-    // usually lands at or above `hi`, so we hand clues back to ease it down
+    // full-dug hardness distribution (tools/_measure) and then nudged ~10%
+    // BELOW its centre so medium leans a touch on the easy side. A single full
+    // dig usually lands at or above `hi`, so we hand clues back to ease it down
     // into the window; a dig below `lo` means the tiling is inherently too
     // easy and we regenerate. Anchors interpolate/extrapolate for other sizes.
     const MED_BAND = [
-        [6, 26, 46],
-        [8, 55, 105],
-        [10, 120, 190],
-        [12, 250, 380],
+        [6, 23, 42],
+        [8, 50, 95],
+        [10, 108, 170],
+        [12, 225, 340],
     ];
     function mediumBand(N) {
         const t = MED_BAND;
@@ -895,7 +896,11 @@
                 const d = H < band.lo ? band.lo - H : H - band.hi;
                 if (!best || d < best.d) best = { rects: T.rects, clues: cand, score: H, d };
             }
-            if (onProgress) await onProgress(0.4 + 0.55 * (t + 1) / attempts);
+            // Progress is attempts-based: sqrt(done / budget) so the bar moves
+            // briskly early (most runs finish in a few attempts) and eases off
+            // toward the max. Reported only after a NON-accepting attempt — an
+            // accepted board breaks out and jumps to the final onProgress(1).
+            if (onProgress) await onProgress(Math.sqrt((t + 1) / attempts));
         }
 
         if (!chosen) {
