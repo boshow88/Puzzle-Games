@@ -101,6 +101,40 @@
       }
     }
 
+    // --- 3) merge check: a clue's simultaneous forced cells group soundly ---
+    // (the game hint merges same-clue forceCells into one multi-cell hint; here
+    // we verify such groups occur and every grouped cell is in that clue's
+    // solution rect, so merging never points at a wrong cell.)
+    {
+      let states = 0, groups = 0, maxGroup = 0, unsound = 0;
+      for (const N of [8, 10]) {
+        const base = pickBase(N, 5200 + N, 1200);
+        const solOwner = ownerOf(N, base.rects);
+        const solByClue = new Map(base.rects.map((rc, i) => [i, rc]));
+        for (let s = 1; s <= 6; s++) {
+          const clues = cloneClues(base.clues);
+          try { I.digDifficulty(N, clues, solOwner, 'hard', PC.rng.make(3300 + N * 11 + s * 97), Date.now() + 700); } catch (e) { continue; }
+          const st = I.makeState(N, clues);
+          for (let step = 0; step < clues.length + 5; step++) {
+            if (st.dead) break;
+            const res = I.findAllDeductions(st, TECH.hard);
+            if (!res) break;
+            const byClue = new Map();
+            for (const x of res.steps) if (x.kind === 'forceCell') { let g = byClue.get(x.clue); if (!g) byClue.set(x.clue, (g = [])); g.push(x.cell); }
+            states++;
+            for (const [clue, cells] of byClue) {
+              groups++; maxGroup = Math.max(maxGroup, cells.length);
+              const sol = solByClue.get(clue);
+              for (const [r, c] of cells) if (!(sol.r <= r && r < sol.r + sol.h && sol.c <= c && c < sol.c + sol.w)) unsound++;
+            }
+            const s0 = I.nextStep(st, TECH.hard); if (!s0) break; I.applyStep(st, s0);
+          }
+        }
+      }
+      note(`merge: states=${states}, forceCell-groups=${groups}, max group size=${maxGroup}, unsound cells=${unsound}`);
+      ok('merged forced cells are all in their clue\u2019s solution rect', unsound === 0);
+    }
+
     document.getElementById('out').textContent = out.join('\n');
     const v = document.getElementById('verdict');
     v.textContent = fails === 0 ? 'ALL TESTS PASSED' : (fails + ' TEST(S) FAILED');

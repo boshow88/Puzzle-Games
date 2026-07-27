@@ -793,61 +793,59 @@
         if (!res || !res.steps.length) return null;
 
         const placedClue = new Set(state.placements.map((rc) => rc.clue));
-        // Minimal bounding box from a clue's current shape (its placement if
-        // any, else just its clue cell) unioned with a target cell — so the
-        // lit area includes what the player has already drawn. This IS the
-        // rectangle the hint suggests the player draw.
-        const boxToCell = (clue, r, c) => {
-            const base = state.placements.find((rc) => rc.clue === clue) || null;
-            const cl = p.clues[clue];
-            const r0 = base ? base.r : cl.r;
-            const c0 = base ? base.c : cl.c;
-            const r1 = base ? base.r + base.h - 1 : cl.r;
-            const c1 = base ? base.c + base.w - 1 : cl.c;
-            const minR = Math.min(r0, r), minC = Math.min(c0, c);
-            const maxR = Math.max(r1, r), maxC = Math.max(c1, c);
-            return { r: minR, c: minC, w: maxC - minC + 1, h: maxR - minR + 1, clue };
-        };
-        const impliedRect = (s) => s.kind === 'commit'
-            ? Object.assign({}, s.rect, { clue: s.clue })
-            : boxToCell(s.clue, s.cell[0], s.cell[1]);
-
-        // Attach each step's implied rectangle, then DROP any step whose
-        // rectangle is fully contained in another step's for the SAME clue —
-        // never offer a weaker suggestion when a bigger one exists. Among what
-        // survives, keep scan order (already lowest-tier from the solver).
-        const withRc = res.steps.map((s) => ({ s, rc: impliedRect(s) }));
-        const area = (t) => t.w * t.h;
-        const covers = (o, t) => o.r <= t.r && o.c <= t.c
-            && o.r + o.h >= t.r + t.h && o.c + o.w >= t.c + t.w;
-        const kept = withRc.filter((h) => !withRc.some((o) =>
-            o !== h && o.s.clue === h.s.clue && area(o.rc) > area(h.rc) && covers(o.rc, h.rc)));
-        const pick = (kept[0] || withRc[0]);
-        const step = pick.s;
-
-        if (step.kind === 'commit') {
-            // Rule B: this clue is pinned to exactly one rectangle. Tier 1 if
-            // the player has a partial to complete, else tier 2 (fresh place).
-            const partial = placedClue.has(step.clue);
+        // A commit (Rule B) pins a clue to one whole rectangle. Each clue has
+        // at most one, so there's nothing to merge — surface the first.
+        const commit = res.steps.find((s) => s.kind === 'commit');
+        if (commit) {
+            const partial = placedClue.has(commit.clue);
             return {
                 kind: 'deduce',
-                rc: pick.rc,
-                clue: step.clue,
+                rc: Object.assign({}, commit.rect, { clue: commit.clue }),
+                clue: commit.clue,
                 msgKey: partial ? 'patchesHint1' : 'patchesHint2',
             };
         }
-        // forceCell — the cell belongs to that clue. Rule A / core / orphan all
-        // present the same way (outline the cell, light the implied rectangle);
-        // only the explanation differs.
-        // forceCell — the cell belongs to that clue. Rule A / core present the
-        // same way (outline the cell, light the implied rectangle); only the
-        // explanation differs.
-        const msgKey = step.technique === 'core' ? 'patchesHintCore' : 'patchesHint3';
+
+        // forceCell (Rule A single-cover, or core): a clue can have SEVERAL
+        // forced cells at once, in different directions. Group them by clue and
+        // MERGE into one hint — its rectangle is the clue's current shape (its
+        // placement, else clue cell) unioned with ALL its forced cells, and we
+        // outline every one. Ship the richest group (most cells, then largest
+        // area). Merging also subsumes the old "drop the contained smaller box"
+        // de-domination, since a clue's cells collapse to their joint bounds.
+        const byClue = new Map();
+        for (const s of res.steps) {
+            if (s.kind !== 'forceCell') continue;
+            let g = byClue.get(s.clue);
+            if (!g) byClue.set(s.clue, (g = { clue: s.clue, technique: s.technique, cells: [] }));
+            g.cells.push(s.cell);
+        }
+        if (!byClue.size) return null;
+        const groups = [...byClue.values()].map((g) => {
+            const base = state.placements.find((rc) => rc.clue === g.clue) || null;
+            const cl = p.clues[g.clue];
+            let minR = base ? base.r : cl.r;
+            let minC = base ? base.c : cl.c;
+            let maxR = base ? base.r + base.h - 1 : cl.r;
+            let maxC = base ? base.c + base.w - 1 : cl.c;
+            for (const [r, c] of g.cells) {
+                minR = Math.min(minR, r); minC = Math.min(minC, c);
+                maxR = Math.max(maxR, r); maxC = Math.max(maxC, c);
+            }
+            return { g, rc: { r: minR, c: minC, w: maxC - minC + 1, h: maxR - minR + 1, clue: g.clue } };
+        });
+        groups.sort((a, b) => b.g.cells.length - a.g.cells.length
+            || (b.rc.w * b.rc.h) - (a.rc.w * a.rc.h));
+        const chosen = groups[0];
+        const multi = chosen.g.cells.length > 1;
+        const msgKey = chosen.g.technique === 'core'
+            ? (multi ? 'patchesHintCoreMulti' : 'patchesHintCore')
+            : (multi ? 'patchesHint3Multi' : 'patchesHint3');
         return {
             kind: 'deduce-cell',
-            rc: pick.rc,
-            cell: step.cell,
-            clue: step.clue,
+            rc: chosen.rc,
+            cells: chosen.g.cells,
+            clue: chosen.g.clue,
             msgKey,
         };
     }
@@ -868,7 +866,7 @@
                 for (let c = h.rc.c; c < h.rc.c + h.rc.w; c++) focus.add(r * N + c);
             }
         }
-        if (h.cell) focus.add(h.cell[0] * N + h.cell[1]);
+        if (h.cells) for (const [r, c] of h.cells) focus.add(r * N + c);
         if (h.clue != null) { const cl = p.clues[h.clue]; focus.add(cl.r * N + cl.c); }
 
         for (let r = 0; r < N; r++) {
@@ -892,10 +890,10 @@
         // The outline marks the "protagonist"; the lit (undimmed) area is the
         // rectangle the hint suggests the player draw (h.rc).
         //   deduce (tier 1/2)   → outline the clue (shape) cell.
-        //   deduce-cell         → outline the forced cell.
+        //   deduce-cell         → outline every forced cell (may be several).
         //   conflict / wrong    → red-outline the offending rectangle.
-        if (h.kind === 'deduce-cell' && h.cell) {
-            outline(h.cell[0], h.cell[1], 1, 1, false);
+        if (h.kind === 'deduce-cell' && h.cells) {
+            for (const [r, c] of h.cells) outline(r, c, 1, 1, false);
         } else if (h.kind === 'deduce' && h.clue != null) {
             const cl = p.clues[h.clue];
             outline(cl.r, cl.c, 1, 1, false);
