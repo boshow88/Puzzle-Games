@@ -90,12 +90,18 @@
         // packing more patches. `floor` is the DENSE end; each puzzle samples a
         // random amount sparser on top, so density varies board to board.
         const floor = 4.3;
-        // Bell-shaped spread (Bates: mean of 3 uniforms) so most boards sit at
-        // a "normal" density near the middle, with the DENSE floor and the
-        // extra-sparse top as rarer tails — occasionally especially many or
-        // especially few patches, keeping both bounds.
-        const bell = rng ? (rng() + rng() + rng()) / 3 : 0.5;
-        const avgArea = floor + bell * 3.0;
+        // Sparsity spread in [0,1], mapped onto [floor, floor+span]. We want
+        // MORE variety than a bell (Bates-3 clusters at the centre) but not a
+        // plain uniform draw. So mix, 50/50, a flat (uniform) draw with a
+        // triangular one: fat tails — very sparse / very dense boards show up
+        // noticeably more often — while a soft central pull keeps it from being
+        // linear-random. FLAT is the knob: →1 flattens toward uniform, →0 goes
+        // back toward a central bell. Bounds are preserved either way.
+        const FLAT = 0.5;
+        const spread = rng
+            ? (rng() < FLAT ? rng() : (rng() + rng()) / 2)
+            : 0.5;
+        const avgArea = floor + spread * 3.0;
         const targetCount = Math.max(2, Math.round((N * N) / avgArea));
         // Allow bigger single patches so the sparse target counts are reachable.
         const maxArea = Math.max(8, Math.round(N * 2.5));
