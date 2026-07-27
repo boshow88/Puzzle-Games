@@ -912,6 +912,7 @@
             patchesHintWrongMulti:
                 'None of these rectangles can be part of the solution — remove them and try other shapes.',
             patchesHintNone: 'No further deductions available right now.',
+            patchesMinSize: 'Every region is at least 2 cells — drag to draw a rectangle.',
         },
         zh: {
             menu: '選單',
@@ -1099,6 +1100,7 @@
             patchesHintWrong: '這個矩形不是解答的一部分，把它移除再試試別的形狀。',
             patchesHintWrongMulti: '這些矩形都不是解答的一部分，把它們移除再試試別的形狀。',
             patchesHintNone: '目前沒有更進一步可推論的地方了。',
+            patchesMinSize: '每個區域至少要有 2 格，用拖曳畫出矩形。',
         },
     };
 

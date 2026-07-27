@@ -1030,8 +1030,15 @@
         if (willChange) pushUndo();
 
         if (!d.moved) {
-            // Click: delete the placed rectangle under the start cell.
-            deleteAt(d.sr, d.sc);
+            if (placementIndexUnder(d.sr, d.sc) >= 0) {
+                // Click on a placed rectangle removes it.
+                deleteAt(d.sr, d.sc);
+            } else if (cluesInBox(d.sr, d.sc, d.sr, d.sc).count === 1) {
+                // Tapped a lone clue cell: a single cell can't be a region —
+                // every patch is at least 2 cells — so nothing is placed.
+                // Nudge the player to drag instead of silently doing nothing.
+                if (PC.toast) PC.toast.show(PC.i18n.t('patchesMinSize'));
+            }
         } else {
             placeFromBox(d);
         }
