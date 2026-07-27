@@ -53,8 +53,8 @@
     function pickBase(N, seed, capMs) {
       const rng = PC.rng.make(seed >>> 0); const dl = Date.now() + capMs;
       let rects = null, clues = null;
-      for (let a = 0; a < 40; a++) { const rr = I.tileGrid(N, rng, 'hard'), cc = I.cluesFromTiling(rr, rng); if (I.isUnique(N, cc)) { rects = rr; clues = cc; break; } if (Date.now() > dl) { rects = rr; clues = cc; break; } }
-      if (!clues) { rects = I.tileGrid(N, rng, 'hard'); clues = I.cluesFromTiling(rects, rng); }
+      for (let a = 0; a < 40; a++) { const rr = I.tileGrid(N, rng), cc = I.cluesFromTiling(rr, rng); if (I.isUnique(N, cc)) { rects = rr; clues = cc; break; } if (Date.now() > dl) { rects = rr; clues = cc; break; } }
+      if (!clues) { rects = I.tileGrid(N, rng); clues = I.cluesFromTiling(rects, rng); }
       return { rng, clues, rects };
     }
     const cloneClues = (cs) => cs.map((c) => ({ ...c }));

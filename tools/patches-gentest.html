@@ -89,7 +89,7 @@
       const rng = window.PuzzleCommon.rng.make(7770 + N);
       let sum = 0, mn = 1e9, mx = 0;
       const S = 60;
-      for (let s = 0; s < S; s++) { const p = I.tileGrid(N, rng, 'medium').length; sum += p; mn = Math.min(mn, p); mx = Math.max(mx, p); }
+      for (let s = 0; s < S; s++) { const p = I.tileGrid(N, rng).length; sum += p; mn = Math.min(mn, p); mx = Math.max(mx, p); }
       out.push(`density ${N}x${N}: pieces avg ${(sum / S).toFixed(1)} (min ${mn}, max ${mx}, of ${N * N} cells)`);
     }
 

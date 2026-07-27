@@ -83,13 +83,13 @@
     // cleared first so the result never contains one.
     // -----------------------------------------------------------------
 
-    function mergeParams(N, difficulty, rng) {
+    function mergeParams(N, rng) {
         // Average patch area → target patch count (bigger avg = fewer, chunkier
-        // patches = less dense). The per-difficulty value is the DENSE floor;
-        // each puzzle samples a random amount sparser on top, so most boards
-        // are chunkier than before and density varies from board to board (the
-        // old fixed density is now only the dense end of the range).
-        const floor = { easy: 5, medium: 4.3, hard: 3.6 }[difficulty] || 4.3;
+        // patches = less dense). ONE density for every tier — hard is not made
+        // denser on purpose; difficulty comes from digging/selection, not from
+        // packing more patches. `floor` is the DENSE end; each puzzle samples a
+        // random amount sparser on top, so density varies board to board.
+        const floor = 4.3;
         // Bell-shaped spread (Bates: mean of 3 uniforms) so most boards sit at
         // a "normal" density near the middle, with the DENSE floor and the
         // extra-sparse top as rarer tails — occasionally especially many or
@@ -174,8 +174,8 @@
         return Array.from(rects.values(), (R) => ({ r: R.r, c: R.c, w: R.w, h: R.h }));
     }
 
-    function tileGrid(N, rng, difficulty) {
-        const { targetCount, maxArea } = mergeParams(N, difficulty, rng);
+    function tileGrid(N, rng) {
+        const { targetCount, maxArea } = mergeParams(N, rng);
         for (let attempt = 0; attempt < 40; attempt++) {
             const t = tryMergeTiling(N, rng, targetCount, maxArea);
             if (t) return t;
@@ -829,17 +829,17 @@
     }
 
     // Pick a tiling whose full-info clues already pin down exactly this layout
-    // (usually the first try). Density follows `difficulty` (see mergeParams).
+    // (usually the first try). Density is the same for every tier.
     // Returns { rects, clues (full info), solutionOwner }.
-    function pickTiling(N, rng, deadline, difficulty) {
+    function pickTiling(N, rng, deadline) {
         let rects = null, clues = null;
         for (let a = 0; a < 40; a++) {
-            const rr = tileGrid(N, rng, difficulty);
+            const rr = tileGrid(N, rng);
             const cc = cluesFromTiling(rr, rng);
             if (isUnique(N, cc)) { rects = rr; clues = cc; break; }
             if (Date.now() > deadline) { rects = rr; clues = cc; break; }
         }
-        if (!clues) { rects = tileGrid(N, rng, difficulty); clues = cluesFromTiling(rects, rng); }
+        if (!clues) { rects = tileGrid(N, rng); clues = cluesFromTiling(rects, rng); }
         const solutionOwner = new Int32Array(N * N).fill(-1);
         rects.forEach((rect, i) => {
             for (let r = rect.r; r < rect.r + rect.h; r++) {
@@ -873,7 +873,7 @@
         let best = null;              // fallback tracker (hard: hardest; medium: closest)
         for (let t = 0; t < attempts; t++) {
             if (t > 0 && Date.now() > deadline) break;
-            const T = pickTiling(N, rng, deadline, difficulty);
+            const T = pickTiling(N, rng, deadline);
             const cand = T.clues.map((c) => Object.assign({}, c));
             const digRng = PC.rng.make((seed ^ ((t + 1) * 0x9e3779b9)) >>> 0);
             digDifficulty(N, cand, T.solutionOwner, difficulty, digRng, deadline);
@@ -909,7 +909,7 @@
 
         if (!chosen) {
             chosen = best || (() => {
-                const T = pickTiling(N, rng, deadline, difficulty);
+                const T = pickTiling(N, rng, deadline);
                 const cand = T.clues.map((c) => Object.assign({}, c));
                 digDifficulty(N, cand, T.solutionOwner, difficulty, rng, deadline);
                 return { rects: T.rects, clues: cand, score: scorePuzzle(N, cand, T.solutionOwner, scoreTech) };
