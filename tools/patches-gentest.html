@@ -19,105 +19,84 @@
   <div id="tbl"></div>
   <pre id="out"></pre>
   <script>
-  (function () {
+  (async function () {
+    const G = window.PuzzleGenerators.patches;           // the real entry point
     const I = window.PuzzleGenerators.patchesInternals;
-    const PC = window.PuzzleCommon;
     const TECH = I.TECHNIQUES_BY_DIFFICULTY;
-    const WEAKER = { hard: 'medium', medium: 'easy', easy: null };
+    const SCORE = TECH.medium;                            // one scale for all tiers
     const out = [];
     let fails = 0;
     const fail = (m) => { out.push(' FAIL ' + m); fails++; };
 
-    const ownerOf = (N, rects) => {
+    const same = (a, b) => { for (let k = 0; k < a.length; k++) if (a[k] !== b[k]) return false; return true; };
+    const median = (a) => { const s = a.slice().sort((x, y) => x - y); return s[Math.floor((s.length - 1) / 2)]; };
+    // solution rects carry .clue (= clue index), which is exactly the owner
+    // grid scorePuzzle expects (cell → owning clue index).
+    const ownerFromSolution = (N, solution) => {
       const o = new Int32Array(N * N).fill(-1);
-      rects.forEach((rc, i) => { for (let r = rc.r; r < rc.r + rc.h; r++) for (let c = rc.c; c < rc.c + rc.w; c++) o[r * N + c] = i; });
+      solution.forEach((rc) => { for (let r = rc.r; r < rc.r + rc.h; r++) for (let c = rc.c; c < rc.c + rc.w; c++) o[r * N + c] = rc.clue; });
       return o;
     };
-    const same = (a, b) => { for (let k = 0; k < a.length; k++) if (a[k] !== b[k]) return false; return true; };
-    const cloneClues = (cs) => cs.map((c) => ({ ...c }));
 
-    // One base tiling per size (deadline-bounded, like generate()).
-    function pickBase(N, seed, capMs) {
-      const rng = PC.rng.make(seed >>> 0);
-      const dl = Date.now() + capMs;
-      let rects = null, clues = null;
-      for (let a = 0; a < 40; a++) {
-        const rr = I.tileGrid(N, rng, 'hard'), cc = I.cluesFromTiling(rr, rng);
-        if (I.isUnique(N, cc)) { rects = rr; clues = cc; break; }
-        if (Date.now() > dl) { rects = rr; clues = cc; break; }
-      }
-      if (!clues) { rects = I.tileGrid(N, rng, 'hard'); clues = I.cluesFromTiling(rects, rng); }
-      return { rng, clues, solutionOwner: ownerOf(N, rects) };
-    }
-
+    // Drive the SHIPPED generate() a few seeds per (size, tier). Validate:
+    //   • solvable at its own tier AND resolving to its own solution (sound),
+    //   • medium lands inside its target window (the whole point of the new
+    //     dig-to-window scheme; the closest-fallback may occasionally miss),
+    //   • median hardness climbs easy ≤ medium ≤ hard.
+    const SEEDS = [11, 23, 47, 88, 131];
     const rows = [];
-    const hardnessOf = {};
+    const medianHardness = {};
     for (const N of [6, 8, 10]) {
-      let base; try { base = pickBase(N, 3100 + N, 1200); } catch (e) { fail(`pickBase ${N}: ${e && e.message}`); continue; }
+      const band = I.mediumBand(N);
+      out.push(`N=${N}: medium window = [${band.lo.toFixed(0)}, ${band.hi.toFixed(0)}], attempts m/h = ${I.attemptsFor(N, 'medium')}/${I.attemptsFor(N, 'hard')}`);
       for (const diff of ['easy', 'medium', 'hard']) {
-        // Carve a pool (as generate() does): hard ships the hardest carve,
-        // medium the median, easy its single carve. Dig seed is difficulty-
-        // INDEPENDENT so medium & hard share one pool → hard ≥ medium.
-        const K = I.bestOfK(N, diff);
-        const carves = []; let totalMs = 0;
-        for (let k = 0; k < K; k++) {
-          const cand = cloneClues(base.clues);
-          const rng = PC.rng.make(5000 + N * 7 + k * 131);
+        const scores = []; let totalMs = 0, inBand = 0, lastNum = 0, lastAny = 0;
+        for (const seed of SEEDS) {
+          let p;
           const t0 = performance.now();
-          try { I.digDifficulty(N, cand, base.solutionOwner, diff, rng, Date.now() + 500); }
-          catch (e) { fail(`dig ${N} ${diff}: ${e && e.message}`); continue; }
+          try { p = await G(N, diff, seed); } catch (e) { fail(`gen ${N} ${diff} #${seed}: ${e && e.message}`); continue; }
           totalMs += performance.now() - t0;
-          // Score every tier with the same solver (single+core) for a
-          // comparable hardness scale, even though easy is dug single-only.
-          carves.push({ clues: cand, score: I.scorePuzzle(N, cand, base.solutionOwner, TECH.medium) });
+          const owner = ownerFromSolution(N, p.solution);
+          const res = I.solveWithTechniques(N, p.clues, TECH[diff]);
+          if (!res.solved) fail(`${N} ${diff} #${seed}: NOT solvable at its own tier`);
+          else if (!same(res.owner, owner)) fail(`${N} ${diff} #${seed}: solves to a DIFFERENT tiling (unsound!)`);
+          const H = I.scorePuzzle(N, p.clues, owner, SCORE);
+          scores.push(H);
+          if (diff === 'medium' && H >= band.lo - 1e-6 && H <= band.hi + 1e-6) inBand++;
+          lastNum = p.clues.filter((c) => c.size != null).length;
+          lastAny = p.clues.filter((c) => c.shape === 'any').length;
         }
-        if (!carves.length) { fail(`${N} ${diff}: no valid carve`); continue; }
-        carves.sort((a, b) => a.score - b.score);
-        const chosen = carves[diff === 'medium' ? Math.floor((carves.length - 1) * 0.5) : carves.length - 1];
-        const clues = chosen.clues;
-        const bestScore = chosen.score;
-        const res = I.solveWithTechniques(N, clues, TECH[diff]);
-        if (!res.solved) fail(`${N} ${diff}: NOT solvable at its own tier`);
-        else if (!same(res.owner, base.solutionOwner)) fail(`${N} ${diff}: solves to a DIFFERENT tiling (unsound!)`);
-        hardnessOf[`${N}${diff}`] = bestScore;
+        if (!scores.length) { fail(`${N} ${diff}: no puzzle generated`); continue; }
+        const med = median(scores);
+        medianHardness[`${N}${diff}`] = med;
+        if (diff === 'medium' && inBand === 0) fail(`${N} medium: 0/${SEEDS.length} landed in window`);
         rows.push({
-          key: `${N}x${N} ${diff}`, K, numbered: clues.filter((c) => c.size != null).length,
-          anys: clues.filter((c) => c.shape === 'any').length,
-          ms: totalMs.toFixed(0), hardness: bestScore.toFixed(1),
-          solved: res.solved && same(res.owner, base.solutionOwner) ? 'yes' : 'NO',
+          key: `${N}x${N} ${diff}`,
+          n: scores.length, numbered: lastNum, anys: lastAny,
+          ms: (totalMs / scores.length).toFixed(0),
+          hardness: `${Math.min(...scores).toFixed(0)}–${med.toFixed(0)}–${Math.max(...scores).toFixed(0)}`,
+          band: diff === 'medium' ? `${inBand}/${scores.length}` : '—',
         });
       }
-      // Difficulty must climb: hard ≥ medium ≥ easy (by hardness score).
-      const e = hardnessOf[`${N}easy`], m = hardnessOf[`${N}medium`], h = hardnessOf[`${N}hard`];
+      const e = medianHardness[`${N}easy`], m = medianHardness[`${N}medium`], h = medianHardness[`${N}hard`];
       if (e != null && m != null && h != null && !(h >= m && m >= e)) {
-        fail(`${N}: hardness not monotonic (easy ${e.toFixed(1)}, medium ${m.toFixed(1)}, hard ${h.toFixed(1)})`);
+        fail(`${N}: median hardness not monotonic (easy ${e.toFixed(1)}, medium ${m.toFixed(1)}, hard ${h.toFixed(1)})`);
       }
     }
 
-    // Micro-benchmark: single hard solve on FULL 12x12 clues (worst case).
-    let big = '';
-    try {
-      const rng = PC.rng.make(4242); const dl = Date.now() + 1500; let rects = null, clues = null;
-      for (let a = 0; a < 40; a++) { const rr = I.tileGrid(12, rng, 'hard'), cc = I.cluesFromTiling(rr, rng); if (I.isUnique(12, cc)) { rects = rr; clues = cc; break; } if (Date.now() > dl) { rects = rr; clues = cc; break; } }
-      const t0 = performance.now(); const r = I.solveWithTechniques(12, clues, TECH.hard); const ms = performance.now() - t0;
-      big = `bench: single hard solve on FULL 12x12 clues = ${ms.toFixed(1)}ms (solved=${r.solved})`;
-    } catch (e) { big = 'bench threw: ' + (e && e.message); }
-
-    // Density: sample many tilings per size and report the piece-count spread
-    // (should be lower on average than the old fixed density, with variety).
+    // Density: sample many tilings per size and report the piece-count spread.
     for (const N of [8, 10, 12]) {
-      const rng = PC.rng.make(7770 + N);
+      const rng = window.PuzzleCommon.rng.make(7770 + N);
       let sum = 0, mn = 1e9, mx = 0;
       const S = 60;
       for (let s = 0; s < S; s++) { const p = I.tileGrid(N, rng, 'medium').length; sum += p; mn = Math.min(mn, p); mx = Math.max(mx, p); }
       out.push(`density ${N}x${N}: pieces avg ${(sum / S).toFixed(1)} (min ${mn}, max ${mx}, of ${N * N} cells)`);
     }
 
-    let html = '<table><tr><th>config</th><th>K</th><th>#num</th><th>#any</th><th>total ms</th><th>hardness</th><th>solved</th></tr>';
-    for (const r of rows) html += `<tr><td>${r.key}</td><td>${r.K}</td><td>${r.numbered}</td><td>${r.anys}</td><td>${r.ms}</td><td>${r.hardness}</td><td>${r.solved}</td></tr>`;
+    let html = '<table><tr><th>config</th><th>#seeds</th><th>#num</th><th>#any</th><th>avg ms</th><th>hardness min–med–max</th><th>in-window</th></tr>';
+    for (const r of rows) html += `<tr><td>${r.key}</td><td>${r.n}</td><td>${r.numbered}</td><td>${r.anys}</td><td>${r.ms}</td><td>${r.hardness}</td><td>${r.band}</td></tr>`;
     html += '</table>';
     document.getElementById('tbl').innerHTML = html;
-    out.unshift(big);
     document.getElementById('out').textContent = out.join('\n');
     const v = document.getElementById('verdict');
     v.textContent = fails === 0 ? 'ALL SOLVABILITY/SOUNDNESS CHECKS PASSED' : (fails + ' CHECK(S) FAILED');

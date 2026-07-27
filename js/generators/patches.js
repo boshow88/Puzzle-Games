@@ -767,13 +767,86 @@
         return base + Math.max(0, N - 8) * 400;
     }
 
-    // Carve-pool size. Easy is a single carve (its weak technique set already
-    // keeps it easy). Medium and hard share ONE pool of this size and differ
-    // only in which they ship — hard takes the hardest carve, medium the
-    // median — so the tiers separate even though they share techniques.
-    function bestOfK(N, difficulty) {
+    // Attempt budget per generate() call. Easy ships its first valid dig;
+    // medium and hard each make several FRESH tiling+dig attempts and pick
+    // among them (medium → into a target window, hard → the hardest). Smaller
+    // boards are cheap, so they get more attempts.
+    function attemptsFor(N, difficulty) {
         if (difficulty === 'easy') return 1;
-        return N <= 8 ? 16 : N <= 10 ? 10 : 6;
+        return N <= 6 ? 20 : N <= 8 ? 14 : N <= 10 ? 9 : N <= 12 ? 6 : 4;
+    }
+
+    // Target hardness window for MEDIUM, per board size — calibrated from the
+    // full-dug hardness distribution (tools/_measure). A single full dig
+    // usually lands at or above `hi`, so we hand clues back to ease it down
+    // into the window; a dig below `lo` means the tiling is inherently too
+    // easy and we regenerate. Anchors interpolate/extrapolate for other sizes.
+    const MED_BAND = [
+        [6, 26, 46],
+        [8, 55, 105],
+        [10, 120, 190],
+        [12, 250, 380],
+    ];
+    function mediumBand(N) {
+        const t = MED_BAND;
+        if (N <= t[0][0]) return { lo: t[0][1], hi: t[0][2] };
+        const last = t[t.length - 1];
+        if (N >= last[0]) {
+            const p = t[t.length - 2];
+            const f = (N - last[0]) / (last[0] - p[0]);
+            return { lo: last[1] + (last[1] - p[1]) * f, hi: last[2] + (last[2] - p[2]) * f };
+        }
+        for (let i = 1; i < t.length; i++) {
+            if (N <= t[i][0]) {
+                const a = t[i - 1], b = t[i];
+                const f = (N - a[0]) / (b[0] - a[0]);
+                return { lo: a[1] + (b[1] - a[1]) * f, hi: a[2] + (b[2] - a[2]) * f };
+            }
+        }
+        return { lo: last[1], hi: last[2] };
+    }
+
+    // Ease a too-hard MEDIUM dig by handing solution info back one clue at a
+    // time (restore a number, else un-relax a shape) until the hardness drops
+    // to `band.hi` or there's nothing left to restore. Restores only re-add
+    // TRUE solution info, so the unique solution and tier-solvability are
+    // preserved. Mutates `clues`; returns the resulting hardness.
+    function addBackReduce(N, clues, solutionOwner, fullClues, band, rng, scoreTech) {
+        let H = scorePuzzle(N, clues, solutionOwner, scoreTech);
+        const order = clues.map((_, i) => i);
+        PC.rng.shuffle(order, rng);
+        for (const i of order) {
+            if (H <= band.hi) break;
+            let changed = false;
+            if (clues[i].size == null && fullClues[i].size != null) {
+                clues[i].size = fullClues[i].size; changed = true;
+            } else if (clues[i].shape === SHAPES.ANY && fullClues[i].shape !== SHAPES.ANY) {
+                clues[i].shape = fullClues[i].shape; changed = true;
+            }
+            if (changed) H = scorePuzzle(N, clues, solutionOwner, scoreTech);
+        }
+        return H;
+    }
+
+    // Pick a tiling whose full-info clues already pin down exactly this layout
+    // (usually the first try). Density follows `difficulty` (see mergeParams).
+    // Returns { rects, clues (full info), solutionOwner }.
+    function pickTiling(N, rng, deadline, difficulty) {
+        let rects = null, clues = null;
+        for (let a = 0; a < 40; a++) {
+            const rr = tileGrid(N, rng, difficulty);
+            const cc = cluesFromTiling(rr, rng);
+            if (isUnique(N, cc)) { rects = rr; clues = cc; break; }
+            if (Date.now() > deadline) { rects = rr; clues = cc; break; }
+        }
+        if (!clues) { rects = tileGrid(N, rng, difficulty); clues = cluesFromTiling(rects, rng); }
+        const solutionOwner = new Int32Array(N * N).fill(-1);
+        rects.forEach((rect, i) => {
+            for (let r = rect.r; r < rect.r + rect.h; r++) {
+                for (let c = rect.c; c < rect.c + rect.w; c++) solutionOwner[r * N + c] = i;
+            }
+        });
+        return { rects, clues, solutionOwner };
     }
 
     async function generate(size, difficulty, seed, onProgress) {
@@ -782,80 +855,76 @@
         const deadline = Date.now() + timeBudgetMs(N, difficulty);
         if (onProgress) await onProgress(0.05);
 
-        // 1) Find a tiling whose full-info clues already pin down this exact
-        //    layout (usually the first try — see the self-test). This is the
-        //    puzzle's unique solution.
-        let rects = null;
-        let clues = null;
-        for (let attempt = 0; attempt < 40; attempt++) {
-            const rr = tileGrid(N, rng, difficulty);
-            const cc = cluesFromTiling(rr, rng);
-            if (isUnique(N, cc)) { rects = rr; clues = cc; break; }
-            if (Date.now() > deadline) { rects = rr; clues = cc; break; }
-        }
-        if (!clues) {
-            rects = tileGrid(N, rng, difficulty);
-            clues = cluesFromTiling(rects, rng);
-        }
-
-        if (onProgress) await onProgress(0.4);
-
-        // Cell → clue index for the (known) solution tiling. cluesFromTiling
-        // maps rects → clues in order, so rect i is clue i. The digger keeps
-        // only strips that still resolve back to exactly this owner grid.
-        const solutionOwner = new Int32Array(N * N).fill(-1);
-        rects.forEach((rect, i) => {
-            for (let r = rect.r; r < rect.r + rect.h; r++) {
-                for (let c = rect.c; c < rect.c + rect.w; c++) solutionOwner[r * N + c] = i;
-            }
-        });
-
-        // 2) Carve a pool from the SAME full-clue tiling, score each, and ship
-        //    by difficulty: hard → the hardest carve, medium → the median,
-        //    easy → its single carve. All tiers are SCORED with the same solver
-        //    (single+core) so their hardness is on one comparable scale even
-        //    though easy is dug with a weaker solver.
+        // Every tier is SCORED with one solver (single+core) so hardness is on
+        // a single comparable scale even though easy DIGS with a weaker set.
         const scoreTech = TECHNIQUES_BY_DIFFICULTY.medium;
-        const fullClues = clues;
-        const K = bestOfK(N, difficulty);
-        const carves = [];
-        for (let k = 0; k < K; k++) {
-            if (k > 0 && Date.now() > deadline) break;
-            const cand = fullClues.map((c) => Object.assign({}, c));
-            const digRng = PC.rng.make((seed ^ ((k + 1) * 0x9e3779b9)) >>> 0);
-            digDifficulty(N, cand, solutionOwner, difficulty, digRng, deadline);
-            carves.push({ clues: cand, score: scorePuzzle(N, cand, solutionOwner, scoreTech) });
-            if (onProgress) await onProgress(0.4 + 0.55 * (k + 1) / K);
+        const attempts = attemptsFor(N, difficulty);
+        const band = difficulty === 'medium' ? mediumBand(N) : null;
+
+        // Each attempt is a FRESH tiling + dig (smaller boards get more
+        // attempts — they're cheap). Ship policy per tier:
+        //   easy   → the first valid dig.
+        //   medium → dig to the bottom, then ease a too-hard board back into
+        //            the target window; a still-too-easy board is discarded
+        //            for a new one. Fallback: the board closest to the window.
+        //   hard   → the hardest board seen across attempts.
+        let chosen = null;            // accepted board (easy / in-window medium)
+        let best = null;              // fallback tracker (hard: hardest; medium: closest)
+        for (let t = 0; t < attempts; t++) {
+            if (t > 0 && Date.now() > deadline) break;
+            const T = pickTiling(N, rng, deadline, difficulty);
+            const cand = T.clues.map((c) => Object.assign({}, c));
+            const digRng = PC.rng.make((seed ^ ((t + 1) * 0x9e3779b9)) >>> 0);
+            digDifficulty(N, cand, T.solutionOwner, difficulty, digRng, deadline);
+            let H = scorePuzzle(N, cand, T.solutionOwner, scoreTech);
+
+            if (difficulty === 'easy') {
+                chosen = { rects: T.rects, clues: cand, score: H };
+                break;
+            }
+            if (difficulty === 'hard') {
+                if (!best || H > best.score) best = { rects: T.rects, clues: cand, score: H };
+            } else { // medium — target the window
+                if (H > band.hi) {
+                    H = addBackReduce(N, cand, T.solutionOwner, T.clues, band, digRng, scoreTech);
+                }
+                if (H >= band.lo && H <= band.hi) {
+                    chosen = { rects: T.rects, clues: cand, score: H };
+                    break;
+                }
+                const d = H < band.lo ? band.lo - H : H - band.hi;
+                if (!best || d < best.d) best = { rects: T.rects, clues: cand, score: H, d };
+            }
+            if (onProgress) await onProgress(0.4 + 0.55 * (t + 1) / attempts);
         }
-        let chosen;
-        if (!carves.length) { // deadline hit before any carve finished.
-            const cand = fullClues.map((c) => Object.assign({}, c));
-            digDifficulty(N, cand, solutionOwner, difficulty, rng, deadline);
-            chosen = { clues: cand, score: scorePuzzle(N, cand, solutionOwner, scoreTech) };
-        } else {
-            carves.sort((a, b) => a.score - b.score);
-            const idx = difficulty === 'medium'
-                ? Math.floor((carves.length - 1) * 0.5)   // median
-                : carves.length - 1;                       // hardest (hard/easy)
-            chosen = carves[idx];
+
+        if (!chosen) {
+            chosen = best || (() => {
+                const T = pickTiling(N, rng, deadline, difficulty);
+                const cand = T.clues.map((c) => Object.assign({}, c));
+                digDifficulty(N, cand, T.solutionOwner, difficulty, rng, deadline);
+                return { rects: T.rects, clues: cand, score: scorePuzzle(N, cand, T.solutionOwner, scoreTech) };
+            })();
         }
-        clues = chosen.clues;
-        const bestScore = chosen.score;
 
         if (onProgress) await onProgress(1);
 
-        const best = { rects, clues };
-        const solution = best.rects.map((rect) => ({
+        const rects = chosen.rects;
+        const clues = chosen.clues;
+        const bestScore = chosen.score;
+
+        const solution = rects.map((rect) => ({
             r: rect.r, c: rect.c, w: rect.w, h: rect.h,
-            clue: clueIndexFor(best.clues, rect),
+            clue: clueIndexFor(clues, rect),
         }));
 
         if (DEBUG) {
-            const withNum = best.clues.filter((c) => c.size != null).length;
-            const anys = best.clues.filter((c) => c.shape === SHAPES.ANY).length;
+            const withNum = clues.filter((c) => c.size != null).length;
+            const anys = clues.filter((c) => c.shape === SHAPES.ANY).length;
+            const win = band ? ` window=[${band.lo.toFixed(0)},${band.hi.toFixed(0)}]` : '';
             /* eslint-disable no-console */
-            console.log(`[patches] N=${N} ${difficulty}: ${best.clues.length} clues, `
-                + `${withNum} numbered, ${anys} any, hardness=${bestScore.toFixed(1)}`);
+            console.log(`[patches] N=${N} ${difficulty}: ${clues.length} clues, `
+                + `${withNum} numbered, ${anys} any, hardness=${bestScore.toFixed(1)}${win}`);
             /* eslint-enable no-console */
         }
 
@@ -864,7 +933,7 @@
             game: 'patches',
             size: N,
             difficulty,
-            clues: best.clues,
+            clues,
             solution,
         };
     }
@@ -882,7 +951,8 @@
     global.PuzzleGenerators.patchesInternals = {
         enumerateCandidates, countSolutions, isUnique,
         makeState, nextStep, applyStep, findAllDeductions, solveWithTechniques, coverage,
-        TECHNIQUES_BY_DIFFICULTY, logicSolvable, scorePuzzle, bestOfK,
+        TECHNIQUES_BY_DIFFICULTY, logicSolvable, scorePuzzle,
+        attemptsFor, mediumBand, addBackReduce, pickTiling,
         tileGrid, cluesFromTiling, makeClueAt,
         digDifficulty, shapeOf, satisfiesShape, SHAPES,
     };

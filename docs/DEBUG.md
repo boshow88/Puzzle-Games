@@ -29,7 +29,7 @@ loaded manually by opening the file. Safe to ship, but they are dev surface:
 | `tools/tango-solver-trace.html` | Step through the Tango solver's deductions one at a time. |
 | `tools/tango-gen-stats.html` | Batch-generate Tango puzzles and inspect generator statistics. |
 | `tools/patches-solver-trace.html` | Step through the Patches solver (single / core) on a generated puzzle; `?tech=core\|tier3\|commit` auto-jumps to that hint. |
-| `tools/patches-gentest.html` | Self-test: per-difficulty solvability + soundness, best-of-K hardness (asserts hard ≥ medium ≥ easy), and tiling-density stats. |
+| `tools/patches-gentest.html` | Self-test: drives the real `generate()` a few seeds per size/tier — checks solvability + soundness, that medium lands in its hardness window, that median hardness climbs (easy ≤ medium ≤ hard), and reports tiling-density stats. |
 | `tools/patches-hintfix.html` | Self-test: hint soundness + full solve walkthrough, plus the no-leak and forced-cell-merge regressions. |
 
 ## Ungated console logging
