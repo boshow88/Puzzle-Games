@@ -681,12 +681,6 @@
     function digDifficulty(N, clues, solutionOwner, difficulty, rng, deadline) {
         const tech = TECHNIQUES_BY_DIFFICULTY[difficulty]
             || TECHNIQUES_BY_DIFFICULTY.medium;
-        // Sudoku-style easing: dig to the LIMIT (below), then on easy hand a
-        // little info back — split between numbers and shapes — so it stays
-        // gentle. Snapshot the full info first.
-        const EASY_ADD_BACK = 0.6; // share of clues to restore some info on (easy)
-        const origSize = clues.map((c) => c.size);
-        const origShape = clues.map((c) => c.shape);
 
         const solvesToSolution = () => {
             const res = solveWithTechniques(N, clues, tech);
@@ -719,39 +713,8 @@
             if (!solvesToSolution()) clues[i].shape = saved;
         }
 
-        // Easy: dug-to-limit is too hard, so hand a little info back. The
-        // budget is split between restoring NUMBERS and un-relaxing SHAPES
-        // (any → concrete), and a piece is only restored if it actually SHRINKS
-        // that clue's candidate-rectangle count — a restore that cuts no
-        // candidate wouldn't make the clue any easier, so we skip it and spend
-        // the budget elsewhere. Restoring only re-adds solution info, so the
-        // unique solution is preserved (no re-check needed).
-        if (difficulty === 'easy') {
-            const clueAt = makeClueAt(N, clues);
-            const candCount = (i) => enumerateCandidates(N, clues[i], i, clueAt).length;
-            const budget = Math.round(clues.length * EASY_ADD_BACK);
-            const pool = order.slice();
-            PC.rng.shuffle(pool, rng);
-            let done = 0;
-            for (const i of pool) {
-                if (done >= budget) break;
-                const before = candCount(i);
-                const tryNum = () => {
-                    if (clues[i].size != null) return false;
-                    clues[i].size = origSize[i];
-                    if (candCount(i) < before) return true;
-                    clues[i].size = null; return false;
-                };
-                const tryShape = () => {
-                    if (clues[i].shape !== SHAPES.ANY || origShape[i] === SHAPES.ANY) return false;
-                    clues[i].shape = origShape[i];
-                    if (candCount(i) < before) return true;
-                    clues[i].shape = SHAPES.ANY; return false;
-                };
-                const attempts = rng() < 0.5 ? [tryNum, tryShape] : [tryShape, tryNum];
-                if (attempts[0]() || attempts[1]()) done += 1;
-            }
-        }
+        // Easing back toward a target is done by the caller (addBackReduce):
+        // medium eases a too-hard board into its window; easy caps its top end.
         return clues;
     }
 
@@ -788,6 +751,35 @@
         [10, 108, 170],
         [12, 225, 340],
     ];
+    // Easy has NO lower bound (it never fears being too easy) — only a hardness
+    // CEILING, calibrated to the "just right" easy level and kept well under
+    // medium's floor so easy stays clearly the gentler tier. A dug board above
+    // it gets clues handed back until it drops to the ceiling. Easy grows more
+    // slowly with N than medium (big boards stay gentle), hence its own table
+    // rather than a fraction of the medium window.
+    const EASY_CAP = [
+        [6, 20],
+        [8, 40],
+        [10, 60],
+        [12, 95],
+    ];
+    function easyCap(N) {
+        const t = EASY_CAP;
+        if (N <= t[0][0]) return t[0][1];
+        const last = t[t.length - 1];
+        if (N >= last[0]) {
+            const p = t[t.length - 2];
+            return last[1] + (last[1] - p[1]) * (N - last[0]) / (last[0] - p[0]);
+        }
+        for (let i = 1; i < t.length; i++) {
+            if (N <= t[i][0]) {
+                const a = t[i - 1], b = t[i];
+                return a[1] + (b[1] - a[1]) * (N - a[0]) / (b[0] - a[0]);
+            }
+        }
+        return last[1];
+    }
+
     function mediumBand(N) {
         const t = MED_BAND;
         if (N <= t[0][0]) return { lo: t[0][1], hi: t[0][2] };
@@ -815,16 +807,23 @@
     function addBackReduce(N, clues, solutionOwner, fullClues, band, rng, scoreTech) {
         let H = scorePuzzle(N, clues, solutionOwner, scoreTech);
         const order = clues.map((_, i) => i);
-        PC.rng.shuffle(order, rng);
-        for (const i of order) {
-            if (H <= band.hi) break;
-            let changed = false;
-            if (clues[i].size == null && fullClues[i].size != null) {
-                clues[i].size = fullClues[i].size; changed = true;
-            } else if (clues[i].shape === SHAPES.ANY && fullClues[i].shape !== SHAPES.ANY) {
-                clues[i].shape = fullClues[i].shape; changed = true;
+        // Sweep the clues repeatedly (a clue may give back both its number and
+        // its shape over two sweeps), stopping the instant H reaches the
+        // ceiling — so it lands JUST under it, or bottoms out at full info.
+        let progressed = true;
+        while (H > band.hi && progressed) {
+            progressed = false;
+            PC.rng.shuffle(order, rng);
+            for (const i of order) {
+                if (H <= band.hi) break;
+                let changed = false;
+                if (clues[i].size == null && fullClues[i].size != null) {
+                    clues[i].size = fullClues[i].size; changed = true;
+                } else if (clues[i].shape === SHAPES.ANY && fullClues[i].shape !== SHAPES.ANY) {
+                    clues[i].shape = fullClues[i].shape; changed = true;
+                }
+                if (changed) { H = scorePuzzle(N, clues, solutionOwner, scoreTech); progressed = true; }
             }
-            if (changed) H = scorePuzzle(N, clues, solutionOwner, scoreTech);
         }
         return H;
     }
@@ -861,6 +860,7 @@
         const scoreTech = TECHNIQUES_BY_DIFFICULTY.medium;
         const attempts = attemptsFor(N, difficulty);
         const band = difficulty === 'medium' ? mediumBand(N) : null;
+        const cap = difficulty === 'easy' ? easyCap(N) : Infinity;
 
         // Each attempt is a FRESH tiling + dig (smaller boards get more
         // attempts — they're cheap). Ship policy per tier:
@@ -880,6 +880,10 @@
             let H = scorePuzzle(N, cand, T.solutionOwner, scoreTech);
 
             if (difficulty === 'easy') {
+                // Only fears being too HARD: cap the top by handing clues back.
+                if (H > cap) {
+                    H = addBackReduce(N, cand, T.solutionOwner, T.clues, { hi: cap }, digRng, scoreTech);
+                }
                 chosen = { rects: T.rects, clues: cand, score: H };
                 break;
             }
@@ -957,7 +961,7 @@
         enumerateCandidates, countSolutions, isUnique,
         makeState, nextStep, applyStep, findAllDeductions, solveWithTechniques, coverage,
         TECHNIQUES_BY_DIFFICULTY, logicSolvable, scorePuzzle,
-        attemptsFor, mediumBand, addBackReduce, pickTiling,
+        attemptsFor, mediumBand, easyCap, addBackReduce, pickTiling,
         tileGrid, cluesFromTiling, makeClueAt,
         digDifficulty, shapeOf, satisfiesShape, SHAPES,
     };
