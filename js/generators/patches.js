@@ -90,10 +90,15 @@
         // are chunkier than before and density varies from board to board (the
         // old fixed density is now only the dense end of the range).
         const floor = { easy: 5, medium: 4.3, hard: 3.6 }[difficulty] || 4.3;
-        const avgArea = floor + (rng ? rng() : 0) * 2.4;
+        // Bell-shaped spread (Bates: mean of 3 uniforms) so most boards sit at
+        // a "normal" density near the middle, with the DENSE floor and the
+        // extra-sparse top as rarer tails — occasionally especially many or
+        // especially few patches, keeping both bounds.
+        const bell = rng ? (rng() + rng() + rng()) / 3 : 0.5;
+        const avgArea = floor + bell * 3.0;
         const targetCount = Math.max(2, Math.round((N * N) / avgArea));
-        // Allow bigger single patches so the low target count is reachable.
-        const maxArea = Math.max(8, Math.round(N * 2.2));
+        // Allow bigger single patches so the sparse target counts are reachable.
+        const maxArea = Math.max(8, Math.round(N * 2.5));
         return { targetCount, maxArea };
     }
 

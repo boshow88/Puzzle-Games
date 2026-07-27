@@ -106,7 +106,7 @@
     for (const N of [8, 10, 12]) {
       const rng = PC.rng.make(7770 + N);
       let sum = 0, mn = 1e9, mx = 0;
-      const S = 30;
+      const S = 60;
       for (let s = 0; s < S; s++) { const p = I.tileGrid(N, rng, 'medium').length; sum += p; mn = Math.min(mn, p); mx = Math.max(mx, p); }
       out.push(`density ${N}x${N}: pieces avg ${(sum / S).toFixed(1)} (min ${mn}, max ${mx}, of ${N * N} cells)`);
     }
