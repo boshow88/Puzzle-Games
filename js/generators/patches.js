@@ -89,7 +89,9 @@
         // denser on purpose; difficulty comes from digging/selection, not from
         // packing more patches. `floor` is the DENSE end; each puzzle samples a
         // random amount sparser on top, so density varies board to board.
-        const floor = 4.3;
+        // [EXPERIMENT] widened density range — mainly the sparse end (SPAN up),
+        // with a slightly denser floor too, to try a broader spread of boards.
+        const floor = 4.0;
         // Sparsity spread in [0,1], mapped onto [floor, floor+span]. We want
         // MORE variety than a bell (Bates-3 clusters at the centre) but not a
         // plain uniform draw. So mix, 50/50, a flat (uniform) draw with a
@@ -101,7 +103,8 @@
         const spread = rng
             ? (rng() < FLAT ? rng() : (rng() + rng()) / 2)
             : 0.5;
-        const avgArea = floor + spread * 3.0;
+        const SPAN = 4.5; // [EXPERIMENT] was 3.0 — widen mostly the sparse end
+        const avgArea = floor + spread * SPAN;
         const targetCount = Math.max(2, Math.round((N * N) / avgArea));
         // Allow bigger single patches so the sparse target counts are reachable.
         const maxArea = Math.max(8, Math.round(N * 2.5));
@@ -752,10 +755,10 @@
     // into the window; a dig below `lo` means the tiling is inherently too
     // easy and we regenerate. Anchors interpolate/extrapolate for other sizes.
     const MED_BAND = [
-        [6, 23, 42],
-        [8, 50, 95],
-        [10, 108, 170],
-        [12, 225, 340],
+        [6, 20, 36],
+        [8, 42, 80],
+        [10, 92, 145],
+        [12, 190, 290],
     ];
     // Easy has NO lower bound (it never fears being too easy) — only a hardness
     // CEILING, calibrated to the "just right" easy level and kept well under
