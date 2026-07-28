@@ -764,10 +764,10 @@
     // slowly with N than medium (big boards stay gentle), hence its own table
     // rather than a fraction of the medium window.
     const EASY_CAP = [
-        [6, 20],
-        [8, 40],
-        [10, 60],
-        [12, 95],
+        [6, 12],
+        [8, 24],
+        [10, 38],
+        [12, 58],
     ];
     function easyCap(N) {
         const t = EASY_CAP;
