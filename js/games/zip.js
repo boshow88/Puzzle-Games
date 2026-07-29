@@ -72,6 +72,30 @@
         return window.PuzzleGenerators.zip(size, difficulty, seed, onProgress);
     }
 
+    // Shareable-URL state: a link carries (size, diff, seed); the generator is
+    // deterministic, so opening it reproduces the same board. The seed is used
+    // once for the first board; New Game then rolls a fresh one and re-syncs
+    // the address bar. Mirrors the other games.
+    const VALID_DIFFS = new Set(['easy', 'medium', 'hard']);
+
+    function readUrlInitial() {
+        if (!PC.share) return null;
+        const raw = PC.share.readParams();
+        if (!(raw.size >= MIN_SIZE && raw.size <= MAX_SIZE)) return null;
+        if (!VALID_DIFFS.has(raw.difficulty)) return null;
+        if (!Number.isInteger(raw.seed)) return null;
+        return { size: raw.size, difficulty: raw.difficulty, seed: raw.seed };
+    }
+
+    const urlInitial = readUrlInitial();
+    let pendingSeed = urlInitial ? urlInitial.seed : null;
+
+    async function onShareClick() {
+        if (!PC.share) return;
+        const ok = await PC.share.copyCurrentUrl();
+        if (PC.toast) PC.toast.show(PC.i18n.t(ok ? 'shareCopied' : 'shareFailed'));
+    }
+
     // -----------------------------------------------------------------
     // Game state
     // -----------------------------------------------------------------
@@ -666,12 +690,18 @@
     // -----------------------------------------------------------------
 
     async function startNewGame() {
-        const seed = (Date.now() ^ Math.floor(Math.random() * 0xffffffff)) >>> 0;
+        const seed = (pendingSeed != null)
+            ? pendingSeed
+            : ((Date.now() ^ Math.floor(Math.random() * 0xffffffff)) >>> 0);
+        pendingSeed = null;
         state.puzzle = await generatePuzzle(shell.size, shell.difficulty, seed);
         rebuildPuzzleIndices();
         resetPath();
         renderBoard();
         updateStatusRow();
+        if (PC.share) {
+            PC.share.replaceUrl({ size: shell.size, difficulty: shell.difficulty, seed });
+        }
     }
 
     function resetPathAction() {
@@ -689,14 +719,17 @@
     function init() {
         shell = PC.shell.create({
             gameId: 'zip',
-            difficulty: { default: 'medium' },
-            size: { kind: 'slider', min: MIN_SIZE, max: MAX_SIZE, default: 7 },
+            difficulty: { default: urlInitial ? urlInitial.difficulty : 'medium' },
+            size: { kind: 'slider', min: MIN_SIZE, max: MAX_SIZE, default: urlInitial ? urlInitial.size : 7 },
             onNewGame: startNewGame,
             onReset: resetPathAction,
             onReveal: repaintPath,
         });
         board = shell.dom.board;
         pathProgressText = document.getElementById('path-progress-text');
+
+        const shareBtn = document.getElementById('share-btn');
+        if (shareBtn) shareBtn.addEventListener('click', onShareClick);
 
         board.classList.add('drag-board');
         board.addEventListener('pointerdown', onPointerDown);
