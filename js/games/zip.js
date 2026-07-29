@@ -39,22 +39,6 @@
     const MIN_SIZE = 5;
     const MAX_SIZE = 12;
 
-    /** Roughly how many checkpoints to place per board, by difficulty.
-     *  Higher difficulty == fewer constraints, so more "free" planning. */
-    const CHECKPOINT_DENSITY = {
-        easy:   { min: 4, ratio: 0.20 },
-        medium: { min: 3, ratio: 0.14 },
-        hard:   { min: 2, ratio: 0.10 },
-    };
-
-    /** Fraction of "decorative" walls (between non-path-adjacent cells)
-     *  to drop in. Capped so the board doesn't look too noisy. */
-    const WALL_DENSITY = {
-        easy:   0.04,
-        medium: 0.08,
-        hard:   0.14,
-    };
-
     // -----------------------------------------------------------------
     // Helpers
     // -----------------------------------------------------------------
@@ -71,133 +55,21 @@
         return `${r2},${c2}|${r1},${c1}`;
     }
 
-    function neighbours4(N, r, c) {
-        const out = [];
-        if (r > 0) out.push([r - 1, c]);
-        if (r < N - 1) out.push([r + 1, c]);
-        if (c > 0) out.push([r, c - 1]);
-        if (c < N - 1) out.push([r, c + 1]);
-        return out;
-    }
-
     function isAdjacent4(a, b) {
         return Math.abs(a[0] - b[0]) + Math.abs(a[1] - b[1]) === 1;
     }
 
     // -----------------------------------------------------------------
-    // Dummy puzzle generator
+    // Puzzle generation — delegates to the shared generator, driven through
+    // the unified determinate progress bar (mirrors the other games).
     // -----------------------------------------------------------------
 
-    /**
-     * Generate a random Hamiltonian-ish path on an N×N grid by random
-     * 4-connected DFS. The path may not cover every cell — uncovered
-     * cells will become holes. Returns the path as an Array<[r, c]>.
-     */
-    function randomPath(N, rng) {
-        const visited = new Set();
-        const startR = PC.rng.pickInt(rng, 0, N);
-        const startC = PC.rng.pickInt(rng, 0, N);
-        const path = [[startR, startC]];
-        visited.add(cellKey(startR, startC));
-
-        // Iterative DFS-with-restart-on-stuck.
-        while (true) {
-            const [r, c] = path[path.length - 1];
-            const candidates = neighbours4(N, r, c)
-                .filter(([nr, nc]) => !visited.has(cellKey(nr, nc)));
-            if (candidates.length === 0) break;
-            PC.rng.shuffle(candidates, rng);
-            const next = candidates[0];
-            path.push(next);
-            visited.add(cellKey(next[0], next[1]));
-        }
-        return path;
-    }
-
-    /**
-     * Sample K checkpoint positions along the path. Positions 0 (start)
-     * and last (end) are always checkpoints; the rest are spaced as
-     * evenly as possible with a touch of jitter.
-     */
-    function pickCheckpointIndices(pathLen, K, rng) {
-        if (K <= 1) return [0];
-        if (K >= pathLen) return Array.from({ length: pathLen }, (_, i) => i);
-        const out = new Set([0, pathLen - 1]);
-        const step = (pathLen - 1) / (K - 1);
-        for (let i = 1; i < K - 1; i++) {
-            const ideal = Math.round(i * step);
-            const jitter = PC.rng.pickInt(rng, -1, 2); // -1, 0, or 1
-            const pos = PC.clamp(ideal + jitter, 1, pathLen - 2);
-            out.add(pos);
-        }
-        return Array.from(out).sort((a, b) => a - b);
-    }
-
-    /**
-     * Pick a set of "decorative" walls between cell pairs that are
-     * adjacent in the grid but NOT consecutive in the path. These walls
-     * never appear on P, so they don't block the canonical solution.
-     */
-    function pickDecorativeWalls(N, path, fraction, rng) {
-        const pathEdges = new Set();
-        for (let i = 1; i < path.length; i++) {
-            pathEdges.add(edgeKey(path[i - 1], path[i]));
-        }
-        const candidates = [];
-        for (let r = 0; r < N; r++) {
-            for (let c = 0; c < N; c++) {
-                for (const [nr, nc] of [[r, c + 1], [r + 1, c]]) {
-                    if (nr >= N || nc >= N) continue;
-                    const key = edgeKey([r, c], [nr, nc]);
-                    if (pathEdges.has(key)) continue;
-                    candidates.push([[r, c], [nr, nc]]);
-                }
-            }
-        }
-        PC.rng.shuffle(candidates, rng);
-        const take = Math.min(candidates.length, Math.round(candidates.length * fraction));
-        return candidates.slice(0, take);
-    }
-
-    function generatePuzzle(size, difficulty, seed) {
-        const rng = PC.rng.make(seed);
-        let path = null;
-        // Retry generation a few times to avoid the rare very-short path.
-        for (let attempt = 0; attempt < 6; attempt++) {
-            const p = randomPath(size, rng);
-            if (!path || p.length > path.length) path = p;
-            if (path.length >= size * size * 0.5) break;
-        }
-        const cellsInPath = new Set(path.map(([r, c]) => cellKey(r, c)));
-        const holes = [];
-        for (let r = 0; r < size; r++) {
-            for (let c = 0; c < size; c++) {
-                if (!cellsInPath.has(cellKey(r, c))) holes.push([r, c]);
-            }
-        }
-
-        const cd = CHECKPOINT_DENSITY[difficulty] || CHECKPOINT_DENSITY.medium;
-        const K = Math.max(cd.min, Math.round(path.length * cd.ratio));
-        const indices = pickCheckpointIndices(path.length, K, rng);
-        const checkpoints = indices.map((idx, i) => ({
-            r: path[idx][0],
-            c: path[idx][1],
-            n: i + 1,
-        }));
-
-        const wallDensity = WALL_DENSITY[difficulty] || WALL_DENSITY.medium;
-        const walls = pickDecorativeWalls(size, path, wallDensity, rng);
-
-        return {
-            id: `zip-${size}x${size}-${difficulty}-${seed.toString(36)}`,
-            game: 'zip',
-            size,
-            difficulty,
-            holes,
-            walls,
-            checkpoints,
-            solution: path,
-        };
+    async function generatePuzzle(size, difficulty, seed) {
+        const progress = PC.progress;
+        const onProgress = progress
+            ? async (fraction) => { progress.setFraction(fraction); await progress.waitNextPaint(); }
+            : null;
+        return window.PuzzleGenerators.zip(size, difficulty, seed, onProgress);
     }
 
     // -----------------------------------------------------------------
@@ -761,9 +633,9 @@
     // Event handlers (toolbar / actions)
     // -----------------------------------------------------------------
 
-    function startNewGame() {
+    async function startNewGame() {
         const seed = (Date.now() ^ Math.floor(Math.random() * 0xffffffff)) >>> 0;
-        state.puzzle = generatePuzzle(shell.size, shell.difficulty, seed);
+        state.puzzle = await generatePuzzle(shell.size, shell.difficulty, seed);
         rebuildPuzzleIndices();
         resetPath();
         renderBoard();

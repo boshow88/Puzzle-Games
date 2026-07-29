@@ -1,0 +1,79 @@
+<!doctype html>
+<html lang="en"><head>
+  <meta charset="utf-8" />
+  <title>Zip — generator self-test</title>
+  <style>
+    body { font: 13px/1.5 ui-monospace, Consolas, monospace; margin: 16px; }
+    .pass { color: #128a12; } .fail { color: #c0272d; font-weight: 700; }
+    table { border-collapse: collapse; margin: 10px 0; }
+    th, td { border: 1px solid #ccc; padding: 2px 8px; text-align: right; }
+    th:first-child, td:first-child { text-align: left; }
+    pre { white-space: pre-wrap; }
+  </style>
+  <script src="../js/common.js"></script>
+  <script src="../js/generators/zip.js"></script>
+</head>
+<body>
+  <h1 id="verdict">running…</h1>
+  <div id="tbl"></div>
+  <pre id="out"></pre>
+  <script>
+  (async function () {
+    const G = window.PuzzleGenerators.zip, I = window.PuzzleGenerators.zipInternals;
+    const out = []; let fails = 0;
+    const fail = (m) => { out.push(' FAIL ' + m); fails++; };
+    const md = (a) => { a = a.slice().sort((x, y) => x - y); return a[a.length >> 1]; };
+
+    // Rebuild solver inputs from a generated puzzle; return uniqueness (strong
+    // solver) + difficulty (weak solver branch count) + a solution sanity check.
+    function check(p) {
+      const N = p.size, M = N * N, model = I.edgeModel(N), adj = I.buildAdj(N);
+      const wallSet = new Set(p.walls.map(([a, b]) => I.edgeKey(I.idOf(a[0], a[1], N), I.idOf(b[0], b[1], N))));
+      const cpNum = new Int32Array(M); p.checkpoints.forEach((cp) => { cpNum[I.idOf(cp.r, cp.c, N)] = cp.n; });
+      const K = p.checkpoints.length;
+      const cp1 = I.idOf(p.checkpoints[0].r, p.checkpoints[0].c, N);
+      const cpK = I.idOf(p.checkpoints[K - 1].r, p.checkpoints[K - 1].c, N);
+      // solution validity: covers all cells, adjacent + wall-free, order ok, ends at cpK
+      const path = p.solution.map(([r, c]) => I.idOf(r, c, N));
+      let okPath = path.length === M && new Set(path).size === M && path[0] === cp1 && path[path.length - 1] === cpK;
+      for (let i = 1; i < path.length && okPath; i++) { const a = path[i - 1], b = path[i]; if (!adj[a].includes(b) || wallSet.has(I.edgeKey(a, b))) okPath = false; }
+      let exp = 1; for (const id of path) { const n = cpNum[id]; if (n) { if (n !== exp) okPath = false; exp++; } }
+      const strong = I.analyzeEdges(N, model, wallSet, cpNum, cp1, cpK, K, 2, 500000, false);
+      const weak = I.analyzeEdges(N, model, wallSet, cpNum, cp1, cpK, K, 2, 15000, false, { order: false, conn: false });
+      return { okPath, unique: strong.count === 1 && !strong.aborted, weak: weak.aborted ? 99999 : weak.branches, walls: p.walls.length, cps: p.checkpoints.length };
+    }
+
+    const SEEDS = [11, 29, 47];
+    const rows = [];
+    for (const N of [6, 8, 10, 12]) {
+      const med = {}; let bad = 0;
+      for (const diff of ['easy', 'medium', 'hard']) {
+        const times = [], ws = []; let walls = 0, cps = 0;
+        for (const seed of SEEDS) {
+          const t0 = performance.now();
+          let p; try { p = await G(N, diff, seed); } catch (e) { fail(`gen ${N} ${diff} #${seed}: ${e && e.message}`); continue; }
+          times.push(performance.now() - t0);
+          const c = check(p);
+          if (!c.okPath) fail(`${N} ${diff} #${seed}: invalid solution path`);
+          if (!c.unique) { fail(`${N} ${diff} #${seed}: NOT unique`); bad++; }
+          ws.push(c.weak); walls = c.walls; cps = c.cps;
+        }
+        med[diff] = ws.length ? md(ws) : -1;
+        rows.push({ key: `${N}x${N} ${diff}`, cps, walls, ms: times.length ? (times.reduce((a, b) => a + b, 0) / times.length).toFixed(0) : '-', diffScore: ws.join(','), unique: `${SEEDS.length - bad}/${SEEDS.length}` });
+      }
+      const e = med.easy, m = med.medium, h = med.hard;
+      if (e >= 0 && m >= 0 && h >= 0 && !(h >= m && m >= e)) fail(`${N}: difficulty not monotonic (E ${e} / M ${m} / H ${h})`);
+    }
+
+    let html = '<table><tr><th>config</th><th>#cp</th><th>#wall</th><th>avg ms</th><th>weak-branches (per seed)</th></tr>';
+    for (const r of rows) html += `<tr><td>${r.key}</td><td>${r.cps}</td><td>${r.walls}</td><td>${r.ms}</td><td>${r.diffScore}</td></tr>`;
+    html += '</table>';
+    document.getElementById('tbl').innerHTML = html;
+    document.getElementById('out').textContent = out.join('\n');
+    const v = document.getElementById('verdict');
+    v.textContent = fails === 0 ? 'ALL ZIP CHECKS PASSED (unique + monotonic difficulty)' : (fails + ' CHECK(S) FAILED');
+    v.className = fails === 0 ? 'pass' : 'fail';
+  })();
+  </script>
+</body>
+</html>
