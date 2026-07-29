@@ -379,6 +379,34 @@
         return Math.max(4, Math.round(M * 0.15));                 // medium
     }
 
+    // Target total wall count (as a fraction of the interior edges) after
+    // uniqueness is secured. Easy/Medium get topped up with redundant
+    // "convergence" walls so the board doesn't look bare — otherwise the
+    // difficulty is transparently "more checkpoints ⇒ fewer walls". Hard keeps
+    // whatever it naturally needed. 0 ⇒ no top-up.
+    function wallTargetFor(N, difficulty) {
+        const interior = 2 * N * (N - 1);
+        if (difficulty === 'easy') return Math.round(interior * 0.15);
+        if (difficulty === 'medium') return Math.round(interior * 0.12);
+        return 0;                                                 // hard
+    }
+
+    /** Top up `wallSet` with redundant walls on edges the solution never uses,
+     *  up to `target` total. Safe: P avoids these edges, so it stays valid and
+     *  the puzzle stays unique (extra constraints only remove other solutions,
+     *  of which there were none). */
+    function addConvergenceWalls(N, model, adj, wallSet, P, target, rng) {
+        if (wallSet.size >= target) return;
+        const Pset = pathEdgeSet(P, N, model);
+        const cands = [];
+        for (let a = 0; a < N * N; a++) for (const b of adj[a]) if (a < b) {
+            const k = edgeKey(a, b);
+            if (!Pset.has(keyToEdge(k, N, model)) && !wallSet.has(k)) cands.push(k);
+        }
+        if (rng) PC.rng.shuffle(cands, rng);
+        for (const k of cands) { if (wallSet.size >= target) break; wallSet.add(k); }
+    }
+
     // -----------------------------------------------------------------
     // Entry point. Difficulty lever = checkpoint density (easy = many numbered
     // anchors ⇒ easy connect-the-dots; hard = few ⇒ more path reasoning); walls
@@ -423,6 +451,9 @@
             : difficulty === 'hard' ? pool.length - 1
                 : Math.floor((pool.length - 1) / 2);
         const chosen = pool[idx];
+
+        // Enrich easy/medium with redundant convergence walls (keeps uniqueness).
+        addConvergenceWalls(N, model, adj, chosen.wallSet, chosen.path, wallTargetFor(N, difficulty), rng);
 
         if (onProgress) await onProgress(1);
 
