@@ -569,6 +569,8 @@
      *   { kind: 'nonadj' }              not 4-adjacent to the endpoint
      *   { kind: 'blocked', cell }       adjacent but blocked by a wall
      *                                   or a hole
+     *   { kind: 'occupied', cell }      adjacent but already on the path —
+     *                                   the head would run into its own body
      */
     function attemptStepTo(cell) {
         if (state.path.length === 0) return { kind: 'noop' };
@@ -588,8 +590,13 @@
                 return { kind: 'retract' };
             }
         }
-        if (pathIndexOf(r, c) >= 0) return { kind: 'noop' };
-        if (!isAdjacent4(endpoint, cell)) return { kind: 'nonadj' };
+        if (!isAdjacent4(endpoint, cell)) {
+            // A far sweep over some middle cell of the path is not an attempt
+            // to move there — stay silent; otherwise it's simply not reachable.
+            return pathIndexOf(r, c) >= 0 ? { kind: 'noop' } : { kind: 'nonadj' };
+        }
+        // Adjacent to the head: flag the illegal targets so the caller flashes.
+        if (pathIndexOf(r, c) >= 0) return { kind: 'occupied', cell };
         if (isHole(r, c)) return { kind: 'blocked', cell };
         if (hasWall(endpoint, cell)) return { kind: 'blocked', cell };
         state.path.push([r, c]);
@@ -618,7 +625,7 @@
         state.dragging.lastCell = cell;
 
         const result = attemptStepTo(cell);
-        if (result.kind === 'blocked') {
+        if (result.kind === 'blocked' || result.kind === 'occupied') {
             const lf = state.dragging.lastFlashCell;
             if (!lf || lf[0] !== result.cell[0] || lf[1] !== result.cell[1]) {
                 flashInvalid(result.cell);
