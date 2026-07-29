@@ -162,6 +162,30 @@
         return -1;
     }
 
+    /**
+     * The invalid (red) tail of the path, if any. Two ways to go wrong:
+     *   • out-of-order: a checkpoint is reached before its predecessor — the
+     *     offending cell and everything after it is red (tinted from it too);
+     *   • overrun: the LAST checkpoint K is reached correctly but the path
+     *     keeps going — the endpoint must be the final cell, so the segments
+     *     leaving K (and the cells after it) are red, while K itself stays
+     *     valid/blue.
+     * Returns { lineFrom, tintFrom }: line segments with index > lineFrom are
+     * red; cells with index >= tintFrom are tinted. Both -1 when the path is
+     * currently valid.
+     */
+    function computeWrongRegion() {
+        const w = computeWrongOrderStart();
+        if (w >= 0) return { lineFrom: w, tintFrom: w };
+        // Order is valid so far; check for an overrun past the final checkpoint.
+        const K = state.puzzle.checkpoints.length;
+        for (let i = 0; i < state.path.length - 1; i++) {
+            const [r, c] = state.path[i];
+            if (checkpointAt(r, c) === K) return { lineFrom: i, tintFrom: i + 1 };
+        }
+        return { lineFrom: -1, tintFrom: -1 };
+    }
+
     function isWin() {
         if (state.path.length !== state.accessibleCount) return false;
         // All checkpoints visited in order? checkpointOrderState() will
@@ -367,14 +391,15 @@
         const N = p.size;
         const cs = BOARD_SIZE / N;
 
-        // Wrong-order region — compute once and reuse for both the cell
-        // tint and the per-segment line colour. Skip entirely when the
-        // puzzle has already been won (no longer in progress).
-        const wrongStart = state.won ? -1 : computeWrongOrderStart();
+        // Invalid tail (out-of-order or overrun past the last checkpoint) —
+        // compute once and reuse for both the cell tint and the per-segment
+        // line colour. Skip entirely once the puzzle has been won.
+        const region = state.won ? { lineFrom: -1, tintFrom: -1 } : computeWrongRegion();
+        const wrongStart = region.lineFrom;
         const wrongLayer = board.querySelector('#wrong-order');
         while (wrongLayer.firstChild) wrongLayer.removeChild(wrongLayer.firstChild);
-        if (wrongStart >= 0) {
-            for (let i = wrongStart; i < state.path.length; i++) {
+        if (region.tintFrom >= 0) {
+            for (let i = region.tintFrom; i < state.path.length; i++) {
                 const [r, c] = state.path[i];
                 wrongLayer.appendChild(PC.svgEl('rect', {
                     class: 'wrong-order-tint',
