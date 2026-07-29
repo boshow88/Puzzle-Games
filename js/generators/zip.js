@@ -374,9 +374,9 @@
     // more anchors ⇒ fewer walls ⇒ easier; the main difficulty lever.
     function cpCountFor(N, difficulty) {
         const M = N * N;
-        if (difficulty === 'easy') return Math.max(4, Math.round(M * 0.16));
+        if (difficulty === 'easy') return Math.max(5, Math.round(M * 0.25));
         if (difficulty === 'hard') return Math.max(3, Math.round(M * 0.05));
-        return Math.max(4, Math.round(M * 0.09));                 // medium
+        return Math.max(4, Math.round(M * 0.15));                 // medium
     }
 
     // -----------------------------------------------------------------
