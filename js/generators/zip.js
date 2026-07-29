@@ -141,13 +141,15 @@
 
         const cpCells = [];
         for (let c = 0; c < M; c++) if (cpNum[c] !== 0) cpCells.push(c);
-        const cpMn = new Int32Array(M), cpMx = new Int32Array(M), cpCnt = new Int32Array(M);
         const parent = new Int32Array(M), parent2 = new Int32Array(M);
         const find = (x) => { while (parent[x] !== x) { parent[x] = parent[parent[x]]; x = parent[x]; } return x; };
         const find2 = (x) => { while (parent2[x] !== x) { parent2[x] = parent2[parent2[x]]; x = parent2[x]; } return x; };
         const inQ = new Uint8Array(M);
         const q = [];
         const allCells = Int32Array.from({ length: M }, (_, i) => i);
+        // ON-chain walk scratch for the monotonic checkpoint-order prune.
+        const onNbr = new Int32Array(M * 2), onDeg = new Uint8Array(M), ovis = new Int32Array(M);
+        let ogen = 0;
 
         let nodes = 0, aborted = false, count = 0, branches = 0;
         const solPaths = [];
@@ -180,13 +182,31 @@
                     if (!inQ[eU[e]]) { inQ[eU[e]] = 1; q.push(eU[e]); }
                     if (!inQ[eV[e]]) { inQ[eV[e]] = 1; q.push(eV[e]); }
                 }
-                if (useOrder) {
-                    for (let ci = 0; ci < cpCells.length; ci++) {
-                        const c = cpCells[ci], n = cpNum[c], r = find(c);
-                        if (cpCnt[r] === 0) { cpMn[r] = n; cpMx[r] = n; cpCnt[r] = 1; }
-                        else { if (n < cpMn[r]) cpMn[r] = n; if (n > cpMx[r]) cpMx[r] = n; cpCnt[r]++; }
+                if (useOrder && cpCells.length) {
+                    // Walk each ON-chain; the checkpoint numbers on it must be a
+                    // strictly monotonic run of consecutive integers (…i,i+1… or
+                    // …i,i-1…). This prunes "order almost right" partials that
+                    // the leaf check would otherwise only catch at the very end.
+                    for (let i = 0; i < M; i++) onDeg[i] = 0;
+                    for (let e = 0; e < E; e++) if (s[e] === 1) { const a = eU[e], b = eV[e]; onNbr[a * 2 + onDeg[a]++] = b; onNbr[b * 2 + onDeg[b]++] = a; }
+                    const g = ++ogen;
+                    for (let start = 0; start < M && !bad; start++) {
+                        if (onDeg[start] > 1 || ovis[start] === g) continue;
+                        let cur = start, prev = -1, lastCp = 0, dir = 0;
+                        ovis[cur] = g;
+                        for (;;) {
+                            const n = cpNum[cur];
+                            if (n !== 0) {
+                                if (lastCp !== 0) { const d = n - lastCp; if (d !== 1 && d !== -1) { bad = true; break; } if (dir === 0) dir = d; else if (d !== dir) { bad = true; break; } }
+                                lastCp = n;
+                            }
+                            let nxt = -1;
+                            const base = cur * 2;
+                            for (let i = 0; i < onDeg[cur]; i++) { const o = onNbr[base + i]; if (o !== prev) { nxt = o; break; } }
+                            if (nxt === -1) break;
+                            prev = cur; cur = nxt; ovis[cur] = g;
+                        }
                     }
-                    for (let ci = 0; ci < cpCells.length; ci++) { const r = find(cpCells[ci]); if (cpCnt[r] !== 0) { if (cpMx[r] - cpMn[r] + 1 !== cpCnt[r]) bad = true; cpCnt[r] = 0; } }
                     if (bad) return contra();
                 }
                 if (useConn) {
@@ -279,6 +299,30 @@
         return chosen;
     }
 
+    /** Place `targetK` checkpoints along P (the two endpoints plus interior
+     *  ones spread evenly with jitter), numbered by position on P. Returns
+     *  { cpNum, K }. More anchors ⇒ fewer walls needed ⇒ easier. */
+    function placeCheckpoints(P, targetK, rng, N) {
+        const M = P.length;
+        targetK = Math.max(2, Math.min(targetK, M));
+        const idxSet = new Set([0, M - 1]);
+        const need = targetK - 2;
+        if (need > 0) {
+            const step = (M - 1) / (targetK - 1);
+            for (let i = 1; i <= need; i++) {
+                let pos = Math.round(i * step) + (rng ? PC.rng.pickInt(rng, -1, 2) : 0);
+                pos = Math.max(1, Math.min(M - 2, pos));
+                while (idxSet.has(pos) && pos < M - 2) pos++;
+                while (idxSet.has(pos) && pos > 1) pos--;
+                idxSet.add(pos);
+            }
+        }
+        const idxs = [...idxSet].sort((a, b) => a - b);
+        const cpNum = new Int32Array(N * N);
+        idxs.forEach((idx, i) => { cpNum[P[idx]] = i + 1; });
+        return { cpNum, K: idxs.length };
+    }
+
     /** Wall the board (only edges P never uses) until it is provably unique.
      *  Returns { ok, branches } (branches from the final proving solve). */
     function forceUnique(N, model, adj, wallSet, cpNum, cp1, cpK, K, P, budget, rng) {
@@ -321,11 +365,24 @@
     // unique board scores difficulty (how much guessing without global
     // reasoning). Capped small: if it can't solve within this many nodes the
     // puzzle is simply "very hard" — no need to grind the full tree.
-    const WEAK = { order: false, conn: false };
+    // Human-level scorer: uses checkpoint order (obvious to players) + degree +
+    // no-cycle, but NOT the global connectivity flood-fill (that's the harder
+    // reasoning). Its branch count ⇒ how much guessing remains ⇒ difficulty.
+    const WEAK = { order: true, conn: false };
     function weakBudget(N) { return 4000 + N * N * 60; }
+    // Checkpoint count per tier (incl. the two endpoints). More checkpoints ⇒
+    // more anchors ⇒ fewer walls ⇒ easier; the main difficulty lever.
+    function cpCountFor(N, difficulty) {
+        const M = N * N;
+        if (difficulty === 'easy') return Math.max(4, Math.round(M * 0.16));
+        if (difficulty === 'hard') return Math.max(3, Math.round(M * 0.05));
+        return Math.max(4, Math.round(M * 0.09));                 // medium
+    }
 
     // -----------------------------------------------------------------
-    // Entry point (v1: endpoints-only checkpoints + walls; difficulty TBD)
+    // Entry point. Difficulty lever = checkpoint density (easy = many numbered
+    // anchors ⇒ easy connect-the-dots; hard = few ⇒ more path reasoning); walls
+    // top up uniqueness. Within a tier, best-of-K picks a representative.
     // -----------------------------------------------------------------
 
     async function generate(size, difficulty, seed, onProgress) {
@@ -335,31 +392,31 @@
         const model = edgeModel(N);
         const budget = proveBudget(N);
         const attempts = attemptsFor(N);
+        const cpCount = cpCountFor(N, difficulty);
         if (onProgress) await onProgress(0.05);
 
-        // best-of-K: each candidate is a fresh full path made unique with
-        // minimal walls, scored by the WEAK solver's branch count. Ship by
-        // band: easy → least guessing, hard → most, medium → median.
+        // best-of-K: each candidate is a fresh full path with pre-placed
+        // checkpoints, made unique with walls, scored by the WEAK solver's
+        // branch count. Ship by band: easy → least guessing, hard → most.
         const pool = [];
         for (let t = 0; t < attempts; t++) {
             const path = randomHamPath(N, rng, adj);
             const cp1 = path[0], cpK = path[M - 1];
-            const cpNum = new Int32Array(M);
-            cpNum[cp1] = 1; cpNum[cpK] = 2;
+            const { cpNum, K } = placeCheckpoints(path, cpCount, rng, N);
             const wallSet = new Set();
-            const fu = forceUnique(N, model, adj, wallSet, cpNum, cp1, cpK, 2, path, budget, rng);
+            const fu = forceUnique(N, model, adj, wallSet, cpNum, cp1, cpK, K, path, budget, rng);
             if (!fu.ok) continue;
-            const w = analyzeEdges(N, model, wallSet, cpNum, cp1, cpK, 2, 2, weakBudget(N), false, WEAK);
-            pool.push({ path, cp1, cpK, wallSet, score: w.aborted ? 1e9 : w.branches });
+            const w = analyzeEdges(N, model, wallSet, cpNum, cp1, cpK, K, 2, weakBudget(N), false, WEAK);
+            pool.push({ path, cpNum, K, wallSet, score: w.aborted ? 1e9 : w.branches });
             if (onProgress) await onProgress(0.1 + 0.85 * (t + 1) / attempts);
         }
         if (!pool.length) { // extremely unlikely; ship one best-effort
             const path = randomHamPath(N, rng, adj);
             const cp1 = path[0], cpK = path[M - 1];
-            const cpNum = new Int32Array(M); cpNum[cp1] = 1; cpNum[cpK] = 2;
+            const { cpNum, K } = placeCheckpoints(path, cpCount, rng, N);
             const wallSet = new Set();
-            forceUnique(N, model, adj, wallSet, cpNum, cp1, cpK, 2, path, budget * 3, rng);
-            pool.push({ path, cp1, cpK, wallSet, score: 0 });
+            forceUnique(N, model, adj, wallSet, cpNum, cp1, cpK, K, path, budget * 3, rng);
+            pool.push({ path, cpNum, K, wallSet, score: 0 });
         }
         pool.sort((a, b) => a.score - b.score);
         const idx = difficulty === 'easy' ? 0
@@ -369,10 +426,9 @@
 
         if (onProgress) await onProgress(1);
 
-        const checkpoints = [
-            { r: rowOf(chosen.cp1, N), c: colOf(chosen.cp1, N), n: 1 },
-            { r: rowOf(chosen.cpK, N), c: colOf(chosen.cpK, N), n: 2 },
-        ];
+        const checkpoints = [];
+        for (let c = 0; c < M; c++) { const n = chosen.cpNum[c]; if (n) checkpoints.push({ r: rowOf(c, N), c: colOf(c, N), n }); }
+        checkpoints.sort((a, b) => a.n - b.n);
         const walls = [...chosen.wallSet].map((k) => edgeToCells(k, N));
         const solution = chosen.path.map((id) => [rowOf(id, N), colOf(id, N)]);
         if (DEBUG) {
