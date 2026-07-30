@@ -454,12 +454,12 @@
         }
 
         // Difficulty: multiply the uniqueness-minimum wall count (easier ⇒ more
-        // redundant walls). Keeps uniqueness. Cap the total at 60% of the
+        // redundant walls). Keeps uniqueness. Cap the total at 75% of the
         // wallable (non-solution) edges — there are (N-1)² of them — so the
         // checkpoint-light easy corner doesn't turn into a near-solid maze.
         const mult = wallMultFor(difficulty);
         if (mult > 1) {
-            const wallableCap = Math.round(0.6 * (N - 1) * (N - 1));
+            const wallableCap = Math.round(0.75 * (N - 1) * (N - 1));
             const target = Math.min(Math.round(chosen.wallSet.size * mult), wallableCap);
             addConvergenceWalls(N, model, adj, chosen.wallSet, chosen.path, target, rng);
         }
