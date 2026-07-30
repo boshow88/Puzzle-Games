@@ -375,9 +375,9 @@
     // count is a "style" (checkpoint-heavy ↔ wall-heavy look) rather than a
     // difficulty tell. Deterministic given the seed's rng; no rng ⇒ midpoint.
     function cpRangeFor(difficulty) {
-        if (difficulty === 'easy') return [0.06, 0.30];
-        if (difficulty === 'hard') return [0.02, 0.10];
-        return [0.04, 0.20];                                      // medium
+        if (difficulty === 'easy') return [0.12, 0.36];
+        if (difficulty === 'hard') return [0.05, 0.15];
+        return [0.08, 0.25];                                      // medium
     }
     function cpCountFor(N, difficulty, rng) {
         const M = N * N;
