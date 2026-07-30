@@ -115,6 +115,7 @@
     };
 
     let shell = null;
+    let undoHistory = null;
 
     function rebuildPuzzleIndices() {
         const p = state.puzzle;
@@ -128,6 +129,43 @@
         state.path = [];
         state.dragging = null;
         state.won = false;
+    }
+
+    // -----------------------------------------------------------------
+    // Undo (bounded snapshot history — one drag gesture = one step).
+    // -----------------------------------------------------------------
+
+    function clonePath(path) { return path.map((rc) => rc.slice()); }
+
+    function snapshotState() { return { path: clonePath(state.path) }; }
+
+    function restoreSnapshot(snap) {
+        const wasWon = state.won;
+        state.path = clonePath(snap.path);
+        state.dragging = null;
+        state.won = false;
+        if (wasWon) shell.clearWin(); // reverse win chrome, resume the clock
+        repaintCheckpoints();
+        repaintPath();
+        updateStatusRow();
+    }
+
+    function pushUndo() {
+        if (!undoHistory || state.won) return;
+        undoHistory.push();
+        updateUndoButton();
+    }
+
+    // Undo stays available after winning (to review the last moves); it's only
+    // cleared on Reset-after-win / New Game.
+    function doUndo() {
+        if (!state.puzzle) return;
+        if (undoHistory && undoHistory.undo()) updateUndoButton();
+    }
+
+    function updateUndoButton() {
+        const btn = document.getElementById('undo-btn');
+        if (btn) btn.disabled = !(undoHistory && undoHistory.canUndo());
     }
 
     // -----------------------------------------------------------------
@@ -559,6 +597,16 @@
         return [Math.floor(vby / cs), Math.floor(vbx / cs)];
     }
 
+    // Pure predicate mirroring tryStartDragAt's guards (no mutation), so the
+    // pointerdown handler can snapshot for undo *before* the path is modified.
+    function canStartDragAt(cell) {
+        if (state.won) return false;
+        const [r, c] = cell;
+        if (isHole(r, c)) return false;
+        if (state.path.length === 0) return checkpointAt(r, c) === 1;
+        return pathIndexOf(r, c) >= 0;
+    }
+
     function tryStartDragAt(cell, pointerId) {
         if (state.won) return false;
         const [r, c] = cell;
@@ -632,7 +680,9 @@
         if (ev.button !== undefined && ev.button !== 0) return;
         const cell = eventToCell(ev);
         if (!cell) return;
-        if (!tryStartDragAt(cell, ev.pointerId)) return;
+        if (!canStartDragAt(cell)) return;
+        pushUndo();                             // snapshot the pre-gesture path
+        tryStartDragAt(cell, ev.pointerId);     // guaranteed to start now
         ev.preventDefault();
         try { board.setPointerCapture(ev.pointerId); } catch (_) { /* ignore */ }
         repaintPath();
@@ -697,8 +747,10 @@
         state.puzzle = await generatePuzzle(shell.size, shell.difficulty, seed);
         rebuildPuzzleIndices();
         resetPath();
+        if (undoHistory) undoHistory.clear();
         renderBoard();
         updateStatusRow();
+        updateUndoButton();
         if (PC.share) {
             PC.share.replaceUrl({ size: shell.size, difficulty: shell.difficulty, seed });
         }
@@ -706,10 +758,15 @@
 
     function resetPathAction() {
         if (!state.puzzle) return;
+        // Mid-game Reset is undoable; a post-win Reset ends the session and
+        // discards its undo history.
+        if (state.won) { if (undoHistory) undoHistory.clear(); }
+        else pushUndo();
         resetPath();
         repaintCheckpoints();
         repaintPath();
         updateStatusRow();
+        updateUndoButton();
     }
 
     // -----------------------------------------------------------------
@@ -728,8 +785,23 @@
         board = shell.dom.board;
         pathProgressText = document.getElementById('path-progress-text');
 
+        undoHistory = PC.history.create({
+            limit: 20,
+            snapshot: snapshotState,
+            restore: restoreSnapshot,
+        });
+
         const shareBtn = document.getElementById('share-btn');
         if (shareBtn) shareBtn.addEventListener('click', onShareClick);
+        const undoBtn = document.getElementById('undo-btn');
+        if (undoBtn) undoBtn.addEventListener('click', doUndo);
+        // Ctrl/⌘+Z → undo (Shift not held, so we don't hijack redo chords).
+        window.addEventListener('keydown', (ev) => {
+            if ((ev.ctrlKey || ev.metaKey) && !ev.shiftKey && !ev.altKey && (ev.key === 'z' || ev.key === 'Z')) {
+                doUndo();
+                ev.preventDefault();
+            }
+        });
 
         board.classList.add('drag-board');
         board.addEventListener('pointerdown', onPointerDown);
