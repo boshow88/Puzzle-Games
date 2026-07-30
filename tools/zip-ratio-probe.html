@@ -1,0 +1,70 @@
+<!doctype html>
+<html lang="en"><head>
+  <meta charset="utf-8" />
+  <title>Zip — wall/checkpoint ratio &amp; difficulty probe</title>
+  <style>
+    body { font: 13px/1.5 ui-monospace, Consolas, monospace; margin: 16px; }
+    h1 { font-size: 15px; }
+    pre { white-space: pre-wrap; }
+  </style>
+  <script src="../js/common.js"></script>
+  <script src="../js/generators/zip.js"></script>
+</head>
+<body>
+  <h1 id="verdict">running…</h1>
+  <pre id="txt"></pre>
+  <script>
+  window.addEventListener('error', (e) => { document.getElementById('verdict').textContent = 'ERROR: ' + (e.message || e.error); });
+  (async function () {
+    try {
+    const PC = window.PuzzleCommon;
+    const I = window.PuzzleGenerators.zipInternals;
+    const SEEDS = [3, 11, 29, 47];
+    const FRACS = [0.03, 0.04, 0.05, 0.06, 0.08, 0.10, 0.12, 0.15, 0.20, 0.25, 0.30];
+    const avg = (a) => a.length ? a.reduce((x, y) => x + y, 0) / a.length : NaN;
+    const tick = () => Promise.resolve();   // microtask yield (keeps headless "busy")
+
+    function measure(N, cpCount) {
+      const M = N * N, model = I.edgeModel(N), adj = I.buildAdj(N);
+      const walls = [], ratios = [], diffs = []; let uok = 0;
+      for (const seed of SEEDS) {
+        const rng = PC.rng.make(seed >>> 0);
+        const path = I.randomHamPath(N, rng, adj);
+        const cp1 = path[0], cpK = path[M - 1];
+        const { cpNum, K } = I.placeCheckpoints(path, cpCount, rng, N);
+        const wallSet = new Set();
+        const fu = I.forceUnique(N, model, adj, wallSet, cpNum, cp1, cpK, K, path, I.proveBudget(N), rng);
+        if (!fu.ok) continue;
+        uok++;
+        const w = wallSet.size;
+        walls.push(w); ratios.push(w / K);
+        const d = I.analyzeEdges(N, model, wallSet, cpNum, cp1, cpK, K, 2, I.weakBudget(N), false, I.WEAK);
+        diffs.push(d.aborted ? 99999 : d.branches);
+      }
+      return { cp: cpCount, walls: avg(walls), ratio: avg(ratios), diff: avg(diffs), uok };
+    }
+
+    const lines = [];
+    const pad = (s, n) => String(s).padStart(n);
+    for (const N of [8, 10]) {
+      const M = N * N;
+      lines.push(`== ${N}x${N} (M=${M})  base cp: easy ${I.cpCountFor(N, 'easy')} / medium ${I.cpCountFor(N, 'medium')} / hard ${I.cpCountFor(N, 'hard')}`);
+      lines.push('   cp   frac   walls  walls/cp  weakBranch  uniq');
+      const seen = new Set();
+      for (const f of FRACS) {
+        const cp = Math.max(3, Math.round(M * f));
+        if (seen.has(cp)) continue; seen.add(cp);
+        const r = measure(N, cp);
+        lines.push(`${pad(r.cp, 5)}  ${f.toFixed(2)}  ${pad(r.walls.toFixed(1), 6)}  ${pad(r.ratio.toFixed(2), 7)}  ${pad(Math.round(r.diff), 9)}  ${r.uok}/${SEEDS.length}`);
+        document.getElementById('txt').textContent = lines.join('\n');
+        await tick();
+      }
+      lines.push('');
+    }
+    document.getElementById('txt').textContent = lines.join('\n');
+    document.getElementById('verdict').textContent = 'PROBE-DONE';
+    } catch (err) { document.getElementById('verdict').textContent = 'ERROR: ' + (err && err.message) + ' | ' + (err && err.stack); }
+  })();
+  </script>
+</body>
+</html>

@@ -82,7 +82,7 @@
     const SEEDS = [11, 29, 47];
     const rows = [];
     for (const N of [6, 8, 10]) {
-      const cpBy = {}; let bad = 0;
+      let bad = 0;
       for (const diff of ['easy', 'medium', 'hard']) {
         const times = [], ws = []; let walls = 0, cps = 0;
         for (const seed of SEEDS) {
@@ -95,13 +95,13 @@
           if (!c.unique) { fail(`${N} ${diff} #${seed}: NOT unique`); bad++; }
           ws.push(c.weak); walls = c.walls; cps = c.cps;
         }
-        cpBy[diff] = cps;
         rows.push({ key: `${N}x${N} ${diff}`, cps, walls, ms: times.length ? (times.reduce((a, b) => a + b, 0) / times.length).toFixed(0) : '-', diffScore: ws.join(','), unique: `${SEEDS.length - bad}/${SEEDS.length}` });
       }
-      // Difficulty lever = checkpoint density (more anchors ⇒ easier). Verify it
-      // decreases easy→medium→hard (the human-meaningful, constructive ordering;
-      // the weak-branch column is informational, dominated by wall count).
-      if (!(cpBy.easy > cpBy.medium && cpBy.medium >= cpBy.hard)) fail(`${N}: checkpoint density not monotonic (E ${cpBy.easy} / M ${cpBy.medium} / H ${cpBy.hard})`);
+      // Difficulty lever = checkpoint density (more anchors ⇒ easier). Per-board
+      // counts now jitter (and ranges overlap), so verify monotonicity on the
+      // deterministic BASE count (mult = 1) instead of a single jittered sample.
+      const bE = I.cpCountFor(N, 'easy'), bM = I.cpCountFor(N, 'medium'), bH = I.cpCountFor(N, 'hard');
+      if (!(bE > bM && bM > bH)) fail(`${N}: base checkpoint density not monotonic (E ${bE} / M ${bM} / H ${bH})`);
     }
 
     // Single 12×12 sanity gen (medium): confirm it completes, is unique, timing.

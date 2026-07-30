@@ -357,9 +357,9 @@
     // Difficulty knobs (placeholder — refined after uniqueness verified)
     // -----------------------------------------------------------------
 
-    // best-of-K pool size. Each candidate is cheap now (forceUnique is fast),
-    // so we can sample several and pick by difficulty band.
-    function attemptsFor(N) { return N <= 8 ? 14 : N <= 10 ? 9 : 5; }
+    // Retry cap: how many fresh paths to try before accepting a best-effort
+    // board (forceUnique almost always succeeds on the first path).
+    function attemptsFor(N) { return N <= 8 ? 8 : N <= 10 ? 6 : 4; }
     function proveBudget(N) { return 20000 + N * N * 300; }
     // Weak (human-level) solver: degree + no-cycle only. Its branch count on a
     // unique board scores difficulty (how much guessing without global
@@ -370,31 +370,39 @@
     // reasoning). Its branch count ⇒ how much guessing remains ⇒ difficulty.
     const WEAK = { order: true, conn: false };
     function weakBudget(N) { return 4000 + N * N * 60; }
-    // Checkpoint count per tier (incl. the two endpoints). More checkpoints ⇒
-    // more anchors ⇒ fewer walls ⇒ easier; the main difficulty lever.
-    function cpCountFor(N, difficulty) {
+    // Checkpoint count per tier: a random count in an overlapping range (as a
+    // fraction of the cells). The ranges deliberately overlap, so the checkpoint
+    // count is a "style" (checkpoint-heavy ↔ wall-heavy look) rather than a
+    // difficulty tell. Deterministic given the seed's rng; no rng ⇒ midpoint.
+    function cpRangeFor(difficulty) {
+        if (difficulty === 'easy') return [0.06, 0.30];
+        if (difficulty === 'hard') return [0.02, 0.10];
+        return [0.04, 0.20];                                      // medium
+    }
+    function cpCountFor(N, difficulty, rng) {
         const M = N * N;
-        if (difficulty === 'easy') return Math.max(5, Math.round(M * 0.25));
-        if (difficulty === 'hard') return Math.max(3, Math.round(M * 0.05));
-        return Math.max(4, Math.round(M * 0.15));                 // medium
+        const [lo, hi] = cpRangeFor(difficulty);
+        const f = rng ? (lo + (hi - lo) * rng()) : (lo + hi) / 2;
+        return Math.max(2, Math.round(M * f));
     }
 
-    // Target total wall count (as a fraction of the interior edges) after
-    // uniqueness is secured. Easy/Medium get topped up with redundant
-    // "convergence" walls so the board doesn't look bare — otherwise the
-    // difficulty is transparently "more checkpoints ⇒ fewer walls". Hard keeps
-    // whatever it naturally needed. 0 ⇒ no top-up.
-    function wallTargetFor(N, difficulty) {
-        const interior = 2 * N * (N - 1);
-        if (difficulty === 'easy') return Math.round(interior * 0.15);
-        if (difficulty === 'medium') return Math.round(interior * 0.12);
-        return 0;                                                 // hard
+    // Difficulty lever = wall multiplier. Both walls and checkpoints make a Zip
+    // easier, and the minimum walls needed for uniqueness is essentially fixed
+    // by the checkpoint count — so we can't raise difficulty, only lower it by
+    // adding redundant walls. Easier tiers multiply the uniqueness-minimum wall
+    // count; hard keeps the minimum. This also equalises the look on average:
+    // fewer checkpoints ⇒ more minimum walls, more checkpoints ⇒ the multiplier
+    // fills the board back up. 1 ⇒ no extra.
+    function wallMultFor(difficulty) {
+        if (difficulty === 'easy') return 2.4;
+        if (difficulty === 'medium') return 1.6;
+        return 1.0;                                               // hard
     }
 
     /** Top up `wallSet` with redundant walls on edges the solution never uses,
      *  up to `target` total. Safe: P avoids these edges, so it stays valid and
      *  the puzzle stays unique (extra constraints only remove other solutions,
-     *  of which there were none). */
+     *  of which there were none). Caps at whatever non-solution edges exist. */
     function addConvergenceWalls(N, model, adj, wallSet, P, target, rng) {
         if (wallSet.size >= target) return;
         const Pset = pathEdgeSet(P, N, model);
@@ -408,9 +416,10 @@
     }
 
     // -----------------------------------------------------------------
-    // Entry point. Difficulty lever = checkpoint density (easy = many numbered
-    // anchors ⇒ easy connect-the-dots; hard = few ⇒ more path reasoning); walls
-    // top up uniqueness. Within a tier, best-of-K picks a representative.
+    // Entry point. Checkpoint count is a random "style" (overlapping ranges);
+    // difficulty comes from the wall multiplier (easier tiers add redundant
+    // walls on top of the uniqueness minimum). No best-of-K needed — any unique
+    // board at the rolled checkpoint count works.
     // -----------------------------------------------------------------
 
     async function generate(size, difficulty, seed, onProgress) {
@@ -420,40 +429,37 @@
         const model = edgeModel(N);
         const budget = proveBudget(N);
         const attempts = attemptsFor(N);
-        const cpCount = cpCountFor(N, difficulty);
+        const cpCount = cpCountFor(N, difficulty, rng);
         if (onProgress) await onProgress(0.05);
 
-        // best-of-K: each candidate is a fresh full path with pre-placed
-        // checkpoints, made unique with walls, scored by the WEAK solver's
-        // branch count. Ship by band: easy → least guessing, hard → most.
-        const pool = [];
-        for (let t = 0; t < attempts; t++) {
+        // Generate fresh full paths + checkpoints until one is made unique with
+        // walls. (forceUnique almost always succeeds on the first try.)
+        let chosen = null;
+        for (let t = 0; t < attempts && !chosen; t++) {
             const path = randomHamPath(N, rng, adj);
             const cp1 = path[0], cpK = path[M - 1];
             const { cpNum, K } = placeCheckpoints(path, cpCount, rng, N);
             const wallSet = new Set();
             const fu = forceUnique(N, model, adj, wallSet, cpNum, cp1, cpK, K, path, budget, rng);
-            if (!fu.ok) continue;
-            const w = analyzeEdges(N, model, wallSet, cpNum, cp1, cpK, K, 2, weakBudget(N), false, WEAK);
-            pool.push({ path, cpNum, K, wallSet, score: w.aborted ? 1e9 : w.branches });
-            if (onProgress) await onProgress(0.1 + 0.85 * (t + 1) / attempts);
+            if (fu.ok) chosen = { path, cpNum, K, wallSet };
+            if (onProgress) await onProgress(0.1 + 0.8 * (t + 1) / attempts);
         }
-        if (!pool.length) { // extremely unlikely; ship one best-effort
+        if (!chosen) { // extremely unlikely; ship one best-effort
             const path = randomHamPath(N, rng, adj);
             const cp1 = path[0], cpK = path[M - 1];
             const { cpNum, K } = placeCheckpoints(path, cpCount, rng, N);
             const wallSet = new Set();
             forceUnique(N, model, adj, wallSet, cpNum, cp1, cpK, K, path, budget * 3, rng);
-            pool.push({ path, cpNum, K, wallSet, score: 0 });
+            chosen = { path, cpNum, K, wallSet };
         }
-        pool.sort((a, b) => a.score - b.score);
-        const idx = difficulty === 'easy' ? 0
-            : difficulty === 'hard' ? pool.length - 1
-                : Math.floor((pool.length - 1) / 2);
-        const chosen = pool[idx];
 
-        // Enrich easy/medium with redundant convergence walls (keeps uniqueness).
-        addConvergenceWalls(N, model, adj, chosen.wallSet, chosen.path, wallTargetFor(N, difficulty), rng);
+        // Difficulty: multiply the uniqueness-minimum wall count (easier ⇒ more
+        // redundant walls). Keeps uniqueness; caps at available non-path edges.
+        const mult = wallMultFor(difficulty);
+        if (mult > 1) {
+            const target = Math.round(chosen.wallSet.size * mult);
+            addConvergenceWalls(N, model, adj, chosen.wallSet, chosen.path, target, rng);
+        }
 
         if (onProgress) await onProgress(1);
 
@@ -464,7 +470,7 @@
         const solution = chosen.path.map((id) => [rowOf(id, N), colOf(id, N)]);
         if (DEBUG) {
             /* eslint-disable no-console */
-            console.log(`[zip] N=${N} ${difficulty}: ${checkpoints.length} cps, ${walls.length} walls, score=${chosen.score}, pool=${pool.length}`);
+            console.log(`[zip] N=${N} ${difficulty}: ${checkpoints.length} cps, ${walls.length} walls (min×${wallMultFor(difficulty)})`);
             /* eslint-enable no-console */
         }
         return {
@@ -479,5 +485,6 @@
     global.PuzzleGenerators.zipInternals = {   // [DEBUG-HOOK]
         buildAdj, edgeModel, randomHamPath, analyzeEdges, forceUnique,
         edgeKey, idOf, edgeToCells, keyToEdge, pathEdgeSet, attemptsFor, proveBudget,
+        placeCheckpoints, cpCountFor, WEAK, weakBudget,
     };
 })(typeof window !== 'undefined' ? window : this);
