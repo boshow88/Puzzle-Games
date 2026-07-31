@@ -65,11 +65,13 @@
     // -----------------------------------------------------------------
 
     async function generatePuzzle(size, difficulty, seed) {
-        const progress = PC.progress;
-        const onProgress = progress
-            ? async (fraction) => { progress.setFraction(fraction); await progress.waitNextPaint(); }
-            : null;
-        return window.PuzzleGenerators.zip(size, difficulty, seed, onProgress);
+        // Generation is one opaque compute (a single forceUnique search) with no
+        // reliable sub-progress, so we DON'T drive a determinate bar — that would
+        // just stall then jump. We leave the shell's progress overlay in its
+        // indeterminate (sliding) mode by passing no onProgress; the slide is a
+        // compositor animation, so it keeps moving even while the main thread is
+        // blocked generating.
+        return window.PuzzleGenerators.zip(size, difficulty, seed, null);
     }
 
     // Shareable-URL state: a link carries (size, diff, seed); the generator is
