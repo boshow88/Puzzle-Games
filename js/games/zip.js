@@ -841,10 +841,17 @@
         const cs = BOARD_SIZE / N;
         const ringR = cs * 0.40;
         const sw = Math.max(3, Math.floor(cs * 0.09));
+        const head = state.path.length ? state.path[state.path.length - 1] : null;
         const draw = (r, c, kind) => {
+            // If the ring lands on the path head sitting on a checkpoint, that
+            // cell already carries the head halo ring — nest ours just outside
+            // it (concentric) so the two don't partially overlap.
+            const onHeadCp = head && head[0] === r && head[1] === c && checkpointAt(r, c) > 0;
+            const rr = onHeadCp ? cs * 0.46 : ringR;
+            const w = onHeadCp ? Math.max(3, Math.floor(cs * 0.055)) : sw;
             layer.appendChild(PC.svgEl('circle', {
                 class: 'zip-hint-ring ' + kind,
-                cx: c * cs + cs / 2, cy: r * cs + cs / 2, r: ringR, 'stroke-width': sw,
+                cx: c * cs + cs / 2, cy: r * cs + cs / 2, r: rr, 'stroke-width': w,
             }));
         };
         if (h.kind === 'wrong') draw(h.cell[0], h.cell[1], 'wrong');
