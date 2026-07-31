@@ -913,8 +913,7 @@
     stroke: #b02a37;
 }
 
-/* Hint rings: green for the next step(s), red for the first cell where the
-   path leaves the unique solution. Gently pulse so they read as a prompt. */
+/* Next-step hint: green ring(s) on the upcoming cell(s), gently pulsing. */
 .zip-hint-ring {
     fill: none;
     stroke-linecap: round;
@@ -924,12 +923,20 @@
 .zip-hint-ring.next {
     stroke: #2e9e44;
 }
-.zip-hint-ring.wrong {
-    stroke: var(--accent-danger, #dc3545);
-}
 @keyframes zip-hint-pulse {
     0%, 100% { opacity: 0.45; }
     50% { opacity: 1; }
+}
+
+/* Wrong-route hint: spotlight it by dimming every other cell, then wash the
+   mistaken stretch in translucent red (the path line shows through). */
+.zip-hint-dim {
+    fill: rgba(0, 0, 0, 0.42);
+    pointer-events: none;
+}
+.zip-hint-wrong-cell {
+    fill: rgba(220, 53, 69, 0.30);
+    pointer-events: none;
 }
 
 /* Numbered checkpoint marker — dark filled circle with a bright digit

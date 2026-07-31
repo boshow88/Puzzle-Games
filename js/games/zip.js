@@ -761,13 +761,13 @@
     const HINT_UI_TEXTS = {
         en: {
             start: 'Start your path at checkpoint 1 (highlighted).',
-            wrong: 'Your path leaves the only solution at the highlighted cell — retrace to just before it and try another route.',
+            wrong: 'The highlighted stretch of your path leaves the only solution — retrace to before it starts and try another route.',
             nextOne: 'Extend your path to the highlighted cell next.',
             nextMany: 'Extend your path through the highlighted cells next, in order.',
         },
         zh: {
             start: '從檢查點 1（醒目標示）開始畫你的路徑。',
-            wrong: '你的路徑在醒目標示的這格開始偏離唯一解——請退回到它前一格，改走別條路線。',
+            wrong: '醒目標示的這段路徑偏離了唯一解——請退回到它的起點之前，改走別條路線。',
             nextOne: '下一步請把路徑延伸到醒目標示的格子。',
             nextMany: '接下來請依序把路徑延伸經過醒目標示的這些格子。',
         },
@@ -788,7 +788,13 @@
         const n = Math.min(path.length, sol.length);
         let i = 0;
         while (i < n && path[i][0] === sol[i][0] && path[i][1] === sol[i][1]) i++;
-        if (i < path.length) return { kind: 'wrong', cell: path[i].slice() };
+        if (i < path.length) {
+            // The whole tail from the first off-solution cell to the head is
+            // the wrong route to retrace.
+            const cells = [];
+            for (let k = i; k < path.length; k++) cells.push(path[k].slice());
+            return { kind: 'wrong', cells };
+        }
         if (path.length >= sol.length) return null; // already fully correct
         const count = hintNextCount(state.puzzle.size);
         const cells = [];
@@ -839,23 +845,39 @@
         if (!h) return;
         const N = state.puzzle.size;
         const cs = BOARD_SIZE / N;
+
+        if (h.kind === 'wrong') {
+            // Spotlight the wrong route: dim every cell that isn't on it, then
+            // wash the route red so the mistaken stretch stands out. (Mirrors
+            // the Patches / Sudoku hint dimming.)
+            const focus = new Set();
+            for (const [r, c] of h.cells) focus.add(r * N + c);
+            for (let r = 0; r < N; r++) {
+                for (let c = 0; c < N; c++) {
+                    if (focus.has(r * N + c)) continue;
+                    layer.appendChild(PC.svgEl('rect', {
+                        class: 'zip-hint-dim', x: c * cs, y: r * cs, width: cs, height: cs,
+                    }));
+                }
+            }
+            for (const [r, c] of h.cells) {
+                layer.appendChild(PC.svgEl('rect', {
+                    class: 'zip-hint-wrong-cell', x: c * cs, y: r * cs, width: cs, height: cs,
+                }));
+            }
+            return;
+        }
+
+        // next / start: ring the upcoming cell(s) in green — no dimming, so the
+        // player keeps sight of the good path they've drawn so far.
         const ringR = cs * 0.40;
         const sw = Math.max(3, Math.floor(cs * 0.09));
-        const head = state.path.length ? state.path[state.path.length - 1] : null;
-        const draw = (r, c, kind) => {
-            // If the ring lands on the path head sitting on a checkpoint, that
-            // cell already carries the head halo ring — nest ours just outside
-            // it (concentric) so the two don't partially overlap.
-            const onHeadCp = head && head[0] === r && head[1] === c && checkpointAt(r, c) > 0;
-            const rr = onHeadCp ? cs * 0.46 : ringR;
-            const w = onHeadCp ? Math.max(3, Math.floor(cs * 0.055)) : sw;
+        for (const [r, c] of h.cells) {
             layer.appendChild(PC.svgEl('circle', {
-                class: 'zip-hint-ring ' + kind,
-                cx: c * cs + cs / 2, cy: r * cs + cs / 2, r: rr, 'stroke-width': w,
+                class: 'zip-hint-ring next',
+                cx: c * cs + cs / 2, cy: r * cs + cs / 2, r: ringR, 'stroke-width': sw,
             }));
-        };
-        if (h.kind === 'wrong') draw(h.cell[0], h.cell[1], 'wrong');
-        else for (const [r, c] of h.cells) draw(r, c, 'next');
+        }
     }
 
     // -----------------------------------------------------------------
