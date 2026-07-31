@@ -186,7 +186,8 @@ numerical order**.
 
 - N×N grid, with N from **5×5** to **12×12**.
 - **Holes** (grey cells): unreachable. The path may never enter
-  them.
+  them. (The current generator produces hole-free boards, so in
+  practice every cell is open.)
 - **Walls** (thick black segments on cell borders): the path may
   never cross one.
 - **Checkpoints** (numbered circles): K cells are labelled
@@ -224,14 +225,24 @@ numerical order**.
   cell briefly flashes the offending cell red.
 - **Reveal (?)** draws the canonical solution path as a faint green
   line under your own.
+- **Hint (💡)** either spotlights the stretch of your path that has
+  left the unique solution — dimming every other cell so you can see
+  how far to retrace — or, if you're still on track, draws a green
+  connector to the next step(s). Press again to dismiss.
+- **Undo (↶ / Ctrl+Z)** steps back one drag gesture at a time (up to
+  20). Reset is undoable too, until you win.
 
-### Wrong-order tail
+### Mistake feedback
 
 You're allowed to visit a checkpoint with the wrong number, but the
 path from that checkpoint onward is highlighted red (cell tint plus
 red path stroke that picks up where the blue gradient left off).
 The win check requires the order to be correct, so you'll need to
 retract back past the offending checkpoint to clear the red.
+
+The path **head** also turns red when you run *past* the final
+checkpoint, or park on it before every cell is covered — both are
+dead ends you must back out of.
 
 ### Win
 

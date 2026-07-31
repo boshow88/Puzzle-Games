@@ -1,7 +1,7 @@
 <!doctype html>
 <html lang="en"><head>
   <meta charset="utf-8" />
-  <title>Zip — wall/checkpoint ratio &amp; difficulty probe</title>
+  <title>Zip — corrected wall count &amp; ratio probe</title>
   <style>
     body { font: 13px/1.5 ui-monospace, Consolas, monospace; margin: 16px; }
     h1 { font-size: 15px; }
@@ -12,21 +12,28 @@
 </head>
 <body>
   <h1 id="verdict">running…</h1>
+  <p>For each size × difficulty we sweep the difficulty's own checkpoint range,
+  measure the minimum walls needed for uniqueness (avg over seeds), then apply
+  the tier's wall multiplier (easy ×2.4 / medium ×1.6 / hard ×1.0). "corrWalls"
+  is the corrected count assuming <b>no wall cap</b>; "ratio" = corrWalls / cp.</p>
   <pre id="txt"></pre>
   <script>
-  window.addEventListener('error', (e) => { document.getElementById('verdict').textContent = 'ERROR: ' + (e.message || e.error); });
   (async function () {
     try {
     const PC = window.PuzzleCommon;
     const I = window.PuzzleGenerators.zipInternals;
-    const SEEDS = [3, 11, 29, 47];
-    const FRACS = [0.03, 0.04, 0.05, 0.06, 0.08, 0.10, 0.12, 0.15, 0.20, 0.25, 0.30];
+    const SEEDS = [3, 11, 29];
+    const tick = () => Promise.resolve();
     const avg = (a) => a.length ? a.reduce((x, y) => x + y, 0) / a.length : NaN;
-    const tick = () => Promise.resolve();   // microtask yield (keeps headless "busy")
+    const DIFFS = [
+      { name: 'easy',   mult: 2.4, lo: 0.06, hi: 0.30 },
+      { name: 'medium', mult: 1.6, lo: 0.04, hi: 0.20 },
+      { name: 'hard',   mult: 1.0, lo: 0.02, hi: 0.10 },
+    ];
 
-    function measure(N, cpCount) {
+    function minWalls(N, cpCount) {
       const M = N * N, model = I.edgeModel(N), adj = I.buildAdj(N);
-      const walls = [], ratios = [], diffs = []; let uok = 0;
+      const ws = [];
       for (const seed of SEEDS) {
         const rng = PC.rng.make(seed >>> 0);
         const path = I.randomHamPath(N, rng, adj);
@@ -34,36 +41,35 @@
         const { cpNum, K } = I.placeCheckpoints(path, cpCount, rng, N);
         const wallSet = new Set();
         const fu = I.forceUnique(N, model, adj, wallSet, cpNum, cp1, cpK, K, path, I.proveBudget(N), rng);
-        if (!fu.ok) continue;
-        uok++;
-        const w = wallSet.size;
-        walls.push(w); ratios.push(w / K);
-        const d = I.analyzeEdges(N, model, wallSet, cpNum, cp1, cpK, K, 2, I.weakBudget(N), false, I.WEAK);
-        diffs.push(d.aborted ? 99999 : d.branches);
+        if (fu.ok) ws.push(wallSet.size);
       }
-      return { cp: cpCount, walls: avg(walls), ratio: avg(ratios), diff: avg(diffs), uok };
+      return avg(ws);
     }
 
-    const lines = [];
     const pad = (s, n) => String(s).padStart(n);
-    for (const N of [8, 10]) {
-      const M = N * N;
-      lines.push(`== ${N}x${N} (M=${M})  base cp: easy ${I.cpCountFor(N, 'easy')} / medium ${I.cpCountFor(N, 'medium')} / hard ${I.cpCountFor(N, 'hard')}`);
-      lines.push('   cp   frac   walls  walls/cp  weakBranch  uniq');
-      const seen = new Set();
-      for (const f of FRACS) {
-        const cp = Math.max(3, Math.round(M * f));
-        if (seen.has(cp)) continue; seen.add(cp);
-        const r = measure(N, cp);
-        lines.push(`${pad(r.cp, 5)}  ${f.toFixed(2)}  ${pad(r.walls.toFixed(1), 6)}  ${pad(r.ratio.toFixed(2), 7)}  ${pad(Math.round(r.diff), 9)}  ${r.uok}/${SEEDS.length}`);
-        document.getElementById('txt').textContent = lines.join('\n');
-        await tick();
+    const lines = [];
+    for (const N of [8, 10, 12]) {
+      const M = N * N, interior = 2 * N * (N - 1);
+      lines.push(`===== ${N}x${N}  (M=${M}, interior edges=${interior}) =====`);
+      lines.push('  diff     cp   frac   Wmin   x mult   corrWalls   ratio(corr/cp)');
+      for (const d of DIFFS) {
+        const fracs = [d.lo, d.lo + (d.hi - d.lo) / 3, d.lo + 2 * (d.hi - d.lo) / 3, d.hi];
+        const seen = new Set();
+        for (const f of fracs) {
+          const cp = Math.max(2, Math.round(M * f));
+          if (seen.has(cp)) continue; seen.add(cp);
+          const wmin = minWalls(N, cp);
+          const corr = wmin * d.mult;
+          lines.push(`  ${pad(d.name, 6)}  ${pad(cp, 4)}  ${f.toFixed(2)}  ${pad(wmin.toFixed(1), 5)}   x${d.mult}    ${pad(corr.toFixed(1), 7)}     ${pad((corr / cp).toFixed(2), 6)}`);
+          document.getElementById('txt').textContent = lines.join('\n');
+          await tick();
+        }
       }
       lines.push('');
     }
     document.getElementById('txt').textContent = lines.join('\n');
     document.getElementById('verdict').textContent = 'PROBE-DONE';
-    } catch (err) { document.getElementById('verdict').textContent = 'ERROR: ' + (err && err.message) + ' | ' + (err && err.stack); }
+    } catch (err) { document.getElementById('verdict').textContent = 'ERROR: ' + (err && err.message); }
   })();
   </script>
 </body>
