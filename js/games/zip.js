@@ -763,13 +763,13 @@
             start: 'Start your path at checkpoint 1 (highlighted).',
             wrong: 'The highlighted stretch of your path leaves the only solution — retrace to before it starts and try another route.',
             nextOne: 'Extend your path to the highlighted cell next.',
-            nextMany: 'Extend your path through the highlighted cells next, in order.',
+            nextMany: 'Extend your path along the highlighted route next.',
         },
         zh: {
             start: '從檢查點 1（醒目標示）開始畫你的路徑。',
             wrong: '醒目標示的這段路徑偏離了唯一解——請退回到它的起點之前，改走別條路線。',
             nextOne: '下一步請把路徑延伸到醒目標示的格子。',
-            nextMany: '接下來請依序把路徑延伸經過醒目標示的這些格子。',
+            nextMany: '接下來請沿著醒目標示的路線延伸你的路徑。',
         },
     };
     function hintTexts() {
@@ -846,10 +846,12 @@
         const N = state.puzzle.size;
         const cs = BOARD_SIZE / N;
 
+        const centre = (r, c) => (c * cs + cs / 2) + ',' + (r * cs + cs / 2);
+
         if (h.kind === 'wrong') {
-            // Spotlight the wrong route: dim every cell that isn't on it, then
-            // wash the route red so the mistaken stretch stands out. (Mirrors
-            // the Patches / Sudoku hint dimming.)
+            // Spotlight the wrong route: dim every cell that isn't on it, so the
+            // mistaken stretch (path line and all) stands out. (Mirrors the
+            // Patches / Sudoku hint dimming.)
             const focus = new Set();
             for (const [r, c] of h.cells) focus.add(r * N + c);
             for (let r = 0; r < N; r++) {
@@ -860,24 +862,33 @@
                     }));
                 }
             }
-            for (const [r, c] of h.cells) {
-                layer.appendChild(PC.svgEl('rect', {
-                    class: 'zip-hint-wrong-cell', x: c * cs, y: r * cs, width: cs, height: cs,
-                }));
-            }
             return;
         }
 
-        // next / start: ring the upcoming cell(s) in green — no dimming, so the
-        // player keeps sight of the good path they've drawn so far.
-        const ringR = cs * 0.40;
-        const sw = Math.max(3, Math.floor(cs * 0.09));
-        for (const [r, c] of h.cells) {
+        if (h.kind === 'start') {
+            // Empty path: just ring checkpoint 1 (nothing to connect from yet).
+            const [r, c] = h.cells[0];
             layer.appendChild(PC.svgEl('circle', {
                 class: 'zip-hint-ring next',
-                cx: c * cs + cs / 2, cy: r * cs + cs / 2, r: ringR, 'stroke-width': sw,
+                cx: c * cs + cs / 2, cy: r * cs + cs / 2, r: cs * 0.40,
+                'stroke-width': Math.max(3, Math.floor(cs * 0.09)),
             }));
+            return;
         }
+
+        // next: draw a green connector from the head THROUGH the upcoming cells,
+        // so the order is unambiguous (rings alone can't show which comes first).
+        const head = state.path[state.path.length - 1];
+        const pts = [head].concat(h.cells).map(([r, c]) => centre(r, c)).join(' ');
+        layer.appendChild(PC.svgEl('polyline', {
+            class: 'zip-hint-next-line', points: pts,
+            'stroke-width': Math.max(6, Math.floor(cs * 0.20)),
+        }));
+        const [tr, tc] = h.cells[h.cells.length - 1];
+        layer.appendChild(PC.svgEl('circle', {
+            class: 'zip-hint-next-dot',
+            cx: tc * cs + cs / 2, cy: tr * cs + cs / 2, r: cs * 0.14,
+        }));
     }
 
     // -----------------------------------------------------------------
