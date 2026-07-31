@@ -299,23 +299,48 @@
         return chosen;
     }
 
-    /** Place `targetK` checkpoints along P (the two endpoints plus interior
-     *  ones spread evenly with jitter), numbered by position on P. Returns
-     *  { cpNum, K }. More anchors ⇒ fewer walls needed ⇒ easier. */
+    // Standard-normal sample (Box–Muller) from the uniform rng.
+    function randn(rng) {
+        let u = 0, v = 0;
+        while (u === 0) u = rng();
+        while (v === 0) v = rng();
+        return Math.sqrt(-2 * Math.log(u)) * Math.cos(2 * Math.PI * v);
+    }
+
+    /** Place `targetK` checkpoints along P, numbered by position on P. Returns
+     *  { cpNum, K }. The two endpoints (path start = 1, path end = K) are fixed
+     *  by the rules; the interior checkpoints are positioned so the *gaps*
+     *  between consecutive checkpoints are ~normally distributed (each gap drawn
+     *  from Normal(mean, ½·mean), then rescaled to span the path). So most gaps
+     *  sit near the average with the odd tight/wide one — random but not clumpy
+     *  like uniform picks, nor rigid like even spacing. More anchors ⇒ fewer
+     *  walls needed ⇒ easier. */
     function placeCheckpoints(P, targetK, rng, N) {
         const M = P.length;
         targetK = Math.max(2, Math.min(targetK, M));
         const idxSet = new Set([0, M - 1]);
         const need = targetK - 2;
-        if (need > 0) {
-            const step = (M - 1) / (targetK - 1);
-            for (let i = 1; i <= need; i++) {
-                let pos = Math.round(i * step) + (rng ? PC.rng.pickInt(rng, -1, 2) : 0);
-                pos = Math.max(1, Math.min(M - 2, pos));
-                while (idxSet.has(pos) && pos < M - 2) pos++;
-                while (idxSet.has(pos) && pos > 1) pos--;
+        if (need > 0 && rng) {
+            const gaps = need + 1;                 // segments between consecutive checkpoints
+            const mean = (M - 1) / gaps;
+            const sigma = mean * 0.5;
+            const g = new Array(gaps);
+            let sum = 0;
+            for (let i = 0; i < gaps; i++) { g[i] = Math.max(0.35, mean + sigma * randn(rng)); sum += g[i]; }
+            const scale = (M - 1) / sum;           // rescale so the gaps span the whole path
+            let acc = 0, prev = 0;
+            for (let i = 0; i < gaps - 1; i++) {    // gaps-1 == need interior checkpoints
+                acc += g[i] * scale;
+                let pos = Math.round(acc);
+                const remaining = need - 1 - i;    // interior still to place after this one
+                pos = Math.min(pos, M - 2 - remaining);
+                if (pos <= prev) pos = prev + 1;
                 idxSet.add(pos);
+                prev = pos;
             }
+        } else if (need > 0) {                      // deterministic (no rng) fallback: even
+            const step = (M - 1) / (targetK - 1);
+            for (let i = 1; i <= need; i++) idxSet.add(Math.max(1, Math.min(M - 2, Math.round(i * step))));
         }
         const idxs = [...idxSet].sort((a, b) => a - b);
         const cpNum = new Int32Array(N * N);
