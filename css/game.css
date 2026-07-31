@@ -913,6 +913,25 @@
     stroke: #b02a37;
 }
 
+/* Hint rings: green for the next step(s), red for the first cell where the
+   path leaves the unique solution. Gently pulse so they read as a prompt. */
+.zip-hint-ring {
+    fill: none;
+    stroke-linecap: round;
+    pointer-events: none;
+    animation: zip-hint-pulse 1.15s ease-in-out infinite;
+}
+.zip-hint-ring.next {
+    stroke: #2e9e44;
+}
+.zip-hint-ring.wrong {
+    stroke: var(--accent-danger, #dc3545);
+}
+@keyframes zip-hint-pulse {
+    0%, 100% { opacity: 0.45; }
+    50% { opacity: 1; }
+}
+
 /* Numbered checkpoint marker — dark filled circle with a bright digit
    on top. The text is positioned by the renderer using the same
    text-anchor + dominant-baseline + dy nudge as the other games. */

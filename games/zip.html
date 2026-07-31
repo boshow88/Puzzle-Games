@@ -69,6 +69,10 @@
                 <span data-icon="rotate-ccw" aria-hidden="true"></span>
                 <span data-i18n="reset">Reset</span>
             </button>
+            <button class="btn" id="hint-btn" type="button" data-i18n-title="highlightDeducible" title="Highlight the next step (or where the path went wrong)">
+                <span data-icon="lightbulb" aria-hidden="true"></span>
+                <span data-i18n="hint">Hint</span>
+            </button>
             <button class="btn toggle" id="reveal-btn" type="button" aria-pressed="false" data-i18n-title="showSolutionPath" title="Show solution path">
                 <span data-icon="eye" aria-hidden="true"></span>
                 <span data-i18n="reveal">Reveal</span>
@@ -98,6 +102,8 @@
                  aria-label="Zip puzzle board">
             </svg>
         </div>
+
+        <div class="hint-banner" id="hint-banner" hidden aria-live="polite"></div>
 
         <section class="game-footer">
             <h4 data-i18n="howToPlay">How to play</h4>

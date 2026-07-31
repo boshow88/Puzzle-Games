@@ -106,6 +106,8 @@
         puzzle: null,
         path: [],                   // Array<[r, c]>; player's current path
         dragging: null,             // { pointerId, lastCell: [r,c] } | null
+        hint: null,                 // active hint object | null (see computeHint)
+        hintBanner: null,           // DOM node for the hint message banner
 
         won: false,
 
@@ -162,7 +164,7 @@
     // cleared on Reset-after-win / New Game.
     function doUndo() {
         if (!state.puzzle) return;
-        if (undoHistory && undoHistory.undo()) updateUndoButton();
+        if (undoHistory && undoHistory.undo()) { clearHint(); updateUndoButton(); }
     }
 
     function updateUndoButton() {
@@ -375,6 +377,11 @@
         const cpGroup = PC.svgEl('g', { class: 'checkpoints' });
         cpGroup.setAttribute('id', 'checkpoints');
         svg.appendChild(cpGroup);
+
+        // Layer: hint rings (drawn on top so they're clearly visible).
+        const hintGroup = PC.svgEl('g', { class: 'zip-hint' });
+        hintGroup.setAttribute('id', 'zip-hint');
+        svg.appendChild(hintGroup);
 
         // Layer: invisible hit targets covering every cell — used to map
         // pointer events to a cell, including the holes (so we can
@@ -688,6 +695,7 @@
         const cell = eventToCell(ev);
         if (!cell) return;
         if (!canStartDragAt(cell)) return;
+        clearHint();                            // a fresh gesture invalidates any hint
         pushUndo();                             // snapshot the pre-gesture path
         tryStartDragAt(cell, ev.pointerId);     // guaranteed to start now
         ev.preventDefault();
@@ -743,6 +751,107 @@
     }
 
     // -----------------------------------------------------------------
+    // Hints — Zip has a unique solution, so the player's path is "right so
+    // far" exactly when it's a prefix of that solution. Two kinds:
+    //   • wrong: the path leaves the solution → ring the first off cell
+    //     (retreat to just before it);
+    //   • next : the path is a correct prefix → light up the next cell(s).
+    // -----------------------------------------------------------------
+
+    const HINT_UI_TEXTS = {
+        en: {
+            start: 'Start your path at checkpoint 1 (highlighted).',
+            wrong: 'Your path leaves the only solution at the highlighted cell — retrace to just before it and try another route.',
+            nextOne: 'Extend your path to the highlighted cell next.',
+            nextMany: 'Extend your path through the highlighted cells next, in order.',
+        },
+        zh: {
+            start: '從檢查點 1（醒目標示）開始畫你的路徑。',
+            wrong: '你的路徑在醒目標示的這格開始偏離唯一解——請退回到它前一格，改走別條路線。',
+            nextOne: '下一步請把路徑延伸到醒目標示的格子。',
+            nextMany: '接下來請依序把路徑延伸經過醒目標示的這些格子。',
+        },
+    };
+    function hintTexts() {
+        const loc = (PC.i18n && PC.i18n.locale) || 'en';
+        return HINT_UI_TEXTS[loc] || HINT_UI_TEXTS.en;
+    }
+
+    // Reveal a touch more of the route on big boards, where one cell is a
+    // very small nudge.
+    function hintNextCount(N) { return N <= 8 ? 1 : N <= 10 ? 2 : 3; }
+
+    function computeHint() {
+        const sol = state.puzzle.solution || [];
+        const path = state.path;
+        // First index where the path disagrees with the unique solution.
+        const n = Math.min(path.length, sol.length);
+        let i = 0;
+        while (i < n && path[i][0] === sol[i][0] && path[i][1] === sol[i][1]) i++;
+        if (i < path.length) return { kind: 'wrong', cell: path[i].slice() };
+        if (path.length >= sol.length) return null; // already fully correct
+        const count = hintNextCount(state.puzzle.size);
+        const cells = [];
+        for (let k = path.length; k < Math.min(sol.length, path.length + count); k++) cells.push(sol[k].slice());
+        return { kind: path.length === 0 ? 'start' : 'next', cells };
+    }
+
+    function showHint() {
+        if (!state.puzzle || state.won) return;
+        if (state.hint) { clearHint(); return; }   // toggle off
+        const h = computeHint();
+        if (!h) return;
+        state.hint = h;
+        renderHintBanner();
+        repaintHint();
+    }
+
+    function clearHint() {
+        if (!state.hint && state.hintBanner && state.hintBanner.hidden) return;
+        state.hint = null;
+        if (state.hintBanner) {
+            state.hintBanner.hidden = true;
+            state.hintBanner.textContent = '';
+            state.hintBanner.classList.remove('error');
+        }
+        repaintHint();
+    }
+
+    function renderHintBanner() {
+        const h = state.hint;
+        if (!h || !state.hintBanner) return;
+        const t = hintTexts();
+        let text;
+        if (h.kind === 'wrong') text = t.wrong;
+        else if (h.kind === 'start') text = t.start;
+        else text = (h.cells && h.cells.length > 1) ? t.nextMany : t.nextOne;
+        state.hintBanner.textContent = text;
+        state.hintBanner.classList.toggle('error', h.kind === 'wrong');
+        state.hintBanner.hidden = false;
+    }
+
+    function repaintHint() {
+        if (!board) return;
+        const layer = board.querySelector('#zip-hint');
+        if (!layer) return;
+        while (layer.firstChild) layer.removeChild(layer.firstChild);
+        const h = state.hint;
+        if (!h) return;
+        const N = state.puzzle.size;
+        const cs = BOARD_SIZE / N;
+        const ringR = cs * 0.40;
+        const sw = Math.max(3, Math.floor(cs * 0.09));
+        const draw = (r, c, kind) => {
+            layer.appendChild(PC.svgEl('circle', {
+                class: 'zip-hint-ring ' + kind,
+                cx: c * cs + cs / 2, cy: r * cs + cs / 2, r: ringR, 'stroke-width': sw,
+            }));
+        };
+        if (h.kind === 'wrong') draw(h.cell[0], h.cell[1], 'wrong');
+        else for (const [r, c] of h.cells) draw(r, c, 'next');
+    }
+
+    // -----------------------------------------------------------------
     // Event handlers (toolbar / actions)
     // -----------------------------------------------------------------
 
@@ -754,6 +863,7 @@
         state.puzzle = await generatePuzzle(shell.size, shell.difficulty, seed);
         rebuildPuzzleIndices();
         resetPath();
+        state.hint = null;
         if (undoHistory) undoHistory.clear();
         renderBoard();
         updateStatusRow();
@@ -770,10 +880,16 @@
         if (state.won) { if (undoHistory) undoHistory.clear(); }
         else pushUndo();
         resetPath();
+        clearHint();
         repaintCheckpoints();
         repaintPath();
         updateStatusRow();
         updateUndoButton();
+    }
+
+    function onRevealToggle() {
+        clearHint();   // reveal shows the whole solution; a hint would be redundant
+        repaintPath();
     }
 
     // -----------------------------------------------------------------
@@ -787,10 +903,11 @@
             size: { kind: 'slider', min: MIN_SIZE, max: MAX_SIZE, default: urlInitial ? urlInitial.size : 7 },
             onNewGame: startNewGame,
             onReset: resetPathAction,
-            onReveal: repaintPath,
+            onReveal: onRevealToggle,
         });
         board = shell.dom.board;
         pathProgressText = document.getElementById('path-progress-text');
+        state.hintBanner = document.getElementById('hint-banner');
 
         undoHistory = PC.history.create({
             limit: 20,
@@ -802,6 +919,12 @@
         if (shareBtn) shareBtn.addEventListener('click', onShareClick);
         const undoBtn = document.getElementById('undo-btn');
         if (undoBtn) undoBtn.addEventListener('click', doUndo);
+        const hintBtn = document.getElementById('hint-btn');
+        if (hintBtn) hintBtn.addEventListener('click', showHint);
+        // Re-render the hint banner if the locale flips while a hint is up.
+        if (PC.i18n && typeof PC.i18n.subscribe === 'function') {
+            PC.i18n.subscribe(() => { if (state.hint) renderHintBanner(); });
+        }
         // Ctrl/⌘+Z → undo (Shift not held, so we don't hijack redo chords).
         window.addEventListener('keydown', (ev) => {
             if ((ev.ctrlKey || ev.metaKey) && !ev.shiftKey && !ev.altKey && (ev.key === 'z' || ev.key === 'Z')) {
