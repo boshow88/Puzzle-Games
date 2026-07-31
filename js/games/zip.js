@@ -110,6 +110,7 @@
         hintBanner: null,           // DOM node for the hint message banner
 
         won: false,
+        winAnimating: false,        // true while the victory trace is still drawing
 
         // Derived puzzle indices (rebuilt on every newPuzzle for fast lookups)
         holeSet: null,              // Set of "r,c"
@@ -120,6 +121,7 @@
 
     let shell = null;
     let undoHistory = null;
+    let winTimer = null;            // fires when the victory trace reaches the end
 
     function rebuildPuzzleIndices() {
         const p = state.puzzle;
@@ -148,7 +150,7 @@
         state.path = clonePath(snap.path);
         state.dragging = null;
         state.won = false;
-        if (wasWon) shell.clearWin(); // reverse win chrome, resume the clock
+        if (wasWon) { shell.clearWin(); clearWinAnim(); } // reverse win chrome, resume the clock
         repaintCheckpoints();
         repaintPath();
         updateStatusRow();
@@ -372,6 +374,12 @@
         headGroup.setAttribute('id', 'path-head');
         svg.appendChild(headGroup);
 
+        // Layer: win sweep — a gold line that draws itself along the finished
+        // path on victory. Below the checkpoints so their numbers stay legible.
+        const winGroup = PC.svgEl('g', { class: 'zip-win' });
+        winGroup.setAttribute('id', 'zip-win');
+        svg.appendChild(winGroup);
+
         // Layer: checkpoint circles + numbers, above the head so the
         // number is always legible.
         const cpGroup = PC.svgEl('g', { class: 'checkpoints' });
@@ -541,7 +549,11 @@
             // head red too — not just the out-of-order / overrun cases.
             const finalCp = state.puzzle.checkpoints.length;
             const headOnFinalEarly = !state.won && checkpointAt(hr, hc) === finalCp;
-            const headState = state.won ? ' victory' : (wrongStart >= 0 || headOnFinalEarly ? ' wrong' : '');
+            // Plain gold while the trace is drawing; `lit` (glowing) once it
+            // arrives, so the endpoint fuses with the trace instead of glowing
+            // from the start.
+            const headState = state.won ? (state.winAnimating ? ' victory' : ' victory lit')
+                : (wrongStart >= 0 || headOnFinalEarly ? ' wrong' : '');
             headGroup.appendChild(PC.svgEl('circle', {
                 class: 'path-head' + headState, cx, cy, r: headR,
             }));
@@ -728,6 +740,8 @@
         if (isWin() && !state.won) {
             state.won = true;
             shell.markSolved();
+            clearHint();
+            playWinAnimation();
             // End the drag the instant the puzzle is solved. Without
             // this, the player can keep dragging through the same
             // gesture (e.g. accidentally pulling back over the
@@ -748,6 +762,56 @@
         if (ev.pointerId !== state.dragging.pointerId) return;
         try { board.releasePointerCapture(ev.pointerId); } catch (_) { /* ignore */ }
         state.dragging = null;
+    }
+
+    // -----------------------------------------------------------------
+    // Win animation — a gold line draws itself along the finished path from
+    // checkpoint 1 to K (a "victory trace"), mirroring how the other games
+    // punctuate a solve. Purely presentational; the underlying path is already
+    // gold, so once the trace completes the two are seamless.
+    // -----------------------------------------------------------------
+
+    function clearWinAnim() {
+        state.winAnimating = false;
+        if (winTimer) { clearTimeout(winTimer); winTimer = null; }
+        const layer = board && board.querySelector('#zip-win');
+        if (layer) while (layer.firstChild) layer.removeChild(layer.firstChild);
+    }
+
+    function playWinAnimation() {
+        const layer = board && board.querySelector('#zip-win');
+        if (!layer || state.path.length < 2) return;
+        while (layer.firstChild) layer.removeChild(layer.firstChild);
+        const N = state.puzzle.size;
+        const cs = BOARD_SIZE / N;
+        // Trace time scales with board size, so big boards sweep more slowly.
+        const durMs = Math.max(800, Math.round(N * 155));
+        const pts = state.path.map(([r, c]) => (c * cs + cs / 2) + ',' + (r * cs + cs / 2)).join(' ');
+        const len = (state.path.length - 1) * cs;
+        const line = PC.svgEl('polyline', {
+            class: 'zip-win-sweep', points: pts,
+            'stroke-width': Math.max(10, Math.floor(cs * 0.36)),
+        });
+        line.style.transitionDuration = durMs + 'ms';
+        line.style.strokeDasharray = String(len);
+        line.style.strokeDashoffset = String(len);
+        layer.appendChild(line);
+        // Kick the CSS transition on the next frame so it animates from the
+        // dashed-hidden state to fully drawn.
+        requestAnimationFrame(() => requestAnimationFrame(() => {
+            line.style.strokeDashoffset = '0';
+        }));
+        // The endpoint stays plain gold while the trace draws; the instant the
+        // trace reaches it (after durMs), light it up so it fuses with the glow.
+        state.winAnimating = true;
+        if (winTimer) clearTimeout(winTimer);
+        winTimer = setTimeout(() => {
+            winTimer = null;
+            state.winAnimating = false;
+            if (!board) return;
+            board.querySelectorAll('.path-head.victory, .path-head-ring.victory')
+                .forEach((el) => el.classList.add('lit'));
+        }, durMs);
     }
 
     // -----------------------------------------------------------------
@@ -921,6 +985,7 @@
         else pushUndo();
         resetPath();
         clearHint();
+        clearWinAnim();
         repaintCheckpoints();
         repaintPath();
         updateStatusRow();

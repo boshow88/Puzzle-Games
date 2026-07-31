@@ -871,7 +871,7 @@
             zipHelp2Html:
                 'Visit the numbered checkpoints in order — <strong>1 → 2 → 3 → … → N</strong>.',
             zipHelp3Html:
-                'The path cannot cross black <strong>walls</strong> or enter grey <strong>holes</strong>; only orthogonal moves.',
+                'The path cannot cross black <strong>walls</strong>; only orthogonal (up/down/left/right) moves.',
             zipHelp4:
                 'You can pick up the drag from any cell already on the path — everything after that cell is dropped.',
             zipHelp5:
@@ -1065,7 +1065,7 @@
             zipHelp2Html:
                 '依數字順序通過檢查點 — <strong>1 → 2 → 3 → … → N</strong>。',
             zipHelp3Html:
-                '路徑不能越過黑色 <strong>牆</strong>，也不能進入灰色 <strong>洞</strong>；只能沿正交方向移動。',
+                '路徑不能越過黑色 <strong>牆</strong>；只能沿上下左右正交方向移動。',
             zipHelp4:
                 '可以從路徑上任何一格重新拖曳 — 該格之後的部分都會被取消。',
             zipHelp5: '當路徑覆蓋每個白格，且檢查點都依序通過時即過關。',
