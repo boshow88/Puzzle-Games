@@ -529,7 +529,12 @@
             const cx = hc * cs + cs / 2;
             const cy = hr * cs + cs / 2;
             const headR = Math.max(8, Math.floor(cs * 0.27));
-            const headState = state.won ? ' victory' : (wrongStart >= 0 ? ' wrong' : '');
+            // Reaching the final checkpoint before every cell is covered is a
+            // dead end (you can't leave it without overrunning), so flag the
+            // head red too — not just the out-of-order / overrun cases.
+            const finalCp = state.puzzle.checkpoints.length;
+            const headOnFinalEarly = !state.won && checkpointAt(hr, hc) === finalCp;
+            const headState = state.won ? ' victory' : (wrongStart >= 0 || headOnFinalEarly ? ' wrong' : '');
             headGroup.appendChild(PC.svgEl('circle', {
                 class: 'path-head' + headState, cx, cy, r: headR,
             }));
