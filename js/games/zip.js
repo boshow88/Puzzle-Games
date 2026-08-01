@@ -121,7 +121,7 @@
 
     let shell = null;
     let undoHistory = null;
-    let winTimer = null;            // fires when the victory trace reaches the end
+    let winTimers = [];             // staggered timers that light checkpoints as the trace passes
 
     function rebuildPuzzleIndices() {
         const p = state.puzzle;
@@ -271,10 +271,8 @@
     // Rendering
     // -----------------------------------------------------------------
 
-    // Zip-specific DOM. The shell owns the toolbar / timer / win badge;
-    // the path-progress pill is game-specific so we keep a ref here.
+    // Zip-specific DOM. The shell owns the toolbar / timer / win badge.
     let board = null;
-    let pathProgressText = null;
 
     function cellCentre(N, r, c) {
         const cs = BOARD_SIZE / N;
@@ -420,7 +418,10 @@
         const { cs } = cellCentre(N, 0, 0);
         const radius = Math.max(10, Math.floor(cs * 0.32));
         const font = Math.max(12, Math.floor(cs * 0.42));
-        const cls = state.won ? 'checkpoint-circle victory' : 'checkpoint-circle';
+        // While the victory trace is drawing, checkpoints start plain and get
+        // lit one-by-one by playWinAnimation as the trace passes; only settle
+        // them all gold once it's done (or on a later repaint).
+        const cls = (state.won && !state.winAnimating) ? 'checkpoint-circle victory' : 'checkpoint-circle';
 
         for (const cp of p.checkpoints) {
             const cx = cp.c * cs + cs / 2;
@@ -428,6 +429,7 @@
             group.appendChild(PC.svgEl('circle', {
                 class: cls,
                 cx, cy, r: radius,
+                'data-r': cp.r, 'data-c': cp.c,
             }));
             const text = PC.svgEl('text', {
                 class: 'checkpoint-text',
@@ -451,9 +453,11 @@
      *  bright red (220, 53, 69) — `#dc3545`, the shared --accent-danger.
      *  Both gradients use the same t parameter computed over the WHOLE
      *  path, so a blue→red transition at the wrong-order boundary lines
-     *  up at a similar depth. Victory turns everything gold. */
+     *  up at a similar depth. On win the path keeps its blue gradient —
+     *  the gold victory trace, drawn above it, does the recolouring. */
     function pathColorAt(t, won, wrong) {
-        if (won) return 'rgb(212, 160, 23)';
+        // On win the path stays blue; the gold trace (drawn above it) is what
+        // recolours it, sweeping from start to end.
         if (wrong) {
             const r = Math.round(132 + (220 - 132) * t);
             const g = Math.round(32 + (53 - 32) * t);
@@ -549,10 +553,9 @@
             // head red too — not just the out-of-order / overrun cases.
             const finalCp = state.puzzle.checkpoints.length;
             const headOnFinalEarly = !state.won && checkpointAt(hr, hc) === finalCp;
-            // Plain gold while the trace is drawing; `lit` (glowing) once it
-            // arrives, so the endpoint fuses with the trace instead of glowing
-            // from the start.
-            const headState = state.won ? (state.winAnimating ? ' victory' : ' victory lit')
+            // Stays in play colour (blue) while the trace draws; turns gold +
+            // glowing once the trace reaches it, so it recolours like the path.
+            const headState = state.won ? (state.winAnimating ? '' : ' victory lit')
                 : (wrongStart >= 0 || headOnFinalEarly ? ' wrong' : '');
             headGroup.appendChild(PC.svgEl('circle', {
                 class: 'path-head' + headState, cx, cy, r: headR,
@@ -596,9 +599,6 @@
     }
 
     function updateStatusRow() {
-        const total = state.accessibleCount || 0;
-        const have = state.path.length;
-        pathProgressText.textContent = `${have} / ${total}`;
         shell.setWin(state.won);
     }
 
@@ -739,9 +739,9 @@
 
         if (isWin() && !state.won) {
             state.won = true;
+            state.winAnimating = true;   // set first so the repaints render the pre-sweep state
             shell.markSolved();
             clearHint();
-            playWinAnimation();
             // End the drag the instant the puzzle is solved. Without
             // this, the player can keep dragging through the same
             // gesture (e.g. accidentally pulling back over the
@@ -751,6 +751,11 @@
                 try { board.releasePointerCapture(state.dragging.pointerId); } catch (_) { /* ignore */ }
                 state.dragging = null;
             }
+            repaintPath();
+            repaintCheckpoints();        // draw checkpoints plain (+ data-r/c) for the sweep to light
+            playWinAnimation();          // sweep + staggered lighting on the fresh elements
+            updateStatusRow();
+            return;
         }
         repaintPath();
         if (state.won) repaintCheckpoints();
@@ -773,7 +778,8 @@
 
     function clearWinAnim() {
         state.winAnimating = false;
-        if (winTimer) { clearTimeout(winTimer); winTimer = null; }
+        winTimers.forEach(clearTimeout);
+        winTimers = [];
         const layer = board && board.querySelector('#zip-win');
         if (layer) while (layer.firstChild) layer.removeChild(layer.firstChild);
     }
@@ -784,10 +790,11 @@
         while (layer.firstChild) layer.removeChild(layer.firstChild);
         const N = state.puzzle.size;
         const cs = BOARD_SIZE / N;
+        const M = state.path.length;
         // Trace time scales with board size, so big boards sweep more slowly.
         const durMs = Math.max(800, Math.round(N * 155));
         const pts = state.path.map(([r, c]) => (c * cs + cs / 2) + ',' + (r * cs + cs / 2)).join(' ');
-        const len = (state.path.length - 1) * cs;
+        const len = (M - 1) * cs;
         const line = PC.svgEl('polyline', {
             class: 'zip-win-sweep', points: pts,
             'stroke-width': Math.max(10, Math.floor(cs * 0.36)),
@@ -801,17 +808,27 @@
         requestAnimationFrame(() => requestAnimationFrame(() => {
             line.style.strokeDashoffset = '0';
         }));
-        // The endpoint stays plain gold while the trace draws; the instant the
-        // trace reaches it (after durMs), light it up so it fuses with the glow.
+
         state.winAnimating = true;
-        if (winTimer) clearTimeout(winTimer);
-        winTimer = setTimeout(() => {
-            winTimer = null;
+        winTimers.forEach(clearTimeout);
+        winTimers = [];
+        const at = (idx) => durMs * (idx / (M - 1));   // when the trace reaches path index idx
+
+        // Light each checkpoint (dark → gold + glow) as the trace sweeps past
+        // its position on the path, so the colour travels through them too.
+        const idxByCell = new Map();
+        state.path.forEach(([r, c], i) => idxByCell.set(r * N + c, i));
+        board.querySelectorAll('#checkpoints .checkpoint-circle').forEach((circle) => {
+            const r = +circle.getAttribute('data-r'), c = +circle.getAttribute('data-c');
+            const idx = idxByCell.has(r * N + c) ? idxByCell.get(r * N + c) : 0;
+            winTimers.push(setTimeout(() => circle.classList.add('victory'), at(idx)));
+        });
+
+        // When the trace reaches the end, settle the endpoint to gold + glow.
+        winTimers.push(setTimeout(() => {
             state.winAnimating = false;
-            if (!board) return;
-            board.querySelectorAll('.path-head.victory, .path-head-ring.victory')
-                .forEach((el) => el.classList.add('lit'));
-        }, durMs);
+            repaintPath();
+        }, durMs));
     }
 
     // -----------------------------------------------------------------
@@ -1011,7 +1028,6 @@
             onReveal: onRevealToggle,
         });
         board = shell.dom.board;
-        pathProgressText = document.getElementById('path-progress-text');
         state.hintBanner = document.getElementById('hint-banner');
 
         undoHistory = PC.history.create({

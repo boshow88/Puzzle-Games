@@ -979,11 +979,15 @@
     fill: #2c3e50;
     stroke: #1a242f;
     stroke-width: 2;
+    transition: fill 0.3s ease-out, stroke 0.3s ease-out, filter 0.3s ease-out;
 }
 
+/* On victory each checkpoint turns gold + glows; the JS staggers this class so
+   the colour sweeps through them in step with the winning trace. */
 .checkpoint-circle.victory {
     fill: #d4a017;
     stroke: #8a6a0a;
+    filter: drop-shadow(0 0 4px rgba(233, 185, 73, 0.9));
 }
 
 .checkpoint-text {
