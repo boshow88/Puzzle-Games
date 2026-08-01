@@ -1157,7 +1157,7 @@
     // arrives here with the requested puzzle. We hand the seed to
     // startNewGame *once*; subsequent New Game clicks roll a fresh
     // seed and the address bar re-syncs to whatever just generated.
-    const VALID_SIZES = new Set([5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15]);
+    const VALID_SIZES = new Set([5, 6, 7, 8, 9, 10, 11, 12]);
     const VALID_DIFFS = new Set(['easy', 'medium', 'hard']);
 
     function readUrlInitial() {
@@ -1238,7 +1238,7 @@
                 default: urlInitial ? urlInitial.difficulty : 'medium',
             },
             size: {
-                kind: 'slider', min: 5, max: 15,
+                kind: 'slider', min: 5, max: 12,
                 default: urlInitial ? urlInitial.size : 8,
             },
             onNewGame: startNewGame,

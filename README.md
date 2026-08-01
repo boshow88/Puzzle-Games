@@ -10,7 +10,7 @@ Pure static HTML/CSS/JS — deployable on GitHub Pages.
 | Game   | Status        | Notes                                          |
 | ------ | ------------- | ---------------------------------------------- |
 | Patches| Playable      | Drag-to-draw rectangles, leveled solver + tiered hints, undo & share, 5×5 – 12×12 |
-| Queens | WIP           | Region-carving generator, tactic-bounded solver |
+| Queens | Playable      | Region-carving generator (unique, tiered), tactic-bounded hints, undo & share, 5×5 – 12×12 |
 | Tango  | Playable      | Dummy in-browser puzzle generator              |
 | Sudoku | Playable      | 6×6 / 9×9 / 12×12, notes, undo, shareable links |
 | Zip    | Playable      | Drag-to-draw path, unique-solution generator (checkpoints + walls), hint, undo & share, 5×5 – 12×12 |
