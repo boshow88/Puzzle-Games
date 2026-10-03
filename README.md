@@ -1,6 +1,6 @@
 # Puzzle Games
 
-A web reimplementation of the LinkedIn puzzle games (Patches, Queens, Tango, Sudoku, Zip).
+A web reimplementation of the LinkedIn puzzle games (Patches, Queens, Tango, Sudoku, Zip, Nonogram).
 Pure static HTML/CSS/JS — deployable on GitHub Pages.
 
 **Play it live:** <https://boshow88.github.io/Puzzle-Games/>
@@ -14,6 +14,7 @@ Pure static HTML/CSS/JS — deployable on GitHub Pages.
 | Tango  | Playable      | Dummy in-browser puzzle generator              |
 | Sudoku | Playable      | 6×6 / 9×9 / 12×12, notes, undo, shareable links |
 | Zip    | Playable      | Drag-to-draw path, unique-solution generator (checkpoints + walls), hint, undo & share, 5×5 – 12×12 |
+| Nonogram | WIP         | Line-logic generator/solver (unique boards), Fill/Mark/Clear brush, fill-vs-✗ hints, undo & share, 5×5 – 12×12 |
 
 Full rule reference: [`docs/rules.md`](docs/rules.md).
 
@@ -25,7 +26,7 @@ games/*.html            One page per game
 css/                    common.css (theme tokens + launcher), game.css (shared game UI)
 js/                     common.js + js/games/*.js (per-game logic/rendering) + js/generators/*.js (puzzle generators & solvers)
 data/                   reserved for puzzle JSON pools (not used yet)
-docs/rules.md           full rule reference for all five games
+docs/rules.md           full rule reference for all six games
 ```
 
 ## Run locally

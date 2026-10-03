@@ -316,14 +316,26 @@
     const HINT_UI_TEXTS = {
         en: {
             wrong: 'The highlighted cell(s) don’t match the unique solution — a filled cell must be blank, or a blanked cell must be filled.',
-            row: (n, clue) => `Row ${n}: the clue ${clue} forces the highlighted cell(s).`,
-            col: (n, clue) => `Column ${n}: the clue ${clue} forces the highlighted cell(s).`,
+            actions: (f, m) => {
+                const parts = [];
+                if (f) parts.push(`fill ${f}`);
+                if (m) parts.push(`mark ${m} with ✗`);
+                return parts.join(' and ');
+            },
+            row: (n, clue, act) => `Row ${n}: clue ${clue} → ${act} (highlighted).`,
+            col: (n, clue, act) => `Column ${n}: clue ${clue} → ${act} (highlighted).`,
             none: 'Nothing more can be deduced by single-line logic right now.',
         },
         zh: {
             wrong: '醒目標示的格子與唯一解不符——有該留空的格被填了,或該填的格被劃掉了。',
-            row: (n, clue) => `第 ${n} 列:線索 ${clue} 可推出醒目標示的格子。`,
-            col: (n, clue) => `第 ${n} 行:線索 ${clue} 可推出醒目標示的格子。`,
+            actions: (f, m) => {
+                const parts = [];
+                if (f) parts.push(`填滿 ${f} 格`);
+                if (m) parts.push(`打叉 ${m} 格`);
+                return parts.join('、');
+            },
+            row: (n, clue, act) => `第 ${n} 列:依線索 ${clue},可${act}(見醒目格)。`,
+            col: (n, clue, act) => `第 ${n} 行:依線索 ${clue},可${act}(見醒目格)。`,
             none: '目前用單行邏輯已無法再推出新格子。',
         },
     };
@@ -338,7 +350,9 @@
         }
         if (wrong.length) return { kind: 'wrong', cells: wrong };
         const step = Solver.nextStep(p.rowClues, p.colClues, N, state.grid);
-        if (step) return { kind: 'deduce', orient: step.orient, index: step.index, clue: step.clue, cells: step.cells.map((x) => [x.r, x.c]) };
+        // Keep each forced cell's target state (FILL / BLOCK) so the hint can
+        // tell the player whether to fill or ✗ it.
+        if (step) return { kind: 'deduce', orient: step.orient, index: step.index, clue: step.clue, cells: step.cells };
         return null;
     }
 
@@ -365,7 +379,12 @@
         let text;
         if (h.kind === 'wrong') text = t.wrong;
         else if (h.kind === 'none') text = t.none;
-        else text = (h.orient === 'row' ? t.row : t.col)(h.index + 1, '[' + h.clue.join(' ') + ']');
+        else {
+            const nFill = h.cells.filter((x) => x.state === FILL).length;
+            const nMark = h.cells.length - nFill;
+            const act = t.actions(nFill, nMark);
+            text = (h.orient === 'row' ? t.row : t.col)(h.index + 1, '[' + h.clue.join(' ') + ']', act);
+        }
         state.hintBanner.textContent = text;
         state.hintBanner.classList.toggle('error', h.kind === 'wrong');
         state.hintBanner.hidden = false;
@@ -377,18 +396,40 @@
         while (layer.firstChild) layer.removeChild(layer.firstChild);
         const h = state.hint; if (!h || h.kind === 'none') return;
         const p = state.puzzle, N = p.size, { cs, ox, oy } = state;
+
         if (h.kind === 'deduce') {
-            // Spotlight the target line, then ring the forced cells.
+            // Spotlight the whole target line.
             if (h.orient === 'row') {
                 layer.appendChild(PC.svgEl('rect', { class: 'nono-hint-line', x: ox, y: oy + h.index * cs, width: N * cs, height: cs }));
             } else {
                 layer.appendChild(PC.svgEl('rect', { class: 'nono-hint-line', x: ox + h.index * cs, y: oy, width: cs, height: N * cs }));
             }
+            // Per cell: a ghost of the suggested action (fill square / ✗) plus a ring.
+            for (const cell of h.cells) {
+                const x0 = ox + cell.c * cs, y0 = oy + cell.r * cs;
+                if (cell.state === FILL) {
+                    layer.appendChild(PC.svgEl('rect', {
+                        class: 'nono-hint-fill',
+                        x: x0 + cs * 0.2, y: y0 + cs * 0.2, width: cs * 0.6, height: cs * 0.6,
+                        rx: cs * 0.1, ry: cs * 0.1,
+                    }));
+                } else {
+                    const m = cs * 0.3;
+                    layer.appendChild(PC.svgEl('line', { class: 'nono-hint-x', x1: x0 + m, y1: y0 + m, x2: x0 + cs - m, y2: y0 + cs - m }));
+                    layer.appendChild(PC.svgEl('line', { class: 'nono-hint-x', x1: x0 + cs - m, y1: y0 + m, x2: x0 + m, y2: y0 + cs - m }));
+                }
+                layer.appendChild(PC.svgEl('rect', {
+                    class: 'nono-hint-ring', x: x0 + cs * 0.1, y: y0 + cs * 0.1,
+                    width: cs * 0.8, height: cs * 0.8, rx: cs * 0.12, ry: cs * 0.12,
+                }));
+            }
+            return;
         }
-        const cls = h.kind === 'wrong' ? 'nono-hint-ring wrong' : 'nono-hint-ring';
+
+        // wrong: red rings around every mismatched cell.
         for (const [r, c] of h.cells) {
             layer.appendChild(PC.svgEl('rect', {
-                class: cls, x: ox + c * cs + cs * 0.1, y: oy + r * cs + cs * 0.1,
+                class: 'nono-hint-ring wrong', x: ox + c * cs + cs * 0.1, y: oy + r * cs + cs * 0.1,
                 width: cs * 0.8, height: cs * 0.8, rx: cs * 0.12, ry: cs * 0.12,
             }));
         }

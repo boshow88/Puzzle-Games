@@ -1,6 +1,6 @@
 # Game Rules
 
-A central reference for the five puzzles in this collection. Each game
+A central reference for the six puzzles in this collection. Each game
 page already shows a short *How to play* footer; this document is the
 long form — the complete rule set and the controls that map to them.
 
@@ -9,7 +9,7 @@ algorithms, file layout) live elsewhere.
 
 ## Shared conventions
 
-All five games share the same chrome and the same control vocabulary,
+All six games share the same chrome and the same control vocabulary,
 so the rule sections below only mention game-specific deviations.
 
 - **Difficulty** (Easy / Medium / Hard): controls how heavily the
@@ -308,3 +308,58 @@ exactly one per clue — where each rectangle matches its clue's shape
 
 Every clue owns one valid rectangle and the rectangles tile the grid
 with no gaps or overlaps.
+
+---
+
+## Nonogram
+
+**Goal.** Fill cells on an N×N grid so that every row and column matches
+its number clues, revealing a hidden picture.
+
+### Board
+
+- N×N grid, with N from **5×5** to **12×12**.
+- Each **row** and **column** carries a clue: the ordered run-lengths of
+  its filled cells. `3 1` means a run of 3 filled cells, then a gap of at
+  least one empty cell, then a run of 1. A clue of `0` (shown faint) means
+  the line has no filled cells.
+- Every generated board is **line-solvable**, so it has a unique solution
+  reachable by pure single-line logic — no guessing required.
+
+### Rules
+
+1. In each **row**, the filled cells form runs whose lengths match the
+   row's clue, **in order**, each pair of runs separated by at least one
+   empty cell.
+2. The same holds for every **column**.
+3. Exactly **one** arrangement satisfies all the clues.
+
+### Controls
+
+- **Brush selector** (three equal-width buttons below the board): choose
+  **Fill**, **Mark** (`✗`), or **Clear**. Keyboard: `1`/`F`, `2`/`X`,
+  `3`/`C`.
+- **Tap or drag** cells to paint them with the active brush. Fill marks a
+  solution cell; `✗` is a personal "this cell is empty" marker — it has no
+  effect on the win check, it just helps you reason. Clear empties a cell.
+- **Hint (💡)**: if anything you've placed contradicts the solution, it
+  rings those cells in red. Otherwise it spotlights the next row/column
+  that single-line logic can advance, and shows per highlighted cell
+  whether to **fill** (solid square) or **mark `✗`** (cross), with a
+  banner summarising the counts. Press again to dismiss.
+- **Reveal (?)**: overlays the solved picture.
+- **Undo (↶ / Ctrl+Z)**: steps back one brush action at a time (up to 20);
+  Reset is undoable too, until you win.
+
+### Difficulty
+
+All difficulties use the same single-line logic; they differ in **how deep
+the deductions chain**. The generator scores each candidate by how late
+each cell can first be forced (first-pass "overlap" cells are free, later
+cells cost more) and bands Easy / Medium / Hard as the low / median / high
+scorers of a line-solvable pool.
+
+### Win
+
+Every filled cell matches the solution — i.e. all row and column clues are
+satisfied. `✗` marks are ignored by the win check.

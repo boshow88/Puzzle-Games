@@ -34,6 +34,7 @@ loaded manually by opening the file. Safe to ship, but they are dev surface:
 | `tools/patches-hintfix.html` | Self-test: hint soundness + full solve walkthrough, plus the no-leak and forced-cell-merge regressions. |
 | `tools/zip-gentest.html` | Self-test: drives the real `generate()` across sizes/tiers — checks each solution is valid + unique (cross-validated against an independent cell-based counter on small N) and that base checkpoint density is monotonic; reports checkpoint/wall counts + timing. |
 | `tools/zip-ratio-probe.html` | Sweeps checkpoint counts per size to show how the uniqueness-minimum walls, wall:checkpoint ratio, and a difficulty proxy vary — used to tune `cpRangeFor` / `wallMultFor`. |
+| `tools/nonogram-gentest.html` | Self-test: drives the real `generate()` across sizes/difficulties — checks each board is line-solvable and **unique** (cross-validated against an independent DFS solution counter), that the clues match the solution, and that the difficulty score climbs (easy ≤ medium ≤ hard); reports score + timing. |
 
 ## Ungated console logging
 
