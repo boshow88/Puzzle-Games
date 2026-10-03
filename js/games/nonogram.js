@@ -1,18 +1,24 @@
 /**
  * Nonogram (Picross) — game UI.
  *
- * Consumes window.PuzzleGenerators.nonogram and the shared shell. Cells cycle
- * empty → filled → ✗(blocked) → empty on tap, and a drag paints the first
- * cell's new state. Win when the filled cells match the unique solution.
+ * Consumes window.PuzzleGenerators.nonogram and the shared shell. A brush
+ * selector (Fill / Mark / Clear) picks the active cell state; tapping or
+ * dragging then paints cells to that state. Win when the filled cells match
+ * the unique solution.
  */
 (function () {
     'use strict';
 
     const PC = window.PuzzleCommon;
     const Solver = window.PuzzleSolvers.nonogram;
-    const BOARD = 486;
+    // Board drawing area is 480; the SVG viewBox is "-3 -3 486 486" (matching
+    // every other game) so the stroke-3 outer frame gets 3px of bleed instead
+    // of being clipped in half at the edges.
+    const BOARD = 480;
 
     const EMPTY = 0, FILL = 1, BLOCK = 2;
+    // Brush modes: tapping/dragging sets a cell to the active brush's state.
+    const MODE_STATE = { fill: FILL, block: BLOCK, empty: EMPTY };
 
     // -----------------------------------------------------------------
     // Shareable URL (size/diff/seed), mirroring the other games.
@@ -43,12 +49,13 @@
     const state = {
         puzzle: null,
         grid: null,             // Int8Array N*N: 0 empty, 1 filled, 2 blocked
-        dragging: null,         // { pointerId, mode, last:[r,c] }
+        mode: 'fill',           // active brush: 'fill' | 'block' | 'empty'
+        dragging: null,         // { pointerId, target, last:[r,c] }
         won: false,
         hint: null,
         hintBanner: null,
         // layout (recomputed per puzzle)
-        cs: 0, ox: 0, oy: 0, gutter: 0,
+        cs: 0, ox: 0, oy: 0, gutter: 0, clueSlot: 0,
     };
     let shell = null;
     let board = null;
@@ -64,14 +71,19 @@
     // Layout — equal top/left gutters sized to the longest clue so the
     // square grid fills the rest of the 486×486 box.
     // -----------------------------------------------------------------
+    const CLUE_SLOT_FRAC = 0.66; // clue numbers sit in slots narrower than a cell
+
     function computeLayout() {
-        const p = state.puzzle, N = p.size;
-        let maxR = 1, maxC = 1;
-        for (const cl of p.rowClues) maxR = Math.max(maxR, cl.length || 1);
-        for (const cl of p.colClues) maxC = Math.max(maxC, cl.length || 1);
-        const gutter = Math.max(maxR, maxC, 1);
-        const cs = BOARD / (N + gutter);
-        state.cs = cs; state.gutter = gutter; state.ox = gutter * cs; state.oy = gutter * cs;
+        const N = state.puzzle.size;
+        // Reserve the gutter for the THEORETICAL max clue count for this N
+        // (⌈N/2⌉ — the most runs a line can hold), not the current puzzle's
+        // longest clue, so cells are the same size for every board of a size.
+        // Numbers are packed into narrow slots so the gutter stays compact.
+        const gutter = Math.ceil(N / 2);
+        const cs = BOARD / (N + gutter * CLUE_SLOT_FRAC);
+        const slot = cs * CLUE_SLOT_FRAC;
+        state.cs = cs; state.gutter = gutter; state.clueSlot = slot;
+        state.ox = gutter * slot; state.oy = gutter * slot;
     }
 
     function idx(r, c) { return r * state.puzzle.size + c; }
@@ -85,36 +97,30 @@
         const svg = board;
         while (svg.firstChild) svg.removeChild(svg.firstChild);
 
-        // Grid cell backgrounds.
-        const bg = PC.svgEl('g', { class: 'cells' });
-        for (let r = 0; r < N; r++) {
-            for (let c = 0; c < N; c++) {
-                bg.appendChild(PC.svgEl('rect', {
-                    class: 'nono-cell-bg', x: ox + c * cs, y: oy + r * cs, width: cs, height: cs,
-                }));
-            }
-        }
-        svg.appendChild(bg);
+        // White background behind the main grid only (clue gutter stays clear).
+        svg.appendChild(PC.svgEl('rect', { class: 'nono-cell-bg', x: ox, y: oy, width: N * cs, height: N * cs }));
 
-        // Grid lines (every 5th heavier, nonogram convention).
+        // Grid lines over the main grid only — thin inside, a thick frame on the
+        // four outer edges (no every-5th heavy lines).
         const lines = PC.svgEl('g', { class: 'nono-grid' });
         for (let i = 0; i <= N; i++) {
-            const heavy = (i % 5 === 0) || i === N;
+            const heavy = (i === 0 || i === N);
             const cls = 'nono-grid-line' + (heavy ? ' heavy' : '');
             lines.appendChild(PC.svgEl('line', { class: cls, x1: ox + i * cs, y1: oy, x2: ox + i * cs, y2: oy + N * cs }));
             lines.appendChild(PC.svgEl('line', { class: cls, x1: ox, y1: oy + i * cs, x2: ox + N * cs, y2: oy + i * cs }));
         }
         svg.appendChild(lines);
 
-        // Clue numbers.
+        // Clue numbers — small markers, packed in narrow slots within the gutter.
         const clueG = PC.svgEl('g', { class: 'nono-clues' });
-        const font = Math.max(10, Math.floor(cs * 0.5));
+        const slot = state.clueSlot;
+        const font = Math.max(9, Math.round(cs * 0.38));
         for (let r = 0; r < N; r++) {
             const cl = p.rowClues[r].length ? p.rowClues[r] : [0];
             for (let i = 0; i < cl.length; i++) {
                 const t = PC.svgEl('text', {
                     class: 'nono-clue' + (p.rowClues[r].length ? '' : ' zero'),
-                    x: ox - (cl.length - i - 0.5) * cs, y: oy + r * cs + cs / 2,
+                    x: ox - (cl.length - i - 0.5) * slot, y: oy + r * cs + cs / 2,
                     'text-anchor': 'middle', 'dominant-baseline': 'middle', dy: '0.08em', 'font-size': font,
                 });
                 t.textContent = String(cl[i]);
@@ -126,7 +132,7 @@
             for (let i = 0; i < cl.length; i++) {
                 const t = PC.svgEl('text', {
                     class: 'nono-clue' + (p.colClues[c].length ? '' : ' zero'),
-                    x: ox + c * cs + cs / 2, y: oy - (cl.length - i - 0.5) * cs,
+                    x: ox + c * cs + cs / 2, y: oy - (cl.length - i - 0.5) * slot,
                     'text-anchor': 'middle', 'dominant-baseline': 'middle', dy: '0.08em', 'font-size': font,
                 });
                 t.textContent = String(cl[i]);
@@ -194,15 +200,17 @@
         const p = state.puzzle; if (!p) return null;
         const rect = board.getBoundingClientRect();
         if (!rect.width || !rect.height) return null;
-        const x = (ev.clientX - rect.left) / rect.width * BOARD - state.ox;
-        const y = (ev.clientY - rect.top) / rect.height * BOARD - state.oy;
+        // The viewBox is "-3 -3 486 486", so the drawing area (0..480) maps to
+        // the inner 480/486 of the rendered SVG, offset by 3/486 on each side.
+        const vbx = (ev.clientX - rect.left) / rect.width * 486 - 3;
+        const vby = (ev.clientY - rect.top) / rect.height * 486 - 3;
+        const x = vbx - state.ox;
+        const y = vby - state.oy;
         if (x < 0 || y < 0) return null;
         const c = Math.floor(x / state.cs), r = Math.floor(y / state.cs);
         if (r < 0 || r >= p.size || c < 0 || c >= p.size) return null;
         return [r, c];
     }
-
-    function cycle(v) { return v === EMPTY ? FILL : v === FILL ? BLOCK : EMPTY; }
 
     function onPointerDown(ev) {
         if (!state.puzzle || state.won) return;
@@ -212,11 +220,13 @@
         try { board.setPointerCapture(ev.pointerId); } catch (_) { /* ignore */ }
         clearHint();
         pushUndo();
+        const target = MODE_STATE[state.mode];
         const [r, c] = cell;
-        const next = cycle(state.grid[idx(r, c)]);
-        state.grid[idx(r, c)] = next;
-        state.dragging = { pointerId: ev.pointerId, mode: next, last: [r, c] };
-        afterChange();
+        state.dragging = { pointerId: ev.pointerId, target, last: [r, c] };
+        if (state.grid[idx(r, c)] !== target) {
+            state.grid[idx(r, c)] = target;
+            afterChange();
+        }
     }
 
     function onPointerMove(ev) {
@@ -226,10 +236,21 @@
         const [r, c] = cell;
         if (d.last[0] === r && d.last[1] === c) return;
         d.last = [r, c];
-        if (state.grid[idx(r, c)] !== d.mode) {
-            state.grid[idx(r, c)] = d.mode;
+        if (state.grid[idx(r, c)] !== d.target) {
+            state.grid[idx(r, c)] = d.target;
             afterChange();
         }
+    }
+
+    function setMode(mode) {
+        if (!Object.prototype.hasOwnProperty.call(MODE_STATE, mode)) return;
+        state.mode = mode;
+        const btns = document.querySelectorAll('#nono-tools .nono-tool');
+        btns.forEach((b) => {
+            const on = b.dataset.mode === mode;
+            b.classList.toggle('active', on);
+            b.setAttribute('aria-checked', on ? 'true' : 'false');
+        });
     }
 
     function onPointerEnd(ev) {
@@ -446,6 +467,20 @@
         const hintBtn = document.getElementById('hint-btn');
         if (hintBtn) hintBtn.addEventListener('click', showHint);
 
+        // Cell-state brush selector (Fill / Mark / Clear).
+        const tools = document.getElementById('nono-tools');
+        if (tools) {
+            tools.addEventListener('click', (ev) => {
+                const btn = ev.target.closest('.nono-tool');
+                if (btn && btn.dataset.mode) setMode(btn.dataset.mode);
+            });
+        }
+        setMode('fill');
+
+        // Drag-paint game: opt out of the browser's own touch gestures so
+        // finger-drags keep firing pointermove instead of scrolling the page.
+        // (iOS double-tap-to-zoom is separately handled by the shared shell.)
+        board.classList.add('drag-board');
         board.addEventListener('pointerdown', onPointerDown);
         board.addEventListener('pointermove', onPointerMove);
         board.addEventListener('pointerup', onPointerEnd);
@@ -458,7 +493,14 @@
         window.addEventListener('keydown', (ev) => {
             if ((ev.ctrlKey || ev.metaKey) && !ev.shiftKey && !ev.altKey && (ev.key === 'z' || ev.key === 'Z')) {
                 doUndo(); ev.preventDefault();
+                return;
             }
+            if (ev.ctrlKey || ev.metaKey || ev.altKey) return;
+            const k = ev.key.toLowerCase();
+            const mode = (k === '1' || k === 'f') ? 'fill'
+                : (k === '2' || k === 'x') ? 'block'
+                    : (k === '3' || k === 'c') ? 'empty' : null;
+            if (mode) { setMode(mode); ev.preventDefault(); }
         });
 
         shell.start();

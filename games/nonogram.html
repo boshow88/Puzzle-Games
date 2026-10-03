@@ -19,7 +19,7 @@
                 <span data-i18n="menu">Menu</span>
             </a>
             <div class="game-title">
-                <span class="game-icon" data-icon="grid-2x2" aria-hidden="true"></span>
+                <span class="game-icon" data-icon="image" aria-hidden="true"></span>
                 <span data-i18n="nonogramName">Nonogram</span>
             </div>
             <div class="lang-toggle" id="lang-toggle" role="radiogroup" data-i18n-aria-label="language">
@@ -92,7 +92,7 @@
         <div class="board-wrap">
             <svg class="board-svg"
                  id="board"
-                 viewBox="0 0 486 486"
+                 viewBox="-3 -3 486 486"
                  xmlns="http://www.w3.org/2000/svg"
                  role="application"
                  data-i18n-aria-label="nonogramBoardAria"
@@ -100,14 +100,29 @@
             </svg>
         </div>
 
+        <div class="nono-tools" id="nono-tools" role="radiogroup" data-i18n-aria-label="nonogramToolsAria" aria-label="Cell brush">
+            <button type="button" class="nono-tool active" data-mode="fill" role="radio" aria-checked="true">
+                <span class="nono-tool-ico fill" data-icon="square" aria-hidden="true"></span>
+                <span data-i18n="nonogramToolFill">Fill</span>
+            </button>
+            <button type="button" class="nono-tool" data-mode="block" role="radio" aria-checked="false">
+                <span class="nono-tool-ico mark" data-icon="x" aria-hidden="true"></span>
+                <span data-i18n="nonogramToolMark">Mark</span>
+            </button>
+            <button type="button" class="nono-tool" data-mode="empty" role="radio" aria-checked="false">
+                <span class="nono-tool-ico empty" data-icon="square" aria-hidden="true"></span>
+                <span data-i18n="nonogramToolClear">Clear</span>
+            </button>
+        </div>
+
         <div class="hint-banner" id="hint-banner" hidden aria-live="polite"></div>
 
         <section class="game-footer">
             <h4 data-i18n="howToPlay">How to play</h4>
             <ul>
-                <li data-i18n="nonogramHelp1Html">The numbers on each row/column are the <strong>run lengths</strong> of filled cells, in order.</li>
-                <li data-i18n="nonogramHelp2">Tap a cell to cycle fill → ✗ (blocked) → empty; drag to paint. ✗ just marks a cell you’ve ruled out.</li>
-                <li data-i18n="nonogramHelp3">Solved when the filled cells match every row and column clue (there is exactly one solution).</li>
+                <li data-i18n="nonogramHelp1Html">Each clue number is a run of <strong>that many consecutive <span class="inline-icon nono-ico-fill" data-icon="square"></span> cells</strong>, in the listed order (left→right for rows, top→bottom for columns), with at least one gap between runs.</li>
+                <li data-i18n="nonogramHelp2Html">Pick a brush — <span class="inline-icon nono-ico-fill" data-icon="square"></span> fill, <span class="inline-icon nono-ico-mark" data-icon="x"></span> mark, or <span class="inline-icon nono-ico-empty" data-icon="square"></span> clear — then tap or drag cells to paint that state. <span class="inline-icon nono-ico-mark" data-icon="x"></span> just flags a cell you’ve ruled out.</li>
+                <li data-i18n="nonogramHelp3Html">Solved when the <span class="inline-icon nono-ico-fill" data-icon="square"></span> cells match every row and column clue.</li>
             </ul>
         </section>
     </div>

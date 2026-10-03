@@ -271,6 +271,14 @@
             '<rect width="18" height="18" x="3" y="3" rx="2"/>'
             + '<path d="M3 9h18"/><path d="M3 15h18"/>'
             + '<path d="M9 3v18"/><path d="M15 3v18"/>',
+        image:
+            '<rect width="18" height="18" x="3" y="3" rx="2" ry="2"/>'
+            + '<circle cx="9" cy="9" r="2"/>'
+            + '<path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21"/>',
+        square:
+            '<rect width="18" height="18" x="3" y="3" rx="2"/>',
+        x:
+            '<path d="M18 6 6 18"/><path d="m6 6 12 12"/>',
         route:
             '<circle cx="6" cy="19" r="3"/>'
             + '<path d="M9 19h8.5a3.5 3.5 0 0 0 0-7h-11a3.5 3.5 0 0 1 0-7H15"/>'
@@ -900,12 +908,16 @@
             nonogramCardBody:
                 'Use the row and column number clues to fill the grid and reveal the picture.',
             nonogramBoardAria: 'Nonogram puzzle board',
+            nonogramToolsAria: 'Cell brush',
+            nonogramToolFill: 'Fill',
+            nonogramToolMark: 'Mark',
+            nonogramToolClear: 'Clear',
             nonogramHelp1Html:
-                'The numbers on each row/column are the <strong>run lengths</strong> of filled cells, in order.',
-            nonogramHelp2:
-                'Tap a cell to cycle fill → ✗ (blocked) → empty; drag to paint. ✗ just marks a cell you’ve ruled out.',
-            nonogramHelp3:
-                'Solved when the filled cells match every clue — there is exactly one solution.',
+                'Each clue number is a run of <strong>that many consecutive <span class="inline-icon nono-ico-fill" data-icon="square"></span> cells</strong>, in the listed order (left→right for rows, top→bottom for columns), with at least one gap between runs.',
+            nonogramHelp2Html:
+                'Pick a brush — <span class="inline-icon nono-ico-fill" data-icon="square"></span> fill, <span class="inline-icon nono-ico-mark" data-icon="x"></span> mark, or <span class="inline-icon nono-ico-empty" data-icon="square"></span> clear — then tap or drag cells to paint that state. <span class="inline-icon nono-ico-mark" data-icon="x"></span> just flags a cell you’ve ruled out.',
+            nonogramHelp3Html:
+                'Solved when the <span class="inline-icon nono-ico-fill" data-icon="square"></span> cells match every row and column clue.',
             clearBoard: 'Clear the board',
             zipHelp1Html:
                 'Drag from the cell marked <strong>1</strong> to draw a path through every white cell.',
@@ -1106,12 +1118,16 @@
             nonogramCardBody:
                 '依每列與每行的數字線索把格子填滿，還原出圖案。',
             nonogramBoardAria: 'Nonogram 盤面',
+            nonogramToolsAria: '畫筆',
+            nonogramToolFill: '填滿',
+            nonogramToolMark: '標記',
+            nonogramToolClear: '清除',
             nonogramHelp1Html:
-                '每列／行的數字是該線上「連續填格」的<strong>長度</strong>，依序排列。',
-            nonogramHelp2:
-                '點格子循環：填滿 → ✗（排除）→ 空；可拖曳塗抹。✗ 只是標記你排除掉的格。',
-            nonogramHelp3:
-                '當填滿的格子符合所有線索即過關（此題恰有唯一解）。',
+                '每個線索數字代表一段<strong>連續的 <span class="inline-icon nono-ico-fill" data-icon="square"></span> 格</strong>，依數字順序排列（列由左到右、行由上到下），且段與段之間至少空一格。',
+            nonogramHelp2Html:
+                '先選擇畫筆 — <span class="inline-icon nono-ico-fill" data-icon="square"></span> 填滿、<span class="inline-icon nono-ico-mark" data-icon="x"></span> 標記、<span class="inline-icon nono-ico-empty" data-icon="square"></span> 清除 — 再點擊或拖曳格子即可塗上該狀態。<span class="inline-icon nono-ico-mark" data-icon="x"></span> 只是標記你排除掉的格。',
+            nonogramHelp3Html:
+                '當 <span class="inline-icon nono-ico-fill" data-icon="square"></span> 格子符合所有列與行的線索即過關。',
             clearBoard: '清空盤面',
             zipHelp1Html:
                 '從標示 <strong>1</strong> 的格子開始拖曳，畫一條經過每個白色格子的路徑。',

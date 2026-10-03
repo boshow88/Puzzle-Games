@@ -1140,9 +1140,62 @@
 /* ----------------------------------------------------------------
    Nonogram
    ---------------------------------------------------------------- */
+/* Cell-state brush: three equal-width buttons below the board (like
+   Sudoku's keypad). The active brush fills with the game colour, the
+   same "sticky mode" treatment as Sudoku's Notes toggle. */
+.nono-tools {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: var(--space-sm);
+    width: 100%;
+    max-width: 480px;
+    margin: var(--space-md) auto 0;
+}
+.nono-tool {
+    appearance: none;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5em;
+    padding: 12px 0;
+    border: 1px solid var(--border-strong);
+    background: var(--bg-secondary);
+    color: var(--text-secondary);
+    font-family: var(--font-body);
+    font-size: 1.0rem;
+    font-weight: 600;
+    border-radius: var(--radius-md);
+    cursor: pointer;
+    transition: background var(--transition-fast),
+        border-color var(--transition-fast),
+        color var(--transition-fast),
+        transform var(--transition-fast);
+}
+.nono-tool:hover { background: var(--bg-hover); border-color: var(--text-muted); }
+.nono-tool:active { transform: translateY(1px); }
+.nono-tool.active {
+    background: var(--game-color, var(--accent-primary));
+    border-color: var(--game-color, var(--accent-primary));
+    color: var(--text-on-accent);
+}
+/* The "fill" brush shows a solid square; the icon() wrapper hard-codes
+   fill:none, so override it here (CSS beats the presentation attribute). */
+.nono-tool-ico.fill .icon { fill: currentColor; }
+
+/* Inline help-text state icons (mirroring the board: solid square = fill,
+   × = ruled-out mark, outline square = empty). */
+.inline-icon.nono-ico-fill { color: #64748b; }
+.inline-icon.nono-ico-fill .icon { fill: currentColor; }
+.inline-icon.nono-ico-mark { color: #94a3b8; }
+.inline-icon.nono-ico-empty { color: #94a3b8; }
+
 .nono-cell-bg { fill: #ffffff; }
-.nono-grid-line { stroke: #d5d8dc; stroke-width: 1; }
-.nono-grid-line.heavy { stroke: #94a3b8; stroke-width: 2; }
+/* Thin inner grid lines + a thick outer frame / clue-gutter separator, reusing
+   the shared .grid-line (1) and .region-border (3) weights. */
+.nono-grid-line { stroke: rgba(0, 0, 0, 0.18); stroke-width: 1; }
+/* square caps extend each end by half the stroke so the thick frame corners
+   meet cleanly instead of leaving a notch (matches .region-border). */
+.nono-grid-line.heavy { stroke: #1f2937; stroke-width: 3; stroke-linecap: square; }
 .nono-clue {
     fill: #334155;
     font-family: var(--font-body);
@@ -1150,7 +1203,8 @@
     user-select: none;
 }
 .nono-clue.zero { fill: #cbd5e1; }
-.nono-fill { fill: var(--game-color, #7c3aed); }
+/* Filled cell — a light, soft slate (the theme violet at full chroma was harsh). */
+.nono-fill { fill: #64748b; }
 .nono-x {
     stroke: #94a3b8;
     stroke-width: 3;
@@ -1162,7 +1216,7 @@
 .nono-hint-line { fill: rgba(124, 58, 237, 0.12); pointer-events: none; }
 .nono-hint-ring {
     fill: none;
-    stroke: #2e9e44;
+    stroke: var(--game-color, #7c3aed);
     stroke-width: 3;
     pointer-events: none;
     animation: zip-hint-pulse 1.15s ease-in-out infinite;
