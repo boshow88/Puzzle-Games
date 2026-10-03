@@ -141,16 +141,17 @@
         }
         svg.appendChild(clueG);
 
+        // Reveal overlay (solution fills) — drawn BELOW the player's symbols so
+        // a correctly-filled cell's opaque fill covers it (no dark two-layer
+        // stack), and on its own layer so hint and reveal never wipe each other.
+        const reveal = PC.svgEl('g', { class: 'nono-reveal-layer' });
+        reveal.setAttribute('id', 'nono-reveal');
+        svg.appendChild(reveal);
+
         // Symbols (filled / ✗) — rebuilt by repaintCells.
         const sym = PC.svgEl('g', { class: 'nono-symbols' });
         sym.setAttribute('id', 'nono-symbols');
         svg.appendChild(sym);
-
-        // Reveal overlay (solution fills) — its own layer so hint and reveal
-        // never wipe each other.
-        const reveal = PC.svgEl('g', { class: 'nono-reveal-layer' });
-        reveal.setAttribute('id', 'nono-reveal');
-        svg.appendChild(reveal);
 
         // Hint overlay.
         const hint = PC.svgEl('g', { class: 'nono-hint' });
