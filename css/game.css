@@ -1241,7 +1241,9 @@
 /* Ghost preview of the suggested action inside a ringed hint cell: a solid
    square = fill here, a cross = mark ✗ here. Tinted the theme colour and
    semi-transparent so it reads as a suggestion, not a committed mark. */
-.nono-hint-fill { fill: var(--game-color, #7c3aed); opacity: 0.42; pointer-events: none; }
+/* The hint's "fill" ghost and the reveal overlay use identical colour, opacity
+   and geometry so the two read as the same mark. */
+.nono-hint-fill { fill: var(--game-color, #7c3aed); opacity: 0.4; pointer-events: none; }
 .nono-hint-x {
     stroke: var(--game-color, #7c3aed);
     stroke-width: 3;
@@ -1249,7 +1251,7 @@
     opacity: 0.7;
     pointer-events: none;
 }
-.nono-reveal { fill: rgba(124, 58, 237, 0.30); pointer-events: none; }
+.nono-reveal { fill: var(--game-color, #7c3aed); opacity: 0.4; pointer-events: none; }
 
 /* ----------------------------------------------------------------
    Help / footer hints

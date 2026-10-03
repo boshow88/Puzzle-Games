@@ -425,7 +425,7 @@
                     if (!shell.revealed) {
                         layer.appendChild(PC.svgEl('rect', {
                             class: 'nono-hint-fill',
-                            x: x0 + cs * 0.2, y: y0 + cs * 0.2, width: cs * 0.6, height: cs * 0.6,
+                            x: x0 + cs * 0.21, y: y0 + cs * 0.21, width: cs * 0.58, height: cs * 0.58,
                             rx: cs * 0.1, ry: cs * 0.1,
                         }));
                     }
@@ -493,8 +493,8 @@
             for (let r = 0; r < N; r++) for (let c = 0; c < N; c++) {
                 if (p.solution[r][c] === 1) {
                     layer.appendChild(PC.svgEl('rect', {
-                        class: 'nono-reveal', x: ox + c * cs + cs * 0.18, y: oy + r * cs + cs * 0.18,
-                        width: cs * 0.64, height: cs * 0.64, rx: cs * 0.1, ry: cs * 0.1,
+                        class: 'nono-reveal', x: ox + c * cs + cs * 0.21, y: oy + r * cs + cs * 0.21,
+                        width: cs * 0.58, height: cs * 0.58, rx: cs * 0.1, ry: cs * 0.1,
                     }));
                 }
             }
