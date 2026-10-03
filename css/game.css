@@ -1205,6 +1205,19 @@
 .nono-clue.zero { fill: #cbd5e1; }
 /* Filled cell — a light, soft slate (the theme violet at full chroma was harsh). */
 .nono-fill { fill: #64748b; }
+/* Win: the picture's filled cells warm to gold and pop in a diagonal ripple
+   (per-cell animation-delay set inline). The player's ✗ marks stay put. */
+@keyframes nono-win-pop {
+    0%   { transform: scale(1);    fill: #64748b; }
+    45%  { transform: scale(1.22); fill: #e9b949; }
+    100% { transform: scale(1);    fill: #d4a017; }
+}
+.nono-fill.won {
+    fill: #d4a017;
+    transform-box: fill-box;
+    transform-origin: center;
+    animation: nono-win-pop 0.45s ease both;
+}
 .nono-x {
     stroke: #94a3b8;
     stroke-width: 3;

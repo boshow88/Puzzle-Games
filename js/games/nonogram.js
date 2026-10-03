@@ -146,6 +146,12 @@
         sym.setAttribute('id', 'nono-symbols');
         svg.appendChild(sym);
 
+        // Reveal overlay (solution fills) — its own layer so hint and reveal
+        // never wipe each other.
+        const reveal = PC.svgEl('g', { class: 'nono-reveal-layer' });
+        reveal.setAttribute('id', 'nono-reveal');
+        svg.appendChild(reveal);
+
         // Hint overlay.
         const hint = PC.svgEl('g', { class: 'nono-hint' });
         hint.setAttribute('id', 'nono-hint');
@@ -177,13 +183,17 @@
             for (let c = 0; c < N; c++) {
                 const v = state.grid[idx(r, c)];
                 if (v === FILL) {
-                    layer.appendChild(PC.svgEl('rect', {
+                    const attrs = {
                         class: 'nono-fill' + (won ? ' won' : ''),
                         x: ox + c * cs + inset, y: oy + r * cs + inset,
                         width: cs - inset * 2, height: cs - inset * 2,
                         rx: Math.max(1, cs * 0.08), ry: Math.max(1, cs * 0.08),
-                    }));
-                } else if (v === BLOCK && !won) {
+                    };
+                    // On win, stagger the pop diagonally for a ripple effect.
+                    if (won) attrs.style = 'animation-delay:' + ((r + c) * 45) + 'ms';
+                    layer.appendChild(PC.svgEl('rect', attrs));
+                } else if (v === BLOCK) {
+                    // The player's ✗ marks stay on the board, even after winning.
                     const m = cs * 0.28;
                     const x0 = ox + c * cs, y0 = oy + r * cs;
                     layer.appendChild(PC.svgEl('line', { class: 'nono-x', x1: x0 + m, y1: y0 + m, x2: x0 + cs - m, y2: y0 + cs - m }));
@@ -270,6 +280,8 @@
                 state.dragging = null;
             }
             clearHint();
+            const rl = board.querySelector('#nono-reveal');
+            if (rl) while (rl.firstChild) rl.removeChild(rl.firstChild);
             repaintCells();
         }
         updateStatusRow();
@@ -404,15 +416,19 @@
             } else {
                 layer.appendChild(PC.svgEl('rect', { class: 'nono-hint-line', x: ox + h.index * cs, y: oy, width: cs, height: N * cs }));
             }
-            // Per cell: a ghost of the suggested action (fill square / ✗) plus a ring.
+            // Per cell: a ghost of the suggested action (fill square / ✗) plus a
+            // ring. When the solution is revealed we skip the fill ghost (the
+            // reveal already shows the fills) but still draw ✗ (reveal has none).
             for (const cell of h.cells) {
                 const x0 = ox + cell.c * cs, y0 = oy + cell.r * cs;
                 if (cell.state === FILL) {
-                    layer.appendChild(PC.svgEl('rect', {
-                        class: 'nono-hint-fill',
-                        x: x0 + cs * 0.2, y: y0 + cs * 0.2, width: cs * 0.6, height: cs * 0.6,
-                        rx: cs * 0.1, ry: cs * 0.1,
-                    }));
+                    if (!shell.revealed) {
+                        layer.appendChild(PC.svgEl('rect', {
+                            class: 'nono-hint-fill',
+                            x: x0 + cs * 0.2, y: y0 + cs * 0.2, width: cs * 0.6, height: cs * 0.6,
+                            rx: cs * 0.1, ry: cs * 0.1,
+                        }));
+                    }
                 } else {
                     const m = cs * 0.3;
                     layer.appendChild(PC.svgEl('line', { class: 'nono-hint-x', x1: x0 + m, y1: y0 + m, x2: x0 + cs - m, y2: y0 + cs - m }));
@@ -467,21 +483,25 @@
     }
 
     function onReveal() {
-        clearHint();
-        // Reveal overlay: show the solution's filled cells faintly.
-        const layer = board && board.querySelector('#nono-hint');
+        // Reveal overlay lives in its own layer, so it stays on screen even
+        // when a hint is shown on top of it (the two no longer fight).
+        const layer = board && board.querySelector('#nono-reveal');
         if (!layer) return;
         while (layer.firstChild) layer.removeChild(layer.firstChild);
-        if (!shell.revealed || state.won) return;
-        const p = state.puzzle, N = p.size, { cs, ox, oy } = state;
-        for (let r = 0; r < N; r++) for (let c = 0; c < N; c++) {
-            if (p.solution[r][c] === 1) {
-                layer.appendChild(PC.svgEl('rect', {
-                    class: 'nono-reveal', x: ox + c * cs + cs * 0.18, y: oy + r * cs + cs * 0.18,
-                    width: cs * 0.64, height: cs * 0.64, rx: cs * 0.1, ry: cs * 0.1,
-                }));
+        if (shell.revealed && !state.won) {
+            const p = state.puzzle, N = p.size, { cs, ox, oy } = state;
+            for (let r = 0; r < N; r++) for (let c = 0; c < N; c++) {
+                if (p.solution[r][c] === 1) {
+                    layer.appendChild(PC.svgEl('rect', {
+                        class: 'nono-reveal', x: ox + c * cs + cs * 0.18, y: oy + r * cs + cs * 0.18,
+                        width: cs * 0.64, height: cs * 0.64, rx: cs * 0.1, ry: cs * 0.1,
+                    }));
+                }
             }
         }
+        // Re-render any active hint so its fill ghosts appear/disappear to
+        // match: while the solution is shown there's no need to re-draw fills.
+        repaintHint();
     }
 
     // -----------------------------------------------------------------
