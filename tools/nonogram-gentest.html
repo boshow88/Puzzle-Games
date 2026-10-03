@@ -1,0 +1,110 @@
+<!doctype html>
+<html lang="en"><head>
+  <meta charset="utf-8" />
+  <title>Nonogram — generator self-test</title>
+  <style>
+    body { font: 13px/1.5 ui-monospace, Consolas, monospace; margin: 16px; }
+    .pass { color: #128a12; } .fail { color: #c0272d; font-weight: 700; }
+    table { border-collapse: collapse; margin: 10px 0; }
+    th, td { border: 1px solid #ccc; padding: 2px 8px; text-align: right; }
+    th:first-child, td:first-child { text-align: left; }
+    pre { white-space: pre-wrap; }
+  </style>
+  <script src="../js/common.js"></script>
+  <script src="../js/generators/nonogram.js"></script>
+</head>
+<body>
+  <h1 id="verdict">running…</h1>
+  <div id="tbl"></div>
+  <pre id="out"></pre>
+  <script>
+  (async function () {
+    try {
+    const G = window.PuzzleGenerators.nonogram, I = window.PuzzleGenerators.nonogramInternals;
+    const tick = () => Promise.resolve();
+    const out = []; let fails = 0;
+    const fail = (m) => { out.push('FAIL ' + m); fails++; };
+    const md = (a) => { a = a.slice().sort((x, y) => x - y); return a[a.length >> 1]; };
+    const sameClues = (a, b) => JSON.stringify(a) === JSON.stringify(b);
+
+    // Independent arrangement enumerator + solution counter (shares no logic
+    // with the generator's fixpoint solver).
+    function lineCandidates(runs, L) {
+      const out = [];
+      (function rec(ri, pos, mask) {
+        if (ri === runs.length) { out.push(mask); return; }
+        const len = runs[ri];
+        for (let s = pos; s + len <= L; s++) rec(ri + 1, s + len + 1, mask | ((((1 << len) - 1)) << s));
+      })(0, 0, 0);
+      return out;
+    }
+    function countSolutions(rowClues, colClues, N, cap) {
+      const rowCands = rowClues.map((cl) => lineCandidates(cl, N));
+      const colCands = colClues.map((cl) => lineCandidates(cl, N));
+      const colPartial = new Array(N).fill(0);
+      let count = 0, nodes = 0, aborted = false;
+      (function dfs(r) {
+        if (aborted || count >= cap) return;
+        if (++nodes > 3e6) { aborted = true; return; }
+        if (r === N) { count++; return; }
+        const prefix = (1 << (r + 1)) - 1;
+        outer:
+        for (const rm of rowCands[r]) {
+          for (let c = 0; c < N; c++) {
+            const part = colPartial[c] | (((rm >> c) & 1) << r);
+            let ok = false;
+            const cc = colCands[c];
+            for (let j = 0; j < cc.length; j++) { if ((cc[j] & prefix) === part) { ok = true; break; } }
+            if (!ok) continue outer;
+          }
+          for (let c = 0; c < N; c++) colPartial[c] |= (((rm >> c) & 1) << r);
+          dfs(r + 1);
+          for (let c = 0; c < N; c++) colPartial[c] &= ~(1 << r);
+          if (aborted || count >= cap) return;
+        }
+      })(0);
+      return aborted ? -1 : count;
+    }
+
+    const SEEDS = [11, 29, 47];
+    const rows = [];
+    for (const N of [5, 8, 10, 12]) {
+      const medByDiff = {};
+      for (const diff of ['easy', 'medium', 'hard']) {
+        const times = [], scores = [];
+        for (const seed of SEEDS) {
+          const t0 = performance.now();
+          let p; try { p = await G(N, diff, seed); } catch (e) { fail(`gen ${N} ${diff} #${seed}: ${e && e.message}`); continue; }
+          times.push(performance.now() - t0);
+          // clues match the shipped solution
+          const flat = new Uint8Array(N * N);
+          for (let r = 0; r < N; r++) for (let c = 0; c < N; c++) flat[r * N + c] = p.solution[r][c];
+          const dc = I.deriveClues(flat, N);
+          if (!sameClues(dc.rowClues, p.rowClues) || !sameClues(dc.colClues, p.colClues)) fail(`${N} ${diff} #${seed}: clues don't match solution`);
+          // independent uniqueness
+          const cnt = countSolutions(p.rowClues, p.colClues, N, 2);
+          if (cnt !== 1) fail(`${N} ${diff} #${seed}: solutions=${cnt} (want 1)`);
+          scores.push(p.stats.score);
+          await tick();
+        }
+        medByDiff[diff] = scores.length ? md(scores) : -1;
+        rows.push({ key: `${N}x${N} ${diff}`, ms: times.length ? Math.round(times.reduce((a, b) => a + b, 0) / times.length) : -1, score: scores.join(','), medScore: medByDiff[diff] });
+      }
+      const e = medByDiff.easy, m = medByDiff.medium, h = medByDiff.hard;
+      if (e >= 0 && m >= 0 && h >= 0 && !(h >= m && m >= e)) fail(`${N}: difficulty not monotonic (E ${e} / M ${m} / H ${h})`);
+      await tick();
+    }
+
+    let html = '<table><tr><th>config</th><th>avg ms</th><th>median score</th><th>scores</th></tr>';
+    for (const r of rows) html += `<tr><td>${r.key}</td><td>${r.ms}</td><td>${r.medScore}</td><td>${r.score}</td></tr>`;
+    html += '</table>';
+    document.getElementById('tbl').innerHTML = html;
+    document.getElementById('out').textContent = out.join('\n');
+    const v = document.getElementById('verdict');
+    v.textContent = fails === 0 ? 'ALL NONOGRAM CHECKS PASSED (unique + monotonic difficulty)' : (fails + ' CHECK(S) FAILED');
+    v.className = fails === 0 ? 'pass' : 'fail';
+    } catch (err) { document.getElementById('verdict').textContent = 'ERROR: ' + (err && err.message); document.getElementById('verdict').className = 'fail'; }
+  })();
+  </script>
+</body>
+</html>
