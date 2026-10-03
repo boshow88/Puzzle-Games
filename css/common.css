@@ -321,6 +321,9 @@ button {
 .game-card.zip     { --game-color: #3498db; }
 .game-card.patches { --game-color: #e5484d; }
 .game-card.nonogram { --game-color: #7c3aed; }
+/* Cross-link to the sibling Arcade Games site — a neutral slate so it reads
+   as an external link, not another coloured puzzle. */
+.game-card.arcade-link { --game-color: #64748b; }
 
 /* ----------------------------------------------------------------
    Toast (transient bottom-centre notice)

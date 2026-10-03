@@ -279,6 +279,12 @@
             '<rect width="18" height="18" x="3" y="3" rx="2"/>',
         x:
             '<path d="M18 6 6 18"/><path d="m6 6 12 12"/>',
+        'gamepad-2':
+            '<line x1="6" x2="10" y1="11" y2="11"/>'
+            + '<line x1="8" x2="8" y1="9" y2="13"/>'
+            + '<line x1="15" x2="15.01" y1="12" y2="12"/>'
+            + '<line x1="18" x2="18.01" y1="10" y2="10"/>'
+            + '<path d="M17.32 5H6.68a4 4 0 0 0-3.978 3.59c-.006.052-.01.101-.017.152C2.604 9.416 2 14.456 2 16a3 3 0 0 0 3 3c1 0 1.5-.5 2-1l1.414-1.414A2 2 0 0 1 9.828 16h4.344a2 2 0 0 1 1.414.586L17 18c.5.5 1 1 2 1a3 3 0 0 0 3-3c0-1.544-.604-6.584-.685-7.258-.007-.05-.011-.1-.017-.151A4 4 0 0 0 17.32 5z"/>',
         route:
             '<circle cx="6" cy="19" r="3"/>'
             + '<path d="M9 19h8.5a3.5 3.5 0 0 0 0-7h-11a3.5 3.5 0 0 1 0-7H15"/>'
@@ -907,6 +913,12 @@
             nonogramTagline: 'Reveal the hidden picture.',
             nonogramCardBody:
                 'Use the row and column number clues to fill the grid and reveal the picture.',
+            // Cross-link to the sibling Arcade Games site.
+            arcadeGamesName: 'Arcade Games',
+            arcadeGamesTagline: 'Fast, pick-up-and-play games.',
+            arcadeGamesCardBody:
+                'A separate site with quick arcade games.',
+            visitLink: 'Visit \u2197',
             nonogramBoardAria: 'Nonogram puzzle board',
             nonogramToolsAria: 'Cell brush',
             nonogramToolFill: 'Fill',
@@ -1117,6 +1129,12 @@
             nonogramTagline: '還原隱藏的圖案。',
             nonogramCardBody:
                 '依每列與每行的數字線索把格子填滿，還原出圖案。',
+            // Cross-link to the sibling Arcade Games site.
+            arcadeGamesName: 'Arcade Games',
+            arcadeGamesTagline: '快節奏、隨開即玩的遊戲。',
+            arcadeGamesCardBody:
+                '另一個網站，收錄快節奏的街機小遊戲。',
+            visitLink: '前往 \u2197',
             nonogramBoardAria: 'Nonogram 盤面',
             nonogramToolsAria: '畫筆',
             nonogramToolFill: '填滿',
