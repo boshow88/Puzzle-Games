@@ -895,6 +895,18 @@
             zipCardBodyHtml:
                 'Drag from <strong>1</strong> to draw a single path covering every open cell, hitting checkpoints in numerical order.',
             zipBoardAria: 'Zip puzzle board',
+            nonogramName: 'Nonogram',
+            nonogramTagline: 'Reveal the hidden picture.',
+            nonogramCardBody:
+                'Use the row and column number clues to fill the grid and reveal the picture.',
+            nonogramBoardAria: 'Nonogram puzzle board',
+            nonogramHelp1Html:
+                'The numbers on each row/column are the <strong>run lengths</strong> of filled cells, in order.',
+            nonogramHelp2:
+                'Tap a cell to cycle fill → ✗ (blocked) → empty; drag to paint. ✗ just marks a cell you’ve ruled out.',
+            nonogramHelp3:
+                'Solved when the filled cells match every clue — there is exactly one solution.',
+            clearBoard: 'Clear the board',
             zipHelp1Html:
                 'Drag from the cell marked <strong>1</strong> to draw a path through every white cell.',
             zipHelp2Html:
@@ -1089,6 +1101,18 @@
             zipCardBodyHtml:
                 '從 <strong>1</strong> 開始拖曳，畫出一條覆蓋每個白色格子的路徑，並依序通過編號的檢查點。',
             zipBoardAria: 'Zip 盤面',
+            nonogramName: 'Nonogram',
+            nonogramTagline: '還原隱藏的圖案。',
+            nonogramCardBody:
+                '依每列與每行的數字線索把格子填滿，還原出圖案。',
+            nonogramBoardAria: 'Nonogram 盤面',
+            nonogramHelp1Html:
+                '每列／行的數字是該線上「連續填格」的<strong>長度</strong>，依序排列。',
+            nonogramHelp2:
+                '點格子循環：填滿 → ✗（排除）→ 空；可拖曳塗抹。✗ 只是標記你排除掉的格。',
+            nonogramHelp3:
+                '當填滿的格子符合所有線索即過關（此題恰有唯一解）。',
+            clearBoard: '清空盤面',
             zipHelp1Html:
                 '從標示 <strong>1</strong> 的格子開始拖曳，畫一條經過每個白色格子的路徑。',
             zipHelp2Html:

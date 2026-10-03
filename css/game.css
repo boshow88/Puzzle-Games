@@ -1138,6 +1138,42 @@
 }
 
 /* ----------------------------------------------------------------
+   Nonogram
+   ---------------------------------------------------------------- */
+.nono-cell-bg { fill: #ffffff; }
+.nono-grid-line { stroke: #d5d8dc; stroke-width: 1; }
+.nono-grid-line.heavy { stroke: #94a3b8; stroke-width: 2; }
+.nono-clue {
+    fill: #334155;
+    font-family: var(--font-body);
+    font-weight: 600;
+    user-select: none;
+}
+.nono-clue.zero { fill: #cbd5e1; }
+.nono-fill { fill: var(--game-color, #7c3aed); }
+.nono-x {
+    stroke: #94a3b8;
+    stroke-width: 3;
+    stroke-linecap: round;
+    pointer-events: none;
+}
+/* Hint: spotlight the forced line, ring the forced cells (green), or red for
+   wrong cells. Reuses the zip-hint-pulse keyframe. */
+.nono-hint-line { fill: rgba(124, 58, 237, 0.12); pointer-events: none; }
+.nono-hint-ring {
+    fill: none;
+    stroke: #2e9e44;
+    stroke-width: 3;
+    pointer-events: none;
+    animation: zip-hint-pulse 1.15s ease-in-out infinite;
+}
+.nono-hint-ring.wrong {
+    stroke: var(--accent-danger, #dc3545);
+    fill: rgba(220, 53, 69, 0.15);
+}
+.nono-reveal { fill: rgba(124, 58, 237, 0.30); pointer-events: none; }
+
+/* ----------------------------------------------------------------
    Help / footer hints
    ---------------------------------------------------------------- */
 
