@@ -320,6 +320,7 @@ button {
 .game-card.sudoku  { --game-color: #2e7d32; }
 .game-card.zip     { --game-color: #3498db; }
 .game-card.patches { --game-color: #e5484d; }
+.game-card.nonogram { --game-color: #7c3aed; }
 
 /* ----------------------------------------------------------------
    Toast (transient bottom-centre notice)
