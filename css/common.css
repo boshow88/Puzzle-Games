@@ -86,6 +86,12 @@ body {
     min-height: 100vh;
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
+    /* Kill iOS Safari's double-tap-to-zoom (which breaks tap-a-cell-twice
+       gameplay) while keeping pinch-zoom. Set on the HTML body, not the SVG —
+       touch-action on SVG elements is unreliable/ignored on iOS, so the board's
+       own `touch-action: manipulation` wasn't enough there. The drag boards
+       still override this with `touch-action: none`. */
+    touch-action: manipulation;
 }
 
 a {

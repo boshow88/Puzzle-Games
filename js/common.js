@@ -409,6 +409,35 @@
             winMessage: document.getElementById('win-message'),
         };
 
+        // iOS Safari ignores `touch-action` on SVG elements (and doesn't honour
+        // an HTML ancestor's value for an SVG target), so double-tap-to-zoom
+        // still fires on the board — which collides with tapping a cell twice.
+        // Suppress it in JS: preventDefault the quick second touchend (kills the
+        // zoom + its synthesized click) and re-dispatch a synthetic click so the
+        // click-based games (Tango/Sudoku) still register the tap. The pointer
+        // games already acted on pointerup and don't listen for board clicks, so
+        // the synthetic click is a harmless no-op for them.
+        if (dom.board) {
+            let lastT = 0, lastX = 0, lastY = 0;
+            dom.board.addEventListener('touchend', (e) => {
+                if (e.changedTouches.length !== 1) { lastT = 0; return; }
+                const t = e.changedTouches[0];
+                const now = Date.now();
+                const near = Math.abs(t.clientX - lastX) < 40 && Math.abs(t.clientY - lastY) < 40;
+                if (now - lastT <= 350 && near) {
+                    e.preventDefault();
+                    const el = document.elementFromPoint(t.clientX, t.clientY);
+                    if (el) {
+                        el.dispatchEvent(new MouseEvent('click', {
+                            bubbles: true, cancelable: true, view: window,
+                            clientX: t.clientX, clientY: t.clientY,
+                        }));
+                    }
+                }
+                lastT = now; lastX = t.clientX; lastY = t.clientY;
+            }, { passive: false });
+        }
+
         // Size / difficulty intentionally do NOT persist across reloads —
         // we always boot at each game's declared default. Stats (solve
         // counts) are still tracked via the separate `solves:<game>` key.
