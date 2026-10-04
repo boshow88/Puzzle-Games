@@ -111,6 +111,12 @@
         }
         svg.appendChild(lines);
 
+        // Clue-satisfied highlight band (drawn BELOW the numbers so they stay
+        // readable); repainted live by repaintClueHighlights on every change.
+        const clueHl = PC.svgEl('g', { class: 'nono-clue-hl-layer' });
+        clueHl.setAttribute('id', 'nono-clue-hl');
+        svg.appendChild(clueHl);
+
         // Clue numbers — small markers, packed in narrow slots within the gutter.
         const clueG = PC.svgEl('g', { class: 'nono-clues' });
         const slot = state.clueSlot;
@@ -200,6 +206,53 @@
                     layer.appendChild(PC.svgEl('line', { class: 'nono-x', x1: x0 + m, y1: y0 + m, x2: x0 + cs - m, y2: y0 + cs - m }));
                     layer.appendChild(PC.svgEl('line', { class: 'nono-x', x1: x0 + cs - m, y1: y0 + m, x2: x0 + m, y2: y0 + cs - m }));
                 }
+            }
+        }
+        repaintClueHighlights();
+    }
+
+    // True when the line's FILLED runs exactly match its clue (ignoring ✗/empty),
+    // regardless of whether it agrees with the hidden solution.
+    function lineSatisfied(cells, clue) {
+        const runs = [];
+        let run = 0;
+        for (const v of cells) { if (v === FILL) run++; else if (run) { runs.push(run); run = 0; } }
+        if (run) runs.push(run);
+        if (runs.length !== clue.length) return false;
+        for (let i = 0; i < clue.length; i++) if (runs[i] !== clue[i]) return false;
+        return true;
+    }
+
+    // Highlight the clue of every row/column whose filled runs currently match it.
+    function repaintClueHighlights() {
+        const layer = board && board.querySelector('#nono-clue-hl');
+        if (!layer) return;
+        while (layer.firstChild) layer.removeChild(layer.firstChild);
+        const p = state.puzzle; if (!p) return;
+        const N = p.size, { cs, ox, oy, clueSlot: slot } = state;
+        const vIn = cs * 0.12, hFrac = 0.76;
+        for (let r = 0; r < N; r++) {
+            const clue = p.rowClues[r];
+            if (clue.length === 0) continue; // empty "0" lines: trivially done, don't mark
+            const cells = [];
+            for (let c = 0; c < N; c++) cells.push(state.grid[idx(r, c)]);
+            if (lineSatisfied(cells, clue)) {
+                layer.appendChild(PC.svgEl('rect', {
+                    class: 'nono-clue-hl', x: ox - clue.length * slot, y: oy + r * cs + vIn,
+                    width: clue.length * slot, height: cs * hFrac, rx: cs * 0.1, ry: cs * 0.1,
+                }));
+            }
+        }
+        for (let c = 0; c < N; c++) {
+            const clue = p.colClues[c];
+            if (clue.length === 0) continue; // empty "0" lines: trivially done, don't mark
+            const cells = [];
+            for (let r = 0; r < N; r++) cells.push(state.grid[idx(r, c)]);
+            if (lineSatisfied(cells, clue)) {
+                layer.appendChild(PC.svgEl('rect', {
+                    class: 'nono-clue-hl', x: ox + c * cs + vIn, y: oy - clue.length * slot,
+                    width: cs * hFrac, height: clue.length * slot, rx: cs * 0.1, ry: cs * 0.1,
+                }));
             }
         }
     }

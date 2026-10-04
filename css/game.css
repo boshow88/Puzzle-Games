@@ -1203,6 +1203,9 @@
     user-select: none;
 }
 .nono-clue.zero { fill: #cbd5e1; }
+/* Clue whose filled runs currently match it — a subtle theme-purple band
+   behind the numbers (removed live the moment it stops matching). */
+.nono-clue-hl { fill: var(--game-color, #7c3aed); opacity: 0.2; pointer-events: none; }
 /* Filled cell — a light, soft slate (the theme violet at full chroma was harsh). */
 .nono-fill { fill: #64748b; }
 /* Win: the picture's filled cells flash a lighter tint, then settle on the
