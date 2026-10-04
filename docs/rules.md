@@ -353,11 +353,22 @@ its number clues, revealing a hidden picture.
 
 ### Difficulty
 
-All difficulties use the same single-line logic; they differ in **how deep
-the deductions chain**. The generator scores each candidate by how late
-each cell can first be forced (first-pass "overlap" cells are free, later
-cells cost more) and bands Easy / Medium / Hard as the low / median / high
-scorers of a line-solvable pool.
+Every board is still solvable by pure logic, but the generator grades how
+*hard the techniques* are, not just how deep the chain goes. Each single-line
+deduction is classed by the simplest technique that finds it:
+
+1. **Overlap** — cells forced by a run's length alone (the "obvious" fills a
+   beginner sees at a glance).
+2. **Squeeze** — cells forced only by using already-known cells to pin a run
+   against an edge or a gap.
+3. **Case analysis** — cells that need enumerating all of a line's
+   arrangements (genuinely rare at these sizes).
+
+Boards are scored on how much they lean on the harder techniques and banded
+Easy / Medium / Hard as the low / median / high scorers of a line-solvable
+pool — so Easy boards are almost all overlap, while Hard boards mostly need
+squeezing. Hints follow the same ladder, always offering the simplest next
+step first.
 
 ### Win
 

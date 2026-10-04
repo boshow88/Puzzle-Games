@@ -37,18 +37,29 @@
     // -----------------------------------------------------------------
 
     /** Over all arrangements of `runs` on a length-L line consistent with the
-     *  known cells `line` (Int8Array of 0/1/2), return { and, or } bitmasks of
-     *  the filled cells: `and` = filled in every arrangement, `or` = filled in
-     *  at least one. Returns null if no arrangement fits (a contradiction). */
-    function lineMasks(runs, L, line) {
+     *  known cells `line` (Int8Array of 0/1/2), return
+     *    { and, or, runMin[], runMax[] }
+     *  where `and` = cells filled in every arrangement, `or` = filled in at
+     *  least one, and runMin[j] / runMax[j] = the earliest / latest start index
+     *  of run j across all arrangements (used by the overlap-based tiers).
+     *  Returns null if no arrangement fits (a contradiction). */
+    function lineAnalyze(runs, L, line) {
         const full = (1 << L) - 1;
+        const k = runs.length;
         let andMask = full, orMask = 0, count = 0;
+        const runMin = new Array(k).fill(Infinity);
+        const runMax = new Array(k).fill(-1);
+        const starts = new Array(k);
 
         (function rec(ri, pos, mask) {
-            if (ri === runs.length) {
+            if (ri === k) {
                 // No runs left → every remaining cell must be blank.
                 for (let i = pos; i < L; i++) if (line[i] === FILL) return;
                 andMask &= mask; orMask |= mask; count++;
+                for (let j = 0; j < k; j++) {
+                    if (starts[j] < runMin[j]) runMin[j] = starts[j];
+                    if (starts[j] > runMax[j]) runMax[j] = starts[j];
+                }
                 return;
             }
             const len = runs[ri];
@@ -65,12 +76,19 @@
                 // The separator after the run can't be a forced-fill cell.
                 const sep = s + len;
                 if (sep < L && line[sep] === FILL) continue;
+                starts[ri] = s;
                 rec(ri + 1, sep + 1, mask | ((((1 << len) - 1)) << s));
             }
         })(0, 0, 0);
 
         if (count === 0) return null;
-        return { and: andMask, or: orMask };
+        return { and: andMask, or: orMask, runMin, runMax };
+    }
+
+    /** Thin wrapper: just the { and, or } fill bitmasks (full line solver). */
+    function lineMasks(runs, L, line) {
+        const a = lineAnalyze(runs, L, line);
+        return a ? { and: a.and, or: a.or } : null;
     }
 
     /** Apply one forced deduction to a line in place. Returns the number of
@@ -87,6 +105,57 @@
             else if (!canFill) { line[i] = BLANK; changed++; }
         }
         return changed;
+    }
+
+    // -----------------------------------------------------------------
+    // Tiered single-line techniques (easy → hard), nested so that
+    //   tier 3 (full) ⊇ tier 2 (L/R overlap) ⊇ tier 1 (pure overlap).
+    //   • Tier 1 "basic"  — pure overlap from the clue + line length only
+    //                       (ignores current marks); fills only. Marks-
+    //                       independent, so it's cached per (clue, L).
+    //   • Tier 2 "L/R"    — each run's earliest/latest start *given the
+    //                       current marks*; a cell is filled if the SAME run
+    //                       covers it in both extremes, blank if no run can
+    //                       reach it (anchoring / segmentation).
+    //   • Tier 3 "full"   — full enumeration: a cell filled in EVERY arrangement
+    //                       (possibly by different runs), the complete solver.
+    // -----------------------------------------------------------------
+
+    /** Per-run overlap fill mask: union over runs of [latestStart .. earliestEnd]. */
+    function runOverlapMask(a, runs) {
+        let mask = 0;
+        for (let j = 0; j < runs.length; j++) {
+            const lo = a.runMax[j];
+            const hi = a.runMin[j] + runs[j] - 1;
+            for (let i = lo; i <= hi; i++) mask |= (1 << i);
+        }
+        return mask;
+    }
+
+    // Tier-1 masks depend only on (clue, L), so cache them across the whole run.
+    const _basicCache = new Map();
+    function basicMasks(runs, L) {
+        const key = L + '|' + runs.join(',');
+        let v = _basicCache.get(key);
+        if (v !== undefined) return v;
+        const a = lineAnalyze(runs, L, new Int8Array(L));
+        const fullMask = (1 << L) - 1;
+        v = a ? { fill: runOverlapMask(a, runs), blank: (~a.or) & fullMask } : { fill: 0, blank: 0 };
+        _basicCache.set(key, v);
+        return v;
+    }
+
+    /** Forced { fill, blank } bitmasks for a single tier (1 / 2 / 3), or null on
+     *  contradiction (tiers 2–3 only; tier 1 never contradicts). */
+    function tierMasks(tier, runs, L, line) {
+        if (tier === 1) return basicMasks(runs, L);
+        const a = lineAnalyze(runs, L, line);
+        if (!a) return null;
+        const fullMask = (1 << L) - 1;
+        return {
+            fill: tier === 2 ? runOverlapMask(a, runs) : a.and,
+            blank: (~a.or) & fullMask,
+        };
     }
 
     // -----------------------------------------------------------------
@@ -125,46 +194,58 @@
     // Full solve (from a starting grid; default empty)
     // -----------------------------------------------------------------
 
-    /** Solve by iterating line deductions to a fixpoint. Returns
-     *  { solved, grid, contradiction, passes, score }. `score` rewards cells
-     *  that could only be forced in later passes (i.e. needed cross-line
-     *  information) — the difficulty signal. `grid0` (optional) seeds the state
-     *  (used by hints to continue from the player's marks). */
+    /** Solve by iterating line deductions to a fixpoint, always applying the
+     *  *simplest* technique that makes progress and only escalating when the
+     *  easier tiers stall. Returns
+     *    { solved, grid, contradiction, passes, score, tiers:[n1,n2,n3], maxTier }
+     *  where tiers[t] counts cells first forced at tier t+1. `score` is the
+     *  difficulty signal: enumeration-needing (tier-3) cells dominate, then
+     *  reliance on tier-2 squeezing, then raw depth. `grid0` (optional) seeds
+     *  the state (used by hints to continue from the player's marks). */
     function solve(rowClues, colClues, N, grid0) {
         const grid = grid0 ? grid0.slice() : new Int8Array(N * N);
-        const setPass = new Int32Array(N * N); // pass each cell was determined on
         const line = new Int8Array(N);
-        let pass = 0, changedAny = true, contradiction = false;
+        const tiers = [0, 0, 0]; // cells first forced at tier 1 / 2 / 3
+        let passes = 0, maxTier = 0, contradiction = false;
 
-        while (changedAny && !contradiction) {
-            changedAny = false; pass++;
-            // Rows
-            for (let r = 0; r < N; r++) {
-                for (let c = 0; c < N; c++) line[c] = grid[r * N + c];
-                const ch = lineForced(rowClues[r], N, line);
-                if (ch < 0) { contradiction = true; break; }
-                if (ch > 0) {
-                    for (let c = 0; c < N; c++) {
-                        if (grid[r * N + c] === UNKNOWN && line[c] !== UNKNOWN) {
-                            grid[r * N + c] = line[c]; setPass[r * N + c] = pass;
+        // Apply tier `t` across every row and column once; returns the number of
+        // newly determined cells, or -1 on contradiction.
+        function sweep(t) {
+            let changed = 0;
+            for (let orient = 0; orient < 2; orient++) {
+                const isRow = orient === 0;
+                for (let k = 0; k < N; k++) {
+                    for (let i = 0; i < N; i++) line[i] = isRow ? grid[k * N + i] : grid[i * N + k];
+                    const clue = isRow ? rowClues[k] : colClues[k];
+                    const m = tierMasks(t, clue, N, line);
+                    if (!m) return -1;
+                    for (let i = 0; i < N; i++) {
+                        if (line[i] !== UNKNOWN) continue;
+                        const f = (m.fill >> i) & 1, b = (m.blank >> i) & 1;
+                        if (f || b) {
+                            const val = f ? FILL : BLANK;
+                            grid[isRow ? k * N + i : i * N + k] = val;
+                            line[i] = val;
+                            changed++;
                         }
                     }
-                    changedAny = true;
                 }
             }
-            if (contradiction) break;
-            // Columns
-            for (let c = 0; c < N; c++) {
-                for (let r = 0; r < N; r++) line[r] = grid[r * N + c];
-                const ch = lineForced(colClues[c], N, line);
+            return changed;
+        }
+
+        let progressing = true;
+        while (progressing && !contradiction) {
+            progressing = false;
+            for (let t = 1; t <= 3; t++) {
+                const ch = sweep(t);
                 if (ch < 0) { contradiction = true; break; }
                 if (ch > 0) {
-                    for (let r = 0; r < N; r++) {
-                        if (grid[r * N + c] === UNKNOWN && line[r] !== UNKNOWN) {
-                            grid[r * N + c] = line[r]; setPass[r * N + c] = pass;
-                        }
-                    }
-                    changedAny = true;
+                    passes++;
+                    tiers[t - 1] += ch;
+                    if (t > maxTier) maxTier = t;
+                    progressing = true;
+                    break; // a change may re-enable simpler tiers → restart at tier 1
                 }
             }
         }
@@ -172,40 +253,40 @@
         let solved = !contradiction;
         for (let i = 0; i < N * N && solved; i++) if (grid[i] === UNKNOWN) solved = false;
 
-        // Difficulty: sum of (pass-1) over determined cells + the pass count.
-        // First-pass (pure overlap) cells add 0; later cells cost more.
-        let score = pass;
-        for (let i = 0; i < N * N; i++) if (setPass[i] > 0) score += setPass[i] - 1;
+        const score = tiers[2] * 100 + tiers[1] * 2 + passes;
 
-        return { solved, grid, contradiction, passes: pass, score };
+        return { solved, grid, contradiction, passes, score, tiers, maxTier };
     }
 
-    /** One hint step from the player's current grid: the first row/col that can
-     *  force at least one new cell. Returns { orient:'row'|'col', index, clue,
-     *  cells:[{r,c,state}] } or null if nothing is deducible right now. */
+    /** One hint step from the player's current grid, preferring the simplest
+     *  technique: the first row/col where tier 1 forces a new cell, else tier 2,
+     *  else tier 3. Returns { orient:'row'|'col', index, clue, cells:[{r,c,state}],
+     *  tier } or null if nothing is deducible right now. */
     function nextStep(rowClues, colClues, N, grid) {
         const line = new Int8Array(N);
-        const scan = (orient) => {
-            for (let k = 0; k < N; k++) {
-                for (let i = 0; i < N; i++) line[i] = orient === 'row' ? grid[k * N + i] : grid[i * N + k];
-                const before = line.slice();
-                const clue = orient === 'row' ? rowClues[k] : colClues[k];
-                const ch = lineForced(clue, N, line);
-                if (ch > 0) {
+        const scanTier = (tier) => {
+            for (let orient = 0; orient < 2; orient++) {
+                const isRow = orient === 0;
+                for (let k = 0; k < N; k++) {
+                    for (let i = 0; i < N; i++) line[i] = isRow ? grid[k * N + i] : grid[i * N + k];
+                    const clue = isRow ? rowClues[k] : colClues[k];
+                    const m = tierMasks(tier, clue, N, line);
+                    if (!m) continue;
                     const cells = [];
                     for (let i = 0; i < N; i++) {
-                        if (before[i] === UNKNOWN && line[i] !== UNKNOWN) {
-                            cells.push(orient === 'row'
-                                ? { r: k, c: i, state: line[i] }
-                                : { r: i, c: k, state: line[i] });
+                        if (line[i] !== UNKNOWN) continue;
+                        const f = (m.fill >> i) & 1, b = (m.blank >> i) & 1;
+                        if (f || b) {
+                            const r = isRow ? k : i, c = isRow ? i : k;
+                            cells.push({ r, c, state: f ? FILL : BLANK });
                         }
                     }
-                    if (cells.length) return { orient, index: k, clue, cells };
+                    if (cells.length) return { orient: isRow ? 'row' : 'col', index: k, clue, cells, tier };
                 }
             }
             return null;
         };
-        return scan('row') || scan('col');
+        return scanTier(1) || scanTier(2) || scanTier(3);
     }
 
     // -----------------------------------------------------------------
@@ -240,7 +321,7 @@
             if (fill) {
                 const { rowClues, colClues } = deriveClues(fill, N);
                 const res = solve(rowClues, colClues, N);
-                if (res.solved) pool.push({ fill, rowClues, colClues, score: res.score });
+                if (res.solved) pool.push({ fill, rowClues, colClues, score: res.score, tiers: res.tiers });
             }
             if (onProgress && (t & 31) === 0) await onProgress(0.05 + 0.9 * (t + 1) / attempts);
         }
@@ -248,7 +329,7 @@
             // Extremely unlikely; fall back to a trivially-solvable sparse board.
             const fill = new Uint8Array(N * N); fill[0] = 1;
             const { rowClues, colClues } = deriveClues(fill, N);
-            pool.push({ fill, rowClues, colClues, score: 0 });
+            pool.push({ fill, rowClues, colClues, score: 0, tiers: [0, 0, 0] });
         }
 
         pool.sort((a, b) => a.score - b.score);
@@ -270,13 +351,13 @@
             game: 'nonogram', size: N, difficulty,
             rowClues: chosen.rowClues, colClues: chosen.colClues,
             solution,
-            stats: { score: chosen.score, poolSize: pool.length },
+            stats: { score: chosen.score, poolSize: pool.length, tiers: chosen.tiers },
         };
     }
 
     if (!global.PuzzleGenerators) global.PuzzleGenerators = {};
     if (!global.PuzzleSolvers) global.PuzzleSolvers = {};
     global.PuzzleGenerators.nonogram = generate;
-    global.PuzzleSolvers.nonogram = { lineForced, lineMasks, solve, nextStep, deriveClues };
-    global.PuzzleGenerators.nonogramInternals = { lineMasks, lineForced, solve, nextStep, deriveClues, randomFill, attemptsFor };
+    global.PuzzleSolvers.nonogram = { lineForced, lineMasks, lineAnalyze, tierMasks, solve, nextStep, deriveClues };
+    global.PuzzleGenerators.nonogramInternals = { lineMasks, lineAnalyze, tierMasks, basicMasks, runOverlapMask, lineForced, solve, nextStep, deriveClues, randomFill, attemptsFor };
 })(typeof window !== 'undefined' ? window : this);
