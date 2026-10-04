@@ -194,6 +194,33 @@
     // Full solve (from a starting grid; default empty)
     // -----------------------------------------------------------------
 
+    /** Depth signal: run the full-power fixpoint (rows + cols to convergence)
+     *  and return the wave number of the LAST cell determined — i.e. how many
+     *  alternating row/col rounds the deduction chain needs. */
+    function fixpointDepth(rowClues, colClues, N) {
+        const grid = new Int8Array(N * N);
+        const line = new Int8Array(N);
+        let pass = 0, maxPass = 0, changed = true;
+        while (changed) {
+            changed = false; pass++;
+            for (let r = 0; r < N; r++) {
+                for (let c = 0; c < N; c++) line[c] = grid[r * N + c];
+                if (lineForced(rowClues[r], N, line) > 0) {
+                    for (let c = 0; c < N; c++) if (grid[r * N + c] === UNKNOWN && line[c] !== UNKNOWN) { grid[r * N + c] = line[c]; maxPass = pass; }
+                    changed = true;
+                }
+            }
+            for (let c = 0; c < N; c++) {
+                for (let r = 0; r < N; r++) line[r] = grid[r * N + c];
+                if (lineForced(colClues[c], N, line) > 0) {
+                    for (let r = 0; r < N; r++) if (grid[r * N + c] === UNKNOWN && line[r] !== UNKNOWN) { grid[r * N + c] = line[r]; maxPass = pass; }
+                    changed = true;
+                }
+            }
+        }
+        return maxPass;
+    }
+
     /** Solve by iterating line deductions to a fixpoint, always applying the
      *  *simplest* technique that makes progress and only escalating when the
      *  easier tiers stall. Returns
@@ -253,9 +280,13 @@
         let solved = !contradiction;
         for (let i = 0; i < N * N && solved; i++) if (grid[i] === UNKNOWN) solved = false;
 
-        const score = tiers[2] * 100 + tiers[1] * 2 + passes;
+        // Depth: alternating row/col waves the full-power fixpoint needs (chain
+        // length). Folded in so Hard favours deep "back-and-forth" grinders on
+        // top of squeeze reliance; enumeration (tier 3) still dominates when present.
+        const depth = solved ? fixpointDepth(rowClues, colClues, N) : 0;
+        const score = tiers[2] * 100 + tiers[1] * 2 + depth * 6;
 
-        return { solved, grid, contradiction, passes, score, tiers, maxTier };
+        return { solved, grid, contradiction, passes, score, tiers, maxTier, depth };
     }
 
     /** One hint step from the player's current grid, preferring the simplest
@@ -321,7 +352,7 @@
             if (fill) {
                 const { rowClues, colClues } = deriveClues(fill, N);
                 const res = solve(rowClues, colClues, N);
-                if (res.solved) pool.push({ fill, rowClues, colClues, score: res.score, tiers: res.tiers });
+                if (res.solved) pool.push({ fill, rowClues, colClues, score: res.score, tiers: res.tiers, depth: res.depth });
             }
             if (onProgress && (t & 31) === 0) await onProgress(0.05 + 0.9 * (t + 1) / attempts);
         }
@@ -329,7 +360,7 @@
             // Extremely unlikely; fall back to a trivially-solvable sparse board.
             const fill = new Uint8Array(N * N); fill[0] = 1;
             const { rowClues, colClues } = deriveClues(fill, N);
-            pool.push({ fill, rowClues, colClues, score: 0, tiers: [0, 0, 0] });
+            pool.push({ fill, rowClues, colClues, score: 0, tiers: [0, 0, 0], depth: 0 });
         }
 
         pool.sort((a, b) => a.score - b.score);
@@ -351,7 +382,7 @@
             game: 'nonogram', size: N, difficulty,
             rowClues: chosen.rowClues, colClues: chosen.colClues,
             solution,
-            stats: { score: chosen.score, poolSize: pool.length, tiers: chosen.tiers },
+            stats: { score: chosen.score, poolSize: pool.length, tiers: chosen.tiers, depth: chosen.depth },
         };
     }
 
@@ -359,5 +390,5 @@
     if (!global.PuzzleSolvers) global.PuzzleSolvers = {};
     global.PuzzleGenerators.nonogram = generate;
     global.PuzzleSolvers.nonogram = { lineForced, lineMasks, lineAnalyze, tierMasks, solve, nextStep, deriveClues };
-    global.PuzzleGenerators.nonogramInternals = { lineMasks, lineAnalyze, tierMasks, basicMasks, runOverlapMask, lineForced, solve, nextStep, deriveClues, randomFill, attemptsFor };
+    global.PuzzleGenerators.nonogramInternals = { lineMasks, lineAnalyze, tierMasks, basicMasks, runOverlapMask, lineForced, fixpointDepth, solve, nextStep, deriveClues, randomFill, attemptsFor };
 })(typeof window !== 'undefined' ? window : this);

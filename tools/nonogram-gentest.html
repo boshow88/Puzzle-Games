@@ -71,7 +71,7 @@
     for (const N of [5, 8, 10, 12]) {
       const medByDiff = {}, t3ByDiff = {};
       for (const diff of ['easy', 'medium', 'hard']) {
-        const times = [], scores = [], tset = [];
+        const times = [], scores = [], tset = [], dset = [];
         for (const seed of SEEDS) {
           const t0 = performance.now();
           let p; try { p = await G(N, diff, seed); } catch (e) { fail(`gen ${N} ${diff} #${seed}: ${e && e.message}`); continue; }
@@ -86,12 +86,13 @@
           if (cnt !== 1) fail(`${N} ${diff} #${seed}: solutions=${cnt} (want 1)`);
           scores.push(p.stats.score);
           tset.push(p.stats.tiers || [0, 0, 0]);
+          dset.push(p.stats.depth || 0);
           await tick();
         }
         medByDiff[diff] = scores.length ? md(scores) : -1;
         const medTiers = [0, 1, 2].map((j) => tset.length ? md(tset.map((t) => t[j])) : -1);
         t3ByDiff[diff] = medTiers[2];
-        rows.push({ key: `${N}x${N} ${diff}`, ms: times.length ? Math.round(times.reduce((a, b) => a + b, 0) / times.length) : -1, score: scores.join(','), medScore: medByDiff[diff], tiers: medTiers.join(' / ') });
+        rows.push({ key: `${N}x${N} ${diff}`, ms: times.length ? Math.round(times.reduce((a, b) => a + b, 0) / times.length) : -1, score: scores.join(','), medScore: medByDiff[diff], tiers: medTiers.join(' / '), depth: dset.length ? md(dset) : -1 });
       }
       const e = medByDiff.easy, m = medByDiff.medium, h = medByDiff.hard;
       if (e >= 0 && m >= 0 && h >= 0 && !(h >= m && m >= e)) fail(`${N}: difficulty not monotonic (E ${e} / M ${m} / H ${h})`);
@@ -100,8 +101,8 @@
       await tick();
     }
 
-    let html = '<table><tr><th>config</th><th>avg ms</th><th>median score</th><th>median tiers n1/n2/n3</th><th>scores</th></tr>';
-    for (const r of rows) html += `<tr><td>${r.key}</td><td>${r.ms}</td><td>${r.medScore}</td><td>${r.tiers}</td><td>${r.score}</td></tr>`;
+    let html = '<table><tr><th>config</th><th>avg ms</th><th>median score</th><th>median depth</th><th>median tiers n1/n2/n3</th><th>scores</th></tr>';
+    for (const r of rows) html += `<tr><td>${r.key}</td><td>${r.ms}</td><td>${r.medScore}</td><td>${r.depth}</td><td>${r.tiers}</td><td>${r.score}</td></tr>`;
     html += '</table>';
     document.getElementById('tbl').innerHTML = html;
     document.getElementById('out').textContent = out.join('\n');
@@ -111,7 +112,7 @@
     // Also log to the console so headless runs can read the result reliably
     // (console output is flushed as it happens; a single DOM dump can race).
     console.log('GENTEST ' + (fails === 0 ? 'PASS' : 'FAIL') + ' fails=' + fails);
-    for (const r of rows) console.log('ROW ' + r.key + ' | ms ' + r.ms + ' | score ' + r.medScore + ' | tiers(n1/n2/n3) ' + r.tiers + ' | scores ' + r.score);
+    for (const r of rows) console.log('ROW ' + r.key + ' | ms ' + r.ms + ' | score ' + r.medScore + ' | depth ' + r.depth + ' | tiers(n1/n2/n3) ' + r.tiers + ' | scores ' + r.score);
     for (const line of out) console.log('OUTLINE ' + line);
     } catch (err) { document.getElementById('verdict').textContent = 'ERROR: ' + (err && err.message); document.getElementById('verdict').className = 'fail'; console.log('GENTEST ERROR ' + (err && err.message)); }
   })();

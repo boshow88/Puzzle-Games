@@ -364,11 +364,12 @@ deduction is classed by the simplest technique that finds it:
 3. **Case analysis** — cells that need enumerating all of a line's
    arrangements (genuinely rare at these sizes).
 
-Boards are scored on how much they lean on the harder techniques and banded
-Easy / Medium / Hard as the low / median / high scorers of a line-solvable
-pool — so Easy boards are almost all overlap, while Hard boards mostly need
-squeezing. Hints follow the same ladder, always offering the simplest next
-step first.
+Boards are scored on how much they lean on the harder techniques **and how
+many back-and-forth row/column rounds the deduction takes**, then banded Easy /
+Medium / Hard as the low / median / high scorers of a line-solvable pool — so
+Easy boards are almost all overlap and fall in a wave or two, while Hard boards
+mostly need squeezing and many rounds of cross-referencing. Hints follow the
+same ladder, always offering the simplest next step first.
 
 ### Win
 
