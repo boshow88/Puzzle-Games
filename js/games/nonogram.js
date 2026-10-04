@@ -23,7 +23,7 @@
     // -----------------------------------------------------------------
     // Shareable URL (size/diff/seed), mirroring the other games.
     // -----------------------------------------------------------------
-    const MIN_SIZE = 5, MAX_SIZE = 12;
+    const MIN_SIZE = 6, MAX_SIZE = 16;
     const VALID_DIFFS = new Set(['easy', 'medium', 'hard']);
 
     function readUrlInitial() {
