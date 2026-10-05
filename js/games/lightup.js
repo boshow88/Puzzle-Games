@@ -29,7 +29,8 @@
         return EMPTY; // 'empty' = erase
     }
 
-    const MIN_SIZE = 7, MAX_SIZE = 20;
+    const MIN_SIZE = 6, MAX_SIZE = 25;
+    const SIZE_STEPS = [6, 8, 10, 12, 16, 20, 25];
     const VALID_DIFFS = new Set(['easy', 'medium', 'hard']);
 
     function readUrlInitial() {
@@ -513,7 +514,7 @@
         shell = PC.shell.create({
             gameId: 'lightup',
             difficulty: { default: urlInitial ? urlInitial.difficulty : 'medium' },
-            size: { kind: 'slider', min: MIN_SIZE, max: MAX_SIZE, default: urlInitial ? urlInitial.size : 9 },
+            size: { kind: 'slider', values: SIZE_STEPS, min: MIN_SIZE, max: MAX_SIZE, default: urlInitial ? urlInitial.size : 10 },
             onNewGame: startNewGame,
             onReset: resetBoard,
             onReveal: onReveal,

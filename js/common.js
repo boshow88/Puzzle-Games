@@ -180,6 +180,13 @@
         return Math.min(max, Math.max(min, value));
     }
 
+    // Nearest entry in a discrete values list (for stepped sliders).
+    function nearestValue(v, values) {
+        let best = values[0];
+        for (const x of values) if (Math.abs(x - v) < Math.abs(best - v)) best = x;
+        return best;
+    }
+
     function el(tag, attrs, ...children) {
         const node = document.createElement(tag);
         if (attrs) {
@@ -472,7 +479,9 @@
 
         let difficulty = diffCfg.default;
         let size = sizeCfg.kind === 'slider'
-            ? clamp(sizeCfg.default, sizeCfg.min, sizeCfg.max)
+            ? (sizeCfg.values
+                ? nearestValue(sizeCfg.default, sizeCfg.values)
+                : clamp(sizeCfg.default, sizeCfg.min, sizeCfg.max))
             : sizeCfg.default;
         // "Committed" mirrors the difficulty/size that the currently
         // displayed puzzle was generated with. It diverges from
@@ -584,7 +593,7 @@
                     btn.classList.toggle('committed', v === appliedSize);
                 });
             } else if (sizeCfg.kind === 'slider' && dom.sizeSlider) {
-                dom.sizeSlider.value = String(size);
+                dom.sizeSlider.value = sizeCfg.values ? String(sizeCfg.values.indexOf(size)) : String(size);
                 if (dom.sizeReadout) {
                     if (size === appliedSize) {
                         dom.sizeReadout.textContent = `${size}×${size}`;
@@ -672,8 +681,13 @@
         function setSize(rawValue) {
             let n;
             if (sizeCfg.kind === 'slider') {
-                n = clamp(parseInt(rawValue, 10) || sizeCfg.default,
-                    sizeCfg.min, sizeCfg.max);
+                if (sizeCfg.values) {
+                    const idx = clamp(parseInt(rawValue, 10) || 0, 0, sizeCfg.values.length - 1);
+                    n = sizeCfg.values[idx];
+                } else {
+                    n = clamp(parseInt(rawValue, 10) || sizeCfg.default,
+                        sizeCfg.min, sizeCfg.max);
+                }
             } else {
                 n = parseInt(rawValue, 10);
                 if (!segmentedSizes || !segmentedSizes.includes(n)) return;
@@ -704,6 +718,13 @@
                     () => setSize(btn.dataset.value));
             });
         } else if (sizeCfg.kind === 'slider' && dom.sizeSlider) {
+            if (sizeCfg.values) {
+                // Discrete steps at equidistant slider positions: the slider
+                // indexes into the values list rather than being the size itself.
+                dom.sizeSlider.min = '0';
+                dom.sizeSlider.max = String(sizeCfg.values.length - 1);
+                dom.sizeSlider.step = '1';
+            }
             // 'input' (not 'change') so the "current → pending" readout updates
             // live as the player drags, before releasing — setSize only stages
             // the size (no board work), so this is cheap to fire every step.
