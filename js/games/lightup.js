@@ -65,11 +65,11 @@
         dragging: null,
         won: false,
         hint: null, hintBanner: null,
-        // Debounced conflict display: while the player is actively editing, the
-        // red marks are left untouched; VIOLATION_DELAY_MS after the last edit we
-        // recompute and show everything at once. The win check runs live and
-        // separately (rulesSatisfied), so finishing is still instant.
-        displayedBad: new Set(), displayedOver: new Set(), displayedCount: 0,
+        // Conflict display (option B): while you edit, a change can only REMOVE
+        // already-shown conflicts it has resolved — it never adds. Brand-new
+        // conflicts surface only after VIOLATION_DELAY_MS of no edits. The win
+        // check runs live (rulesSatisfied), so finishing is still instant.
+        displayed: { badPairs: [], overClues: [] },
         violationTimer: null,
         cs: 0, ox: 0, oy: 0,
     };
@@ -121,11 +121,11 @@
     }
 
     // -----------------------------------------------------------------
-    // Conflict display — debounced. Two errors can show red: two guards that see
-    // each other (BULB cells), and a numbered pillar with too many adjacent
-    // guards (its number). The win check runs live (rulesSatisfied); the red
-    // marks are recomputed and shown only after VIOLATION_DELAY_MS of no edits,
-    // so a burst of taps/drags never flashes transient reds while you work.
+    // Conflict display — option B. Two errors can show red: two guards that see
+    // each other, and a numbered pillar with too many adjacent guards. The win
+    // check runs live (rulesSatisfied). An edit can only REMOVE shown conflicts
+    // it has resolved; brand-new conflicts surface only after VIOLATION_DELAY_MS
+    // of no edits — so a burst of taps/drags never flashes transient reds.
     // -----------------------------------------------------------------
     function computeViolations() {
         const { N, ctx, clue, grid } = state;
@@ -142,32 +142,29 @@
         }
         return { badPairs, overClues };
     }
-    function fullViolationSets(v) {
-        const bad = new Set(), over = new Set();
-        for (const [i, j] of v.badPairs) { bad.add(i); bad.add(j); }
-        for (const w of v.overClues) over.add(w);
-        return { bad, over, count: v.badPairs.length + v.overClues.length };
-    }
-    function setDisplayed(bad, over, count) { state.displayedBad = bad; state.displayedOver = over; state.displayedCount = count; }
+    const pairKey = (i, j) => i + '-' + j;
     function cancelViolationTimer() { if (state.violationTimer) { clearTimeout(state.violationTimer); state.violationTimer = null; } }
-    function updateViolationPill() { if (shell && shell.setViolationCount) shell.setViolationCount(state.displayedCount || 0); }
+    function violationCount() { return state.displayed.badPairs.length + state.displayed.overClues.length; }
+    function updateViolationPill() { if (shell && shell.setViolationCount) shell.setViolationCount(violationCount()); }
+    function setDisplayedFull(v) { state.displayed = { badPairs: v.badPairs.slice(), overClues: v.overClues.slice() }; }
     function commitViolations() {
         state.violationTimer = null;
-        const f = fullViolationSets(computeViolations());
-        setDisplayed(f.bad, f.over, f.count);
+        setDisplayedFull(computeViolations());
         repaint(); updateStatusRow();
     }
-    // Pure debounce: an edit just (re)arms the timer; nothing is recomputed or
-    // repainted until VIOLATION_DELAY_MS passes with no further edits.
-    function scheduleViolationRefresh() {
+    // An edit prunes resolved conflicts from the shown set (never adds), then
+    // (re)arms the timer that reveals the full set once editing pauses.
+    function refreshViolationsOnEdit() {
+        const t = computeViolations();
+        const badKeys = new Set(t.badPairs.map(([i, j]) => pairKey(i, j)));
+        const overKeys = new Set(t.overClues);
+        state.displayed.badPairs = state.displayed.badPairs.filter(([i, j]) => badKeys.has(pairKey(i, j)));
+        state.displayed.overClues = state.displayed.overClues.filter((w) => overKeys.has(w));
         cancelViolationTimer();
         state.violationTimer = setTimeout(commitViolations, VIOLATION_DELAY_MS);
     }
-    function showAllViolationsNow() {
-        cancelViolationTimer();
-        const f = fullViolationSets(computeViolations()); setDisplayed(f.bad, f.over, f.count);
-    }
-    function clearViolations() { cancelViolationTimer(); setDisplayed(new Set(), new Set(), 0); }
+    function showAllViolationsNow() { cancelViolationTimer(); setDisplayedFull(computeViolations()); }
+    function clearViolations() { cancelViolationTimer(); state.displayed = { badPairs: [], overClues: [] }; }
 
     // -----------------------------------------------------------------
     // Render
@@ -245,6 +242,10 @@
         while (litLayer.firstChild) litLayer.removeChild(litLayer.firstChild);
         while (symLayer.firstChild) symLayer.removeChild(symLayer.firstChild);
 
+        const dispBad = new Set(), dispOver = new Set();
+        for (const [i, j] of state.displayed.badPairs) { dispBad.add(i); dispBad.add(j); }
+        for (const w of state.displayed.overClues) dispOver.add(w);
+
         const lit = computeLit();
         for (const i of ctx.whites) {
             if (!lit[i]) continue;
@@ -255,7 +256,7 @@
         // Wall-number over-satisfied colouring (from the debounced display set).
         if (numEls) for (const k in numEls) {
             const w = +k;
-            numEls[w].classList.toggle('over', !won && state.displayedOver.has(w));
+            numEls[w].classList.toggle('over', !won && dispOver.has(w));
         }
 
         // Bulbs + ✗.
@@ -264,7 +265,7 @@
             const r = (i / N) | 0, c = i % N;
             const cx = c * cs + cs / 2, cy = r * cs + cs / 2;
             if (grid[i] === BULB) {
-                const bad = !won && state.displayedBad.has(i);
+                const bad = !won && dispBad.has(i);
                 const g = PC.boardIcon(EMITTER_ICON, cx, cy, bulbSize, { className: 'lu-bulb' + (bad ? ' bad' : '') + (won ? ' won' : '') });
                 if (g) symLayer.appendChild(g);
             } else if (grid[i] === XMARK && !won) {
@@ -333,7 +334,7 @@
     }
 
     function afterChange() {
-        scheduleViolationRefresh();
+        refreshViolationsOnEdit();
         repaint();
         if (!state.won && rulesSatisfied()) {
             state.won = true;
