@@ -915,9 +915,9 @@
                 'Use the row and column number clues to fill the grid and reveal the picture.',
             // Cross-link to the sibling Arcade Games site.
             arcadeGamesName: 'Arcade Games',
-            arcadeGamesTagline: 'Fast, pick-up-and-play games.',
+            arcadeGamesTagline: 'Arcade-style games.',
             arcadeGamesCardBody:
-                'A separate site with quick arcade games.',
+                'A separate site with arcade games.',
             visitLink: 'Visit \u2197',
             nonogramBoardAria: 'Nonogram puzzle board',
             nonogramToolsAria: 'Cell brush',
@@ -1131,9 +1131,9 @@
                 '依每列與每行的數字線索把格子填滿，還原出圖案。',
             // Cross-link to the sibling Arcade Games site.
             arcadeGamesName: 'Arcade Games',
-            arcadeGamesTagline: '快節奏、隨開即玩的遊戲。',
+            arcadeGamesTagline: '街機風格的遊戲。',
             arcadeGamesCardBody:
-                '另一個網站，收錄快節奏的街機小遊戲。',
+                '另一個網站，收錄街機遊戲。',
             visitLink: '前往 \u2197',
             nonogramBoardAria: 'Nonogram 盤面',
             nonogramToolsAria: '畫筆',
