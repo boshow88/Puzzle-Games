@@ -19,7 +19,8 @@
 
     const VALID_MODES = ['cycle', 'bulb', 'block', 'empty'];
     function resolveTarget(mode, cur) {
-        if (mode === 'cycle') return cur === EMPTY ? BULB : cur === BULB ? XMARK : EMPTY;
+        // Cycle ✗ before bulb (Queens-style): ✗ is used far more often than bulbs.
+        if (mode === 'cycle') return cur === EMPTY ? XMARK : cur === XMARK ? BULB : EMPTY;
         if (mode === 'bulb') return cur === BULB ? EMPTY : BULB;
         if (mode === 'block') return cur === XMARK ? EMPTY : XMARK;
         return EMPTY; // 'empty' = erase
