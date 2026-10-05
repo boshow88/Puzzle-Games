@@ -1,5 +1,5 @@
 /**
- * Sentinels (Akari reskin) — game UI.
+ * Guards (Akari reskin) — game UI.
  *
  * Consumes window.PuzzleGenerators.lightup + the shared shell. Input mirrors
  * Nonogram's four modes (Cycle / Guard / Mark ✗ / Erase): a tap cycles/toggles a
@@ -13,7 +13,7 @@
 
     const PC = window.PuzzleCommon;
     const LU = window.PuzzleSolvers.lightup;
-    const EMITTER_ICON = 'user'; // the guard symbol (theme: Sentinels)
+    const EMITTER_ICON = 'user'; // the guard symbol (theme: Guards)
     const BOARD = 480;
 
     // Player marks (chosen so they equal the solver's UNKNOWN/BULB/NOBULB).

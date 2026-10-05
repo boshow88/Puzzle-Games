@@ -939,11 +939,11 @@
                 'Pick an input mode below — <span class="inline-icon nono-ico-cycle" data-icon="refresh-cw"></span> cycle (empty→fill→<span class="inline-icon nono-ico-mark" data-icon="x"></span>), <span class="inline-icon nono-ico-fill" data-icon="square"></span> fill, <span class="inline-icon nono-ico-mark" data-icon="x"></span> mark, or <span class="inline-icon nono-ico-erase" data-icon="eraser"></span> erase. Tap a cell to apply it (in fill/mark, tapping again clears it); when you drag, the first cell decides whether you add or remove.',
             nonogramHelp3Html:
                 'Solved when the <span class="inline-icon nono-ico-fill" data-icon="square"></span> cells match every row and column clue.',
-            lightupName: 'Sentinels',
+            lightupName: 'Guards',
             lightupTagline: 'Watch every corridor.',
             lightupCardBody:
                 'Post guards so every corridor is watched — none may see another, and numbered pillars fix how many stand beside them.',
-            lightupBoardAria: 'Sentinels puzzle board',
+            lightupBoardAria: 'Guards puzzle board',
             lightupToolsAria: 'Input mode',
             lightupToolCycle: 'Cycle',
             lightupToolBulb: 'Guard',
@@ -1172,7 +1172,7 @@
                 '在下方選擇輸入模式 — <span class="inline-icon nono-ico-cycle" data-icon="refresh-cw"></span> 循環（空→填→<span class="inline-icon nono-ico-mark" data-icon="x"></span>）、<span class="inline-icon nono-ico-fill" data-icon="square"></span> 填滿、<span class="inline-icon nono-ico-mark" data-icon="x"></span> ✗、<span class="inline-icon nono-ico-erase" data-icon="eraser"></span> 擦除。點一下格子即套用（填滿／✗ 模式再點一次會清除）；拖曳時由起點決定是「加上」還是「擦掉」。',
             nonogramHelp3Html:
                 '當 <span class="inline-icon nono-ico-fill" data-icon="square"></span> 格子符合所有列與行的線索即過關。',
-            lightupName: '守衛',
+            lightupName: 'Guards',
             lightupTagline: '看守每一條走廊。',
             lightupCardBody:
                 '部署守衛讓每條走廊都被看守——彼此不能互相看到，數字柱則限制周圍的守衛數。',
