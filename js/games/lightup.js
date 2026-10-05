@@ -374,6 +374,11 @@
     const HINT_TEXTS = {
         en: {
             wrong: 'The highlighted cell(s) disagree with the solution — a guard that shouldn’t be there, or a ' + XI + ' where a guard belongs.',
+            conflict: (h) => h.sight && h.over
+                ? 'The highlighted cells break a rule — two guards can see each other, and a numbered pillar has too many guards beside it.'
+                : h.sight
+                    ? 'The highlighted guards can see each other — no two guards may.'
+                    : 'This numbered pillar has too many guards beside it — it must hold exactly its number.',
             clueBulb: (n) => `A numbered pillar forces it: the ${n} highlighted cell(s) must hold a guard.`,
             clueNo: (n) => `A numbered pillar is already satisfied — the ${n} highlighted cell(s) can’t hold a guard (${XI}).`,
             cover: () => 'Only a guard here can watch the highlighted dark cell.',
@@ -381,6 +386,11 @@
         },
         zh: {
             wrong: '醒目格與唯一解不符——有不該放的守衛，或在該放守衛的格打了 ' + XI + '。',
+            conflict: (h) => h.sight && h.over
+                ? '醒目的格子違反了規則——有兩名守衛互相看到，且有數字柱旁的守衛過多。'
+                : h.sight
+                    ? '醒目的兩名守衛互相看到了——任兩名守衛都不能看到對方。'
+                    : '醒目的數字柱旁守衛太多了——數量必須剛好等於柱上的數字。',
             clueBulb: (n) => `數字柱逼出：醒目的 ${n} 格必須放守衛。`,
             clueNo: (n) => `數字柱已滿足：醒目的 ${n} 格不能放守衛（${XI}）。`,
             cover: () => '只有在這格放守衛，才能照亮醒目的暗格。',
@@ -391,6 +401,16 @@
 
     function computeHint() {
         const { ctx, clue, grid, solSet } = state;
+        // 1) A live rule break comes first — warn about the broken rule itself
+        //    rather than comparing against the solution.
+        const v = computeViolations();
+        if (v.badPairs.length || v.overClues.length) {
+            const cells = new Set();
+            for (const [i, j] of v.badPairs) { cells.add(i); cells.add(j); }
+            for (const w of v.overClues) cells.add(w);
+            return { kind: 'conflict', cells: [...cells], sight: v.badPairs.length > 0, over: v.overClues.length > 0 };
+        }
+        // 2) Otherwise, cells that disagree with the unique solution.
         const wrong = [];
         for (const i of ctx.whites) {
             if (grid[i] === BULB && !solSet.has(i)) wrong.push(i);
@@ -424,13 +444,14 @@
         const h = state.hint; if (!h || !state.hintBanner) return;
         const t = hintTexts();
         let html;
-        if (h.kind === 'wrong') html = t.wrong;
+        if (h.kind === 'conflict') html = t.conflict(h);
+        else if (h.kind === 'wrong') html = t.wrong;
         else if (h.kind === 'none') html = t.none;
         else if (h.reason === 'cover') html = t.cover();
         else html = (h.state === BULB) ? t.clueBulb(h.cells.length) : t.clueNo(h.cells.length);
         state.hintBanner.innerHTML = html;
         if (PC.icons && PC.icons.render) PC.icons.render(state.hintBanner);
-        state.hintBanner.classList.toggle('error', h.kind === 'wrong');
+        state.hintBanner.classList.toggle('error', h.kind === 'wrong' || h.kind === 'conflict');
         state.hintBanner.hidden = false;
     }
     function repaintHint() {
@@ -457,7 +478,7 @@
                 layer.appendChild(PC.svgEl('line', { class: 'lu-x lu-hint-ghost', 'stroke-width': sw, x1: x0 + cs - m, y1: y0 + m, x2: x0 + m, y2: y0 + cs - m }));
             }
         };
-        if (h.kind === 'wrong') { for (const i of h.cells) ring(i, true); return; }
+        if (h.kind === 'wrong' || h.kind === 'conflict') { for (const i of h.cells) ring(i, true); return; }
         // deduce: outline the source (numbered pillar, or for coverage the dark
         // cell being rescued) — unless it coincides with a highlighted cell.
         if (h.anchor >= 0 && h.cells.indexOf(h.anchor) === -1) {
