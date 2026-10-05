@@ -248,16 +248,24 @@
     // Generation
     // -----------------------------------------------------------------
     function randomLayout(N, rng, boost) {
-        // Denser walls for larger boards: long open lines make big boards almost
-        // never uniquely solvable, so yield collapses without this (≈0.5% at
-        // d=0.20 / N=16 vs ≈50% at d=0.38). `boost` nudges density up if a size
-        // is proving hard to fill.
-        const base = 0.24 + 0.14 * (N - 7) / 9;      // ~0.24 (7×7) → ~0.38 (16×16)
-        let p = base + (rng() * 0.06 - 0.03) + (boost || 0);
-        p = Math.max(0.18, Math.min(0.46, p));
+        // Moderate density: a board is only solvable by pure propagation (no
+        // guessing) once walls break it up enough — below ~0.28 almost nothing
+        // is. `boost` nudges it up if a size is proving hard to fill.
+        let p = 0.30 + (rng() * 0.05 - 0.025) + (boost || 0);
+        p = Math.max(0.22, Math.min(0.5, p));
         const wall = new Uint8Array(N * N);
         for (let i = 0; i < N * N; i++) if (rng() < p) wall[i] = 1;
         return wall;
+    }
+
+    // Propagation-only solve (no guessing). Fully solving ⟹ UNIQUE ⟹ every step
+    // is explainable by the tier-1 hint. Cheap and never explodes.
+    function propSolve(ctx, clue) {
+        const b = new Int8Array(ctx.N * ctx.N);
+        const r = propagate(ctx, clue, b);
+        if (!r.ok) return { solved: false, passes: r.passes };
+        for (const i of ctx.whites) if (b[i] === UNKNOWN) return { solved: false, passes: r.passes };
+        return { solved: true, passes: r.passes };
     }
 
     // A random valid bulb solution (no two see each other, all white lit).
@@ -301,36 +309,33 @@
         return clue;
     }
 
-    function attemptsFor(N) { return N <= 9 ? 70 : N <= 12 ? 50 : 40; }
+    function attemptsFor(N) { return N <= 10 ? 200 : N <= 13 ? 150 : 120; }
 
-    // One candidate from a given wall layout, or null if it isn't a clean,
-    // uniquely-solvable, logic-solvable board. Mutates nothing shared.
-    function buildCandidate(N, wall, rng) {
+    // One candidate from a wall layout, or null if it isn't fully solvable by
+    // pure propagation when every number is shown. Then tries to strip a
+    // `removeFrac` share of the numbers (keeping each removal only while it
+    // stays propagation-solvable). Fewer numbers ⟹ longer deduction chains ⟹
+    // harder, so `removeFrac` is the difficulty lever. Mutates nothing shared.
+    function buildCandidate(N, wall, rng, removeFrac) {
         const ctx = makeCtx(N, wall);
         if (ctx.whites.length < 4) return null;
         const sol = buildSolution(ctx, rng);
         if (!sol) return null;
         const full = deriveClues(ctx, sol);
-        if (countSolutions(ctx, full, 2) !== 1) return null; // not unique even fully shown
-        // Drop a random share of numbers while it stays uniquely solvable, so the
-        // shown-number ratio varies as a *style* (bounded re-checks for speed).
+        if (!propSolve(ctx, full).solved) return null; // ambiguous even fully numbered
         const clue = full.slice();
-        const wallsWithNum = [];
-        for (let i = 0; i < N * N; i++) if (clue[i] >= 0) wallsWithNum.push(i);
-        PC.rng.shuffle(wallsWithNum, rng);
-        const dropP = 0.25 + 0.65 * rng();
-        const trials = Math.min(wallsWithNum.length, 30);
-        for (let k = 0; k < trials; k++) {
-            const w = wallsWithNum[k];
-            if (rng() >= dropP) continue;
+        const walls = [];
+        for (let i = 0; i < N * N; i++) if (clue[i] >= 0) walls.push(i);
+        PC.rng.shuffle(walls, rng);
+        const tryCount = Math.round(walls.length * Math.max(0, Math.min(1, removeFrac)));
+        for (let k = 0; k < tryCount; k++) {
+            const w = walls[k];
             const saved = clue[w]; clue[w] = -1;
-            if (countSolutions(ctx, clue, 2) !== 1) clue[w] = saved;
+            if (!propSolve(ctx, clue).solved) clue[w] = saved;
         }
-        const st = solveTier(ctx, clue);
-        if (!st.solved) return null; // needs deeper than MAX_TRIAL → too guessy
-        const shown = wallsWithNum.filter((i) => clue[i] >= 0).length;
-        const ratio = wallsWithNum.length ? shown / wallsWithNum.length : 0;
-        return { wall, clue, sol, score: st.tier * 1000 + st.passes, tier: st.tier, passes: st.passes, ratio };
+        const fin = propSolve(ctx, clue);
+        let shown = 0; for (const w of walls) if (clue[w] >= 0) shown++;
+        return { wall, clue, sol, shown, total: walls.length, passes: fin.passes, ratio: walls.length ? shown / walls.length : 0 };
     }
 
     async function generate(size, difficulty, seed, onProgress) {
@@ -338,6 +343,10 @@
         const rng = PC.rng.make(seed >>> 0);
         const softCap = attemptsFor(N);
         const hardCap = softCap * 10;
+        // Minimisation aggressiveness per difficulty: Easy keeps most numbers
+        // (shallow), Hard strips to a near-minimal set (deep). Fewer numbers =
+        // harder, like real Akari.
+        const rfBase = difficulty === 'easy' ? 0.35 : difficulty === 'hard' ? 1.0 : 0.70;
         if (onProgress) await onProgress(0.03);
 
         // Collect a pool; keep going past softCap (nudging density up) only if we
@@ -346,26 +355,26 @@
         for (let t = 0; t < hardCap; t++) {
             if (t >= softCap && pool.length >= 1) break;
             const boost = Math.floor(t / softCap) * 0.05;
-            const cand = buildCandidate(N, randomLayout(N, rng, boost), rng);
+            const rf = Math.max(0, Math.min(1, rfBase + (rng() * 0.2 - 0.1)));
+            const cand = buildCandidate(N, randomLayout(N, rng, boost), rng, rf);
             if (cand) pool.push(cand);
             if (onProgress && (t & 7) === 0) await onProgress(0.03 + 0.9 * Math.min(1, (t + 1) / softCap));
         }
 
         if (onProgress) await onProgress(0.97);
         if (!pool.length) {
-            // Effectively unreachable (dense boards are easily unique), but never
-            // ship a blank board: keep trying at high density until one exists.
+            // Effectively unreachable, but never ship a blank board.
             for (let tries = 0; tries < 500 && !pool.length; tries++) {
-                const cand = buildCandidate(N, randomLayout(N, rng, 0.18), rng);
+                const cand = buildCandidate(N, randomLayout(N, rng, 0.18), rng, rfBase);
                 if (cand) pool.push(cand);
             }
         }
 
-        pool.sort((a, b) => a.score - b.score);
-        const idx = difficulty === 'easy' ? 0
-            : difficulty === 'hard' ? pool.length - 1
-                : Math.floor((pool.length - 1) * 0.5);
-        const chosen = pool[idx];
+        // Representative board: a chain-depth percentile within this difficulty's
+        // pool (easy = shallower end, hard = deeper end) — compounds with rfBase.
+        pool.sort((a, b) => a.passes - b.passes);
+        const pct = difficulty === 'easy' ? 0.3 : difficulty === 'hard' ? 0.8 : 0.5;
+        const chosen = pool[Math.round((pool.length - 1) * pct)];
 
         // Output grid: -2 white, -1 wall (no number), 0..4 wall (number).
         const grid = [];
@@ -385,7 +394,7 @@
             id: `lightup-${N}x${N}-${difficulty}-${(seed >>> 0).toString(36)}`,
             game: 'lightup', size: N, difficulty,
             grid, solution,
-            stats: { score: chosen.score, tier: chosen.tier, passes: chosen.passes, ratio: chosen.ratio, poolSize: pool.length },
+            stats: { score: chosen.passes, passes: chosen.passes, shown: chosen.shown, total: chosen.total, ratio: chosen.ratio, poolSize: pool.length },
         };
     }
 
