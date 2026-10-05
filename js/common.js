@@ -963,7 +963,7 @@
             lightupName: 'Guards',
             lightupTagline: 'Watch every corridor.',
             lightupCardBody:
-                'Post guards so every corridor is watched — none may see another, and numbered pillars fix how many stand beside them.',
+                'Post the right number of guards to watch the corridors — none may see another.',
             lightupBoardAria: 'Guards puzzle board',
             lightupToolsAria: 'Input mode',
             lightupToolCycle: 'Cycle',
@@ -1198,7 +1198,7 @@
             lightupName: 'Guards',
             lightupTagline: '看守每一條走廊。',
             lightupCardBody:
-                '部署守衛讓每條走廊都被看守——彼此不能互相看到，數字柱則限制周圍的守衛數。',
+                '部署符合數量的守衛看守走廊 — 彼此不能互相看到。',
             lightupBoardAria: '守衛盤面',
             lightupToolsAria: '輸入模式',
             lightupToolCycle: '循環',
