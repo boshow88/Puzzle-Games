@@ -1,0 +1,163 @@
+<!doctype html>
+<html lang="en"><head>
+  <meta charset="utf-8" />
+  <title>Light Up — generator self-test</title>
+  <style>
+    body { font: 13px/1.5 ui-monospace, Consolas, monospace; margin: 16px; }
+    .pass { color: #128a12; } .fail { color: #c0272d; font-weight: 700; }
+    table { border-collapse: collapse; margin: 10px 0; } th,td{border:1px solid #ccc;padding:2px 8px;text-align:right}
+    th:first-child,td:first-child{text-align:left}
+  </style>
+  <script src="../js/common.js"></script>
+  <script src="../js/generators/lightup.js"></script>
+</head>
+<body>
+  <h1 id="verdict">running…</h1>
+  <div id="tbl"></div>
+  <script>
+  (async function () {
+    try {
+    const G = window.PuzzleGenerators.lightup;
+    const I = window.PuzzleGenerators.lightupInternals;
+    const BULB = I.BULB, NOBULB = I.NOBULB;
+    const tick = () => Promise.resolve();
+    const out = []; let fails = 0;
+    const fail = (m) => { out.push('FAIL ' + m); fails++; };
+    const log = (s) => console.log('LUGEN ' + s);
+    const md = (a) => { a = a.slice().sort((x, y) => x - y); return a.length ? a[a.length >> 1] : -1; };
+    const mn = (a) => a.reduce((p, x) => Math.min(p, x), Infinity);
+    const mx = (a) => a.reduce((p, x) => Math.max(p, x), -Infinity);
+
+    // Rebuild wall + clue arrays from the shipped grid (-2 white / -1 wall / 0..4 wall-number).
+    function parse(p) {
+      const N = p.size; const wall = new Uint8Array(N * N); const clue = new Int8Array(N * N).fill(-1);
+      for (let r = 0; r < N; r++) for (let c = 0; c < N; c++) {
+        const v = p.grid[r][c], i = r * N + c;
+        if (v !== -2) { wall[i] = 1; if (v >= 0) clue[i] = v; }
+      }
+      return { N, wall, clue };
+    }
+
+    // INDEPENDENT solution counter: plain backtracking over white cells with
+    // visibility + clue pruning (shares no code with the generator's propagator).
+    function countIndep(N, wall, clue, cap) {
+      const ctx = I.makeCtx(N, wall); // geometry only (rays / wallNeigh / whites)
+      const { rays, wallNeigh, whites } = ctx;
+      // walls adjacent to each white cell (that carry a number)
+      const nearWalls = new Array(N * N);
+      for (const i of whites) {
+        const r = (i / N) | 0, c = i % N; const ws = [];
+        for (const [dr, dc] of [[-1,0],[1,0],[0,-1],[0,1]]) {
+          const rr = r + dr, cc = c + dc; const j = rr * N + cc;
+          if (rr>=0&&rr<N&&cc>=0&&cc<N && wall[j] && clue[j] >= 0) ws.push(j);
+        }
+        nearWalls[i] = ws;
+      }
+      const b = new Int8Array(N * N);
+      const conflict = (p) => { for (const j of rays[p]) if (b[j] === BULB) return true; return false; };
+      const wallPartialOk = (w) => {
+        let nb = 0, nu = 0;
+        for (const j of wallNeigh[w]) { if (b[j] === BULB) nb++; else if (b[j] === 0) nu++; }
+        return nb <= clue[w] && nb + nu >= clue[w];
+      };
+      const leafOk = () => {
+        for (let w = 0; w < N * N; w++) { if (!wall[w] || clue[w] < 0) continue; let nb = 0; for (const j of wallNeigh[w]) if (b[j] === BULB) nb++; if (nb !== clue[w]) return false; }
+        const lit = new Uint8Array(N * N);
+        for (const i of whites) if (b[i] === BULB) { lit[i] = 1; for (const j of rays[i]) lit[j] = 1; }
+        for (const i of whites) if (!lit[i]) return false;
+        return true;
+      };
+      let count = 0, nodes = 0, aborted = false;
+      (function rec(k) {
+        if (aborted || count >= cap) return;
+        if (++nodes > 2.5e6) { aborted = true; return; }
+        if (k === whites.length) { if (leafOk()) count++; return; }
+        const i = whites[k];
+        // try BULB
+        if (!conflict(i)) {
+          b[i] = BULB;
+          let ok = true; for (const w of nearWalls[i]) if (!wallPartialOk(w)) { ok = false; break; }
+          if (ok) rec(k + 1);
+          b[i] = 0;
+          if (aborted || count >= cap) return;
+        }
+        // try NOBULB
+        b[i] = NOBULB;
+        let ok2 = true; for (const w of nearWalls[i]) if (!wallPartialOk(w)) { ok2 = false; break; }
+        if (ok2) rec(k + 1);
+        b[i] = 0;
+      })(0);
+      return aborted ? -1 : count;
+    }
+
+    // Independent full-rule check of the shipped solution bulbs.
+    function solutionValid(p) {
+      const { N, wall, clue } = parse(p);
+      const ctx = I.makeCtx(N, wall);
+      const b = new Int8Array(N * N);
+      for (const [r, c] of p.solution) { if (wall[r * N + c]) return false; b[r * N + c] = BULB; }
+      // visibility
+      for (const i of ctx.whites) if (b[i] === BULB) for (const j of ctx.rays[i]) if (b[j] === BULB) return false;
+      // coverage
+      const lit = new Uint8Array(N * N);
+      for (const i of ctx.whites) if (b[i] === BULB) { lit[i] = 1; for (const j of ctx.rays[i]) lit[j] = 1; }
+      for (const i of ctx.whites) if (!lit[i]) return false;
+      // clues
+      for (let w = 0; w < N * N; w++) { if (!wall[w] || clue[w] < 0) continue; let nb = 0; for (const j of ctx.wallNeigh[w]) if (b[j] === BULB) nb++; if (nb !== clue[w]) return false; }
+      return true;
+    }
+
+    const SEEDS = [11, 29, 47, 61];
+    const rows = [];
+    for (const N of [7, 9, 11]) {
+      const byDiff = {};
+      for (const diff of ['easy', 'medium', 'hard']) {
+        const scores = [], tiers = [], ratios = [], times = [];
+        for (const s of SEEDS) {
+          const t0 = performance.now();
+          let p; try { p = await G(N, diff, s); } catch (e) { fail(`gen ${N} ${diff} #${s}: ${e && e.message}`); continue; }
+          times.push(performance.now() - t0);
+          if (!solutionValid(p)) fail(`${N} ${diff} #${s}: shipped solution breaks the rules`);
+          const { wall, clue } = parse(p);
+          const cnt = countIndep(N, wall, clue, 2);
+          if (cnt === 0) fail(`${N} ${diff} #${s}: independent counter found 0 solutions`);
+          else if (cnt >= 2) fail(`${N} ${diff} #${s}: NOT unique (≥2 solutions)`);
+          // logic-solvable within trial cap?
+          const st = I.solveTier(I.makeCtx(N, wall), clue);
+          if (!st.solved) fail(`${N} ${diff} #${s}: not logic-solvable within trial cap`);
+          scores.push(p.stats.score); tiers.push(p.stats.tier); ratios.push(+p.stats.ratio.toFixed(2));
+          await tick();
+        }
+        byDiff[diff] = md(scores);
+        rows.push({ key: `${N}×${N} ${diff}`, ms: Math.round(times.reduce((a,b)=>a+b,0)/Math.max(1,times.length)),
+          score: md(scores), tier: `${mn(tiers)}–${mx(tiers)}`, ratio: `${mn(ratios).toFixed(2)}–${mx(ratios).toFixed(2)}`, scores: scores.join(',') });
+      }
+      const e = byDiff.easy, m = byDiff.medium, h = byDiff.hard;
+      if (e >= 0 && m >= 0 && h >= 0 && !(h >= m && m >= e)) fail(`${N}: score not monotonic (E ${e} / M ${m} / H ${h})`);
+      await tick();
+    }
+
+    // Timing-only sweep for larger sizes (no independent recount).
+    const timing = [];
+    for (const N of [13, 15, 16]) {
+      const ts = [];
+      for (const s of [11, 29, 47]) { const t0 = performance.now(); try { await G(N, 'hard', s); } catch (e) { fail(`gen ${N} hard #${s}: ${e && e.message}`); } ts.push(performance.now() - t0); await tick(); }
+      timing.push(`N=${N} hard avg=${Math.round(ts.reduce((a,b)=>a+b,0)/ts.length)}ms max=${Math.round(mx(ts))}ms`);
+    }
+
+    let html = '<table><tr><th>config</th><th>avg ms</th><th>median score</th><th>tier range</th><th>ratio range</th><th>scores</th></tr>';
+    for (const r of rows) html += `<tr><td>${r.key}</td><td>${r.ms}</td><td>${r.score}</td><td>${r.tier}</td><td>${r.ratio}</td><td>${r.scores}</td></tr>`;
+    html += '</table><pre>' + timing.join('\n') + '\n\n' + out.join('\n') + '</pre>';
+    document.getElementById('tbl').innerHTML = html;
+    const v = document.getElementById('verdict');
+    v.textContent = fails === 0 ? 'ALL LIGHT UP CHECKS PASSED (unique + valid + monotonic)' : (fails + ' CHECK(S) FAILED');
+    v.className = fails === 0 ? 'pass' : 'fail';
+    log((fails === 0 ? 'PASS' : 'FAIL') + ' fails=' + fails);
+    for (const r of rows) log(`ROW ${r.key} | ms ${r.ms} | score ${r.score} | tier ${r.tier} | ratio ${r.ratio} | ${r.scores}`);
+    for (const line of timing) log('TIME ' + line);
+    for (const line of out) log('OUT ' + line);
+    } catch (err) { document.getElementById('verdict').textContent = 'ERROR: ' + (err && err.message); document.getElementById('verdict').className = 'fail'; console.log('LUGEN ERROR ' + (err && err.message) + ' | ' + (err && err.stack)); }
+  })();
+  </script>
+</body>
+</html>
