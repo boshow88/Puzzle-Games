@@ -952,7 +952,7 @@
             lightupHelp1Html:
                 'Post a <span class="inline-icon lu-ico-bulb" data-icon="user"></span> on a floor cell to watch its whole row and column — its view runs until a <strong>wall</strong> (pillar) or the edge.',
             lightupHelp2Html:
-                'No two <span class="inline-icon lu-ico-bulb" data-icon="user"></span> may see each other, and a numbered pillar must have <strong>exactly that many</strong> <span class="inline-icon lu-ico-bulb" data-icon="user"></span> in its four orthogonal neighbours.',
+                'The goal is to have <strong>every floor cell watched</strong>. No two <span class="inline-icon lu-ico-bulb" data-icon="user"></span> may see each other, and a numbered pillar must have <strong>exactly that many</strong> <span class="inline-icon lu-ico-bulb" data-icon="user"></span> in the cells directly next to it — up, down, left and right.',
             lightupHelp3Html:
                 'Pick an input mode — <span class="inline-icon lu-ico-cycle" data-icon="refresh-cw"></span> cycle, <span class="inline-icon lu-ico-bulb" data-icon="user"></span> guard, <span class="inline-icon lu-ico-mark" data-icon="x"></span> mark, <span class="inline-icon lu-ico-erase" data-icon="eraser"></span> erase — then tap or drag. <span class="inline-icon lu-ico-mark" data-icon="x"></span> is just your own “no guard here” note.',
             clearBoard: 'Clear the board',
@@ -1185,7 +1185,7 @@
             lightupHelp1Html:
                 '在地板格放上一名 <span class="inline-icon lu-ico-bulb" data-icon="user"></span>，看守其所在的整行與整列——視線會一直延伸，直到被<strong>牆</strong>（柱子）或邊界擋住。',
             lightupHelp2Html:
-                '任兩名 <span class="inline-icon lu-ico-bulb" data-icon="user"></span> <strong>不能</strong>互相看到；數字柱周圍四個正交鄰格裡，必須<strong>剛好</strong>有那麼多名 <span class="inline-icon lu-ico-bulb" data-icon="user"></span>。',
+                '目標是讓<strong>每一格地板都被看守</strong>。任兩名 <span class="inline-icon lu-ico-bulb" data-icon="user"></span> <strong>不能</strong>互相看到；數字柱在其上下左右緊鄰的格子裡，必須<strong>剛好</strong>有那麼多名 <span class="inline-icon lu-ico-bulb" data-icon="user"></span>。',
             lightupHelp3Html:
                 '選擇輸入模式 — <span class="inline-icon lu-ico-cycle" data-icon="refresh-cw"></span> 循環、<span class="inline-icon lu-ico-bulb" data-icon="user"></span> 守衛、<span class="inline-icon lu-ico-mark" data-icon="x"></span> 標記、<span class="inline-icon lu-ico-erase" data-icon="eraser"></span> 擦除 — 再點擊或拖曳。<span class="inline-icon lu-ico-mark" data-icon="x"></span> 只是你自己「這裡不放守衛」的記號。',
             clearBoard: '清空盤面',
