@@ -947,9 +947,9 @@
             lightupToolMark: 'Mark',
             lightupToolErase: 'Erase',
             lightupHelp1Html:
-                'Place <span class="inline-icon lu-ico-bulb" data-icon="lightbulb"></span> bulbs on white cells to light the whole board. A bulb shines across its row and column until a <strong>wall</strong> (dark cell) or the edge blocks it.',
+                'Place a <span class="inline-icon lu-ico-bulb" data-icon="lightbulb"></span> on white cells to light the whole board — it shines across its row and column until a <strong>wall</strong> (dark cell) or the edge.',
             lightupHelp2Html:
-                'Two bulbs may <strong>never</strong> shine on each other, and a numbered wall must have <strong>exactly that many</strong> bulbs in its four orthogonal neighbours.',
+                'No two <span class="inline-icon lu-ico-bulb" data-icon="lightbulb"></span> may shine on each other, and a numbered wall must hold <strong>exactly that many</strong> <span class="inline-icon lu-ico-bulb" data-icon="lightbulb"></span> in its four orthogonal neighbours.',
             lightupHelp3Html:
                 'Pick an input mode — <span class="inline-icon lu-ico-cycle" data-icon="refresh-cw"></span> cycle, <span class="inline-icon lu-ico-bulb" data-icon="lightbulb"></span> bulb, <span class="inline-icon lu-ico-mark" data-icon="x"></span> mark, <span class="inline-icon lu-ico-erase" data-icon="eraser"></span> erase — then tap or drag. <span class="inline-icon lu-ico-mark" data-icon="x"></span> is just your own “no bulb here” note.',
             clearBoard: 'Clear the board',
@@ -1172,7 +1172,7 @@
             lightupName: 'Light Up',
             lightupTagline: '點亮每個格子。',
             lightupCardBody:
-                '放置燈泡照亮整個盤面——兩盞燈不能互照,數字牆則限制周圍的燈泡數。',
+                '放置燈泡照亮整個盤面——兩盞燈不能互照，數字牆則限制周圍的燈泡數。',
             lightupBoardAria: 'Light Up 盤面',
             lightupToolsAria: '輸入模式',
             lightupToolCycle: '循環',
@@ -1180,9 +1180,9 @@
             lightupToolMark: '標記',
             lightupToolErase: '擦除',
             lightupHelp1Html:
-                '在白格放上 <span class="inline-icon lu-ico-bulb" data-icon="lightbulb"></span> 燈泡,照亮整個盤面。燈泡的光會沿著所在的行與列射出,直到被<strong>牆</strong>(深色格)或邊界擋住。',
+                '在白格放上一盞 <span class="inline-icon lu-ico-bulb" data-icon="lightbulb"></span>，照亮整個盤面——光會沿著所在的行與列射出，直到被<strong>牆</strong>（深色格）或邊界擋住。',
             lightupHelp2Html:
-                '兩盞燈泡<strong>絕不能</strong>互相照到;數字牆周圍四個正交鄰格裡,必須<strong>剛好</strong>有那麼多盞燈泡。',
+                '任兩盞 <span class="inline-icon lu-ico-bulb" data-icon="lightbulb"></span> <strong>不能</strong>互相照到；數字牆周圍四個正交鄰格裡，必須<strong>剛好</strong>有那麼多盞 <span class="inline-icon lu-ico-bulb" data-icon="lightbulb"></span>。',
             lightupHelp3Html:
                 '選擇輸入模式 — <span class="inline-icon lu-ico-cycle" data-icon="refresh-cw"></span> 循環、<span class="inline-icon lu-ico-bulb" data-icon="lightbulb"></span> 燈泡、<span class="inline-icon lu-ico-mark" data-icon="x"></span> 標記、<span class="inline-icon lu-ico-erase" data-icon="eraser"></span> 擦除 — 再點擊或拖曳。<span class="inline-icon lu-ico-mark" data-icon="x"></span> 只是你自己「這裡不放燈」的記號。',
             clearBoard: '清空盤面',
