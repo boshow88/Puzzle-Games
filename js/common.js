@@ -808,7 +808,7 @@
             queensHelp1Html:
                 'Click a cell to cycle through <strong>empty → × → <span class="inline-icon queen" data-icon="crown"></span></strong> (× is just a personal "no" marker).',
             queensHelp2Html:
-                'Every row, every column, every color region, and every 3×3 neighborhood may contain at most one <span class="inline-icon queen" data-icon="crown"></span>.',
+                'Every row, every column, and every color region may hold at most one <span class="inline-icon queen" data-icon="crown"></span>, and no two queens may occupy adjacent cells (including diagonal ones).',
             queensHelp3Html:
                 'Solve the board by placing exactly N <span class="inline-icon queen" data-icon="crown"></span> — one per row, column, and region — with no two adjacent.',
             // Queens hint texts. Wording is kept close to the trace-tool
@@ -936,7 +936,7 @@
             nonogramHelp1Html:
                 'Each clue number is a run of <strong>that many consecutive <span class="inline-icon nono-ico-fill" data-icon="square"></span> cells</strong>, in the listed order (left→right for rows, top→bottom for columns), with at least one gap between runs.',
             nonogramHelp2Html:
-                'Pick an input mode below — <span class="inline-icon nono-ico-cycle" data-icon="refresh-cw"></span> cycle (empty→fill→<span class="inline-icon nono-ico-mark" data-icon="x"></span>), <span class="inline-icon nono-ico-fill" data-icon="square"></span> fill, <span class="inline-icon nono-ico-mark" data-icon="x"></span> mark, or <span class="inline-icon nono-ico-erase" data-icon="eraser"></span> erase. Tap a cell to apply it (in fill/mark, tapping again clears it); when you drag, the first cell decides whether you add or remove.',
+                'Four input modes: <span class="inline-icon nono-ico-cycle" data-icon="refresh-cw"></span> cycle, <span class="inline-icon nono-ico-fill" data-icon="square"></span> fill, <span class="inline-icon nono-ico-mark" data-icon="x"></span> mark, <span class="inline-icon nono-ico-erase" data-icon="eraser"></span> erase. Tap to apply, or drag to paint from the first cell.',
             nonogramHelp3Html:
                 'Solved when the <span class="inline-icon nono-ico-fill" data-icon="square"></span> cells match every row and column clue.',
             lightupName: 'Guards',
@@ -950,11 +950,13 @@
             lightupToolMark: 'Mark',
             lightupToolErase: 'Erase',
             lightupHelp1Html:
-                'Post a <span class="inline-icon lu-ico-bulb" data-icon="user"></span> on a floor cell to watch its whole row and column — its view runs until a <strong>wall</strong> (pillar) or the edge.',
+                'Post a <span class="inline-icon lu-ico-bulb" data-icon="user"></span> on a white <strong>floor</strong> cell to watch its whole row and column; its view runs until it meets a black <strong>pillar</strong> or the board edge.',
             lightupHelp2Html:
-                'The goal is to have <strong>every floor cell watched</strong>. No two <span class="inline-icon lu-ico-bulb" data-icon="user"></span> may see each other, and a numbered pillar must have <strong>exactly that many</strong> <span class="inline-icon lu-ico-bulb" data-icon="user"></span> in the cells directly next to it — up, down, left and right.',
+                'No two <span class="inline-icon lu-ico-bulb" data-icon="user"></span> may see each other, and a numbered pillar must hold <strong>exactly that many</strong> <span class="inline-icon lu-ico-bulb" data-icon="user"></span> in the four cells next to it (up, down, left, right).',
             lightupHelp3Html:
-                'Pick an input mode — <span class="inline-icon lu-ico-cycle" data-icon="refresh-cw"></span> cycle, <span class="inline-icon lu-ico-bulb" data-icon="user"></span> guard, <span class="inline-icon lu-ico-mark" data-icon="x"></span> mark, <span class="inline-icon lu-ico-erase" data-icon="eraser"></span> erase — then tap or drag. <span class="inline-icon lu-ico-mark" data-icon="x"></span> is just your own “no guard here” note.',
+                'Four input modes: <span class="inline-icon lu-ico-cycle" data-icon="refresh-cw"></span> cycle, <span class="inline-icon lu-ico-bulb" data-icon="user"></span> guard, <span class="inline-icon lu-ico-mark" data-icon="x"></span> mark, <span class="inline-icon lu-ico-erase" data-icon="eraser"></span> erase. Tap to apply, or drag to paint from the first cell.',
+            lightupHelp4Html:
+                'Solved when every floor cell is watched and no rule is broken.',
             clearBoard: 'Clear the board',
             zipHelp1Html:
                 'Drag from the cell marked <strong>1</strong> to draw a path through every white cell.',
@@ -1049,7 +1051,7 @@
             queensHelp1Html:
                 '點擊格子在 <strong>空 → × → <span class="inline-icon queen" data-icon="crown"></span></strong> 之間循環（× 為個人「不放這」的標記）。',
             queensHelp2Html:
-                '每個列、每個行、每個色塊區域、每個 3×3 鄰域中，最多只能有一個 <span class="inline-icon queen" data-icon="crown"></span>。',
+                '每個列、每個行、每個色塊區域最多只能有一個 <span class="inline-icon queen" data-icon="crown"></span>，且任兩個皇后不能位於相鄰的格子（含對角）。',
             queensHelp3Html:
                 '在不違反規則的情況下放下 N 個 <span class="inline-icon queen" data-icon="crown"></span> 即過關 — 每列、每行、每區域各一，且不互相相鄰。',
             queensHintKindRow: '列',
@@ -1169,7 +1171,7 @@
             nonogramHelp1Html:
                 '每個線索數字代表一段<strong>連續的 <span class="inline-icon nono-ico-fill" data-icon="square"></span> 格</strong>，依數字順序排列（列由左到右、行由上到下），且段與段之間至少空一格。',
             nonogramHelp2Html:
-                '在下方選擇輸入模式 — <span class="inline-icon nono-ico-cycle" data-icon="refresh-cw"></span> 循環（空→填→<span class="inline-icon nono-ico-mark" data-icon="x"></span>）、<span class="inline-icon nono-ico-fill" data-icon="square"></span> 填滿、<span class="inline-icon nono-ico-mark" data-icon="x"></span> ✗、<span class="inline-icon nono-ico-erase" data-icon="eraser"></span> 擦除。點一下格子即套用（填滿／✗ 模式再點一次會清除）；拖曳時由起點決定是「加上」還是「擦掉」。',
+                '四種輸入模式：<span class="inline-icon nono-ico-cycle" data-icon="refresh-cw"></span> 循環、<span class="inline-icon nono-ico-fill" data-icon="square"></span> 填滿、<span class="inline-icon nono-ico-mark" data-icon="x"></span> 標記、<span class="inline-icon nono-ico-erase" data-icon="eraser"></span> 擦除。點一下套用，或從起點拖曳連續塗畫。',
             nonogramHelp3Html:
                 '當 <span class="inline-icon nono-ico-fill" data-icon="square"></span> 格子符合所有列與行的線索即過關。',
             lightupName: 'Guards',
@@ -1183,18 +1185,20 @@
             lightupToolMark: '標記',
             lightupToolErase: '擦除',
             lightupHelp1Html:
-                '在地板格放上一名 <span class="inline-icon lu-ico-bulb" data-icon="user"></span>，看守其所在的整行與整列——視線會一直延伸，直到被<strong>牆</strong>（柱子）或邊界擋住。',
+                '在白色的<strong>地板</strong>格上放一名 <span class="inline-icon lu-ico-bulb" data-icon="user"></span>，看守其整行與整列；視線會一直延伸，直到被黑色的<strong>柱子</strong>或邊界擋住。',
             lightupHelp2Html:
-                '目標是讓<strong>每一格地板都被看守</strong>。任兩名 <span class="inline-icon lu-ico-bulb" data-icon="user"></span> <strong>不能</strong>互相看到；數字柱在其上下左右緊鄰的格子裡，必須<strong>剛好</strong>有那麼多名 <span class="inline-icon lu-ico-bulb" data-icon="user"></span>。',
+                '任兩名 <span class="inline-icon lu-ico-bulb" data-icon="user"></span> <strong>不能</strong>互相看到；有數字的柱子，其上下左右緊鄰的 <span class="inline-icon lu-ico-bulb" data-icon="user"></span> 數必須<strong>剛好</strong>等於該數字。',
             lightupHelp3Html:
-                '選擇輸入模式 — <span class="inline-icon lu-ico-cycle" data-icon="refresh-cw"></span> 循環、<span class="inline-icon lu-ico-bulb" data-icon="user"></span> 守衛、<span class="inline-icon lu-ico-mark" data-icon="x"></span> 標記、<span class="inline-icon lu-ico-erase" data-icon="eraser"></span> 擦除 — 再點擊或拖曳。<span class="inline-icon lu-ico-mark" data-icon="x"></span> 只是你自己「這裡不放守衛」的記號。',
+                '四種輸入模式：<span class="inline-icon lu-ico-cycle" data-icon="refresh-cw"></span> 循環、<span class="inline-icon lu-ico-bulb" data-icon="user"></span> 守衛、<span class="inline-icon lu-ico-mark" data-icon="x"></span> 標記、<span class="inline-icon lu-ico-erase" data-icon="eraser"></span> 擦除。點一下套用，或從起點拖曳連續塗畫。',
+            lightupHelp4Html:
+                '當每一格地板都被看守、且沒有違反任何規則時即過關。',
             clearBoard: '清空盤面',
             zipHelp1Html:
                 '從標示 <strong>1</strong> 的格子開始拖曳，畫一條經過每個白色格子的路徑。',
             zipHelp2Html:
                 '依數字順序通過檢查點 — <strong>1 → 2 → 3 → … → N</strong>。',
             zipHelp3Html:
-                '路徑不能越過黑色 <strong>牆</strong>；只能沿上下左右正交方向移動。',
+                '路徑不能越過黑色<strong>牆</strong>；只能沿上下左右正交方向移動。',
             zipHelp4:
                 '可以從路徑上任何一格重新拖曳 — 該格之後的部分都會被取消。',
             zipHelp5: '當路徑覆蓋每個白格，且檢查點都依序通過時即過關。',

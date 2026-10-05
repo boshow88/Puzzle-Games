@@ -643,7 +643,7 @@
 }
 
 /* Inline help-text icons (crown / sun / moon inside "How to play"). */
-.inline-icon.queen { color: #111827; }
+.inline-icon.queen { color: #475569; }
 .inline-icon.sun   { color: #f5a623; }
 .inline-icon.moon  { color: #4a6fa5; }
 
@@ -1181,7 +1181,7 @@
 .nono-tool-ico.fill .icon { fill: currentColor; }
 
 /* Inline help-text state icons (mirroring the board/modes). */
-.inline-icon.nono-ico-cycle { color: var(--game-color, #7c3aed); }
+.inline-icon.nono-ico-cycle { color: #94a3b8; }
 .inline-icon.nono-ico-fill { color: #64748b; }
 .inline-icon.nono-ico-fill .icon { fill: currentColor; }
 .inline-icon.nono-ico-mark { color: #94a3b8; }
@@ -1313,8 +1313,8 @@
 .lu-hint-anchor { fill: none; stroke: var(--game-color, #4f46e5); stroke-width: 2.5; stroke-dasharray: 4 3; pointer-events: none; }
 
 /* Inline help icons. */
-.inline-icon.lu-ico-bulb { color: #1e293b; }
-.inline-icon.lu-ico-cycle { color: var(--game-color, #4f46e5); }
+.inline-icon.lu-ico-bulb { color: #64748b; }
+.inline-icon.lu-ico-cycle { color: #94a3b8; }
 .inline-icon.lu-ico-mark { color: #94a3b8; }
 .inline-icon.lu-ico-erase { color: #94a3b8; }
 
