@@ -1297,7 +1297,16 @@
 .lu-grid-line.heavy { stroke: #1f2937; stroke-width: 3; stroke-linecap: square; }
 /* "Watched" shading across every floor cell a guard's view reaches; stronger on win. */
 .lu-lit { fill: #c7d2fe; opacity: 0.5; pointer-events: none; }
-.lu-lit.won { opacity: 0.72; }
+/* Win: every watched corridor sweeps to a warm "all secure" gold in a diagonal
+   ripple (per-cell animation-delay set inline); the guards pop to attention in
+   the same wave via the shared board-symbol-pop. Gold matches the collection's
+   victory accent. */
+.lu-lit.won { fill: #facc15; opacity: 0.72; animation: lu-win-sweep 0.5s ease both; }
+@keyframes lu-win-sweep {
+    0%   { fill: #c7d2fe; opacity: 0.5; }
+    45%  { fill: #fef08a; opacity: 0.95; }
+    100% { fill: #facc15; opacity: 0.72; }
+}
 .lu-x { stroke: #94a3b8; stroke-width: 3; stroke-linecap: round; pointer-events: none; }
 
 /* Guards (dark slate); red when two guards can see each other. */

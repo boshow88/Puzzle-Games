@@ -247,10 +247,13 @@
         for (const w of state.displayed.overClues) dispOver.add(w);
 
         const lit = computeLit();
+        const sweepStep = 260 / N; // keeps the diagonal win sweep ~0.5s at any size
         for (const i of ctx.whites) {
             if (!lit[i]) continue;
             const r = (i / N) | 0, c = i % N;
-            litLayer.appendChild(PC.svgEl('rect', { class: 'lu-lit' + (won ? ' won' : ''), x: c * cs, y: r * cs, width: cs, height: cs }));
+            const rect = PC.svgEl('rect', { class: 'lu-lit' + (won ? ' won' : ''), x: c * cs, y: r * cs, width: cs, height: cs });
+            if (won) rect.style.animationDelay = ((r + c) * sweepStep) + 'ms';
+            litLayer.appendChild(rect);
         }
 
         // Wall-number over-satisfied colouring (from the debounced display set).
@@ -266,8 +269,11 @@
             const cx = c * cs + cs / 2, cy = r * cs + cs / 2;
             if (grid[i] === BULB) {
                 const bad = !won && dispBad.has(i);
-                const g = PC.boardIcon(EMITTER_ICON, cx, cy, bulbSize, { className: 'lu-bulb' + (bad ? ' bad' : '') + (won ? ' won' : '') });
-                if (g) symLayer.appendChild(g);
+                const g = PC.boardIcon(EMITTER_ICON, cx, cy, bulbSize, { className: 'lu-bulb' + (bad ? ' bad' : '') + (won ? ' won' : ''), pop: won });
+                if (g) {
+                    if (won && g.firstChild) g.firstChild.style.animationDelay = ((r + c) * sweepStep) + 'ms';
+                    symLayer.appendChild(g);
+                }
             } else if (grid[i] === XMARK && !won) {
                 const m = cs * 0.3, sw = Math.max(1.4, cs * 0.06), x0 = c * cs, y0 = r * cs;
                 symLayer.appendChild(PC.svgEl('line', { class: 'lu-x', 'stroke-width': sw, x1: x0 + m, y1: y0 + m, x2: x0 + cs - m, y2: y0 + cs - m }));
