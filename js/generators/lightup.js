@@ -210,20 +210,28 @@
     // marks. `b` = UNKNOWN/BULB/NOBULB (the game's empty/bulb/✗ map 1:1).
     // Returns { cell, state:BULB|NOBULB, reason:'clue'|'sight'|'cover' } or null.
     // -----------------------------------------------------------------
+    // Returns a *group* of cells forced by one source, so the hint can present
+    // them together: { cells:[...], state:BULB|NOBULB, reason, anchor } where
+    // anchor is the source wall/bulb index (-1 for coverage). null if nothing.
     function nextStep(ctx, clue, b) {
         const { N, wall, rays, wallNeigh, whites } = ctx;
+        // 1. A numbered wall that forces any of its neighbours → all of them.
         for (let i = 0; i < N * N; i++) {
             if (!wall[i] || clue[i] < 0) continue;
-            const ns = wallNeigh[i];
-            let nb = 0, nu = 0, firstU = -1;
-            for (const j of ns) { if (b[j] === BULB) nb++; else if (b[j] === UNKNOWN) { nu++; if (firstU < 0) firstU = j; } }
-            if (nu > 0 && nb === clue[i]) return { cell: firstU, state: NOBULB, reason: 'clue', wall: i };
-            if (nu > 0 && nb + nu === clue[i]) return { cell: firstU, state: BULB, reason: 'clue', wall: i };
+            let nb = 0, nu = 0; const unknowns = [];
+            for (const j of wallNeigh[i]) { if (b[j] === BULB) nb++; else if (b[j] === UNKNOWN) { nu++; unknowns.push(j); } }
+            if (nu === 0) continue;
+            if (nb === clue[i]) return { cells: unknowns, state: NOBULB, reason: 'clue', anchor: i };
+            if (nb + nu === clue[i]) return { cells: unknowns, state: BULB, reason: 'clue', anchor: i };
         }
+        // 2. A placed bulb's line of sight → every unknown cell it rules out.
         for (const i of whites) {
             if (b[i] !== BULB) continue;
-            for (const j of rays[i]) if (b[j] === UNKNOWN) return { cell: j, state: NOBULB, reason: 'sight', from: i };
+            const uns = [];
+            for (const j of rays[i]) if (b[j] === UNKNOWN) uns.push(j);
+            if (uns.length) return { cells: uns, state: NOBULB, reason: 'sight', anchor: i };
         }
+        // 3. Coverage: a dark cell with a single possible lighter (one at a time).
         const lit = new Uint8Array(N * N);
         for (const i of whites) if (b[i] === BULB) { lit[i] = 1; for (const j of rays[i]) lit[j] = 1; }
         for (const i of whites) {
@@ -231,7 +239,7 @@
             let only = -1, cnt = 0;
             if (b[i] !== NOBULB) { only = i; cnt++; }
             for (const j of rays[i]) { if (b[j] !== NOBULB) { only = j; cnt++; if (cnt > 1) break; } }
-            if (cnt === 1 && b[only] === UNKNOWN) return { cell: only, state: BULB, reason: 'cover' };
+            if (cnt === 1 && b[only] === UNKNOWN) return { cells: [only], state: BULB, reason: 'cover', anchor: -1 };
         }
         return null;
     }

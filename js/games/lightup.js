@@ -311,25 +311,25 @@
     const HINT_TEXTS = {
         en: {
             wrong: 'The highlighted cell(s) disagree with the unique solution — a bulb that shouldn’t be there, or a ✗ where a bulb belongs.',
-            clueBulb: 'A numbered wall forces it: this cell must hold a bulb.',
-            clueNo: 'A numbered wall is already satisfied: this cell can’t hold a bulb (✗).',
-            sight: 'This cell is in an existing bulb’s line of sight — it can’t hold a bulb (✗).',
-            cover: 'This is the only cell that can still light a dark cell — it must hold a bulb.',
+            clueBulb: (n) => `A numbered wall forces it: the ${n} highlighted cell(s) must hold a bulb.`,
+            clueNo: (n) => `A numbered wall is already satisfied: the ${n} highlighted cell(s) can’t hold a bulb (✗).`,
+            sight: (n) => `In this bulb’s line of sight, the ${n} highlighted cell(s) can’t hold a bulb (✗).`,
+            cover: () => 'This is the only cell that can still light a dark cell — it must hold a bulb.',
             none: 'No basic deduction is available right now (it may need trial reasoning).',
         },
         zh: {
-            wrong: '醒目格與唯一解不符——有不該放的燈泡,或在該放燈的格打了 ✗。',
-            clueBulb: '數字牆逼出:這格必須放燈泡。',
-            clueNo: '數字牆已滿足:這格不能放燈泡(打 ✗)。',
-            sight: '這格在既有燈泡的視線上——不能放燈泡(打 ✗)。',
-            cover: '只剩這格能照亮某個暗格——必須放燈泡。',
-            none: '目前沒有基礎可推的下一步(可能需要假設推理)。',
+            wrong: '醒目格與唯一解不符——有不該放的燈泡，或在該放燈的格打了 ✗。',
+            clueBulb: (n) => `數字牆逼出：醒目的 ${n} 格必須放燈泡。`,
+            clueNo: (n) => `數字牆已滿足：醒目的 ${n} 格不能放燈泡（打 ✗）。`,
+            sight: (n) => `這盞燈泡的視線上，醒目的 ${n} 格不能放燈泡（打 ✗）。`,
+            cover: () => '只剩這格能照亮某個暗格——必須放燈泡。',
+            none: '目前沒有基礎可推的下一步（可能需要假設推理）。',
         },
     };
     function hintTexts() { const l = (PC.i18n && PC.i18n.locale) || 'en'; return HINT_TEXTS[l] || HINT_TEXTS.en; }
 
     function computeHint() {
-        const { N, ctx, clue, grid, solSet } = state;
+        const { ctx, clue, grid, solSet } = state;
         const wrong = [];
         for (const i of ctx.whites) {
             if (grid[i] === BULB && !solSet.has(i)) wrong.push(i);
@@ -337,7 +337,7 @@
         }
         if (wrong.length) return { kind: 'wrong', cells: wrong };
         const step = LU.nextStep(ctx, clue, grid);
-        if (step) return { kind: 'deduce', cell: step.cell, state: step.state, reason: step.reason };
+        if (step) return { kind: 'deduce', cells: step.cells, state: step.state, reason: step.reason, anchor: step.anchor };
         return null;
     }
 
@@ -360,9 +360,12 @@
         let text;
         if (h.kind === 'wrong') text = t.wrong;
         else if (h.kind === 'none') text = t.none;
-        else if (h.reason === 'clue') text = (h.state === BULB) ? t.clueBulb : t.clueNo;
-        else if (h.reason === 'sight') text = t.sight;
-        else text = t.cover;
+        else {
+            const n = h.cells.length;
+            if (h.reason === 'clue') text = (h.state === BULB) ? t.clueBulb(n) : t.clueNo(n);
+            else if (h.reason === 'sight') text = t.sight(n);
+            else text = t.cover();
+        }
         state.hintBanner.textContent = text;
         state.hintBanner.classList.toggle('error', h.kind === 'wrong');
         state.hintBanner.hidden = false;
@@ -380,18 +383,27 @@
                 width: cs * 0.84, height: cs * 0.84, rx: cs * 0.14, ry: cs * 0.14,
             }));
         };
+        const ghost = (i) => {
+            const r = (i / N) | 0, c = i % N, cx = c * cs + cs / 2, cy = r * cs + cs / 2;
+            if (h.state === BULB) {
+                const g = PC.boardIcon('lightbulb', cx, cy, cs * 0.6, { className: 'lu-bulb lu-hint-ghost' });
+                if (g) layer.appendChild(g);
+            } else {
+                const m = cs * 0.32, x0 = c * cs, y0 = r * cs;
+                layer.appendChild(PC.svgEl('line', { class: 'lu-x lu-hint-ghost', x1: x0 + m, y1: y0 + m, x2: x0 + cs - m, y2: y0 + cs - m }));
+                layer.appendChild(PC.svgEl('line', { class: 'lu-x lu-hint-ghost', x1: x0 + cs - m, y1: y0 + m, x2: x0 + m, y2: y0 + cs - m }));
+            }
+        };
         if (h.kind === 'wrong') { for (const i of h.cells) ring(i, true); return; }
-        // deduce: ring the cell + a ghost of the suggested action.
-        const r = (h.cell / N) | 0, c = h.cell % N, cx = c * cs + cs / 2, cy = r * cs + cs / 2;
-        if (h.state === BULB) {
-            const g = PC.boardIcon('lightbulb', cx, cy, cs * 0.6, { className: 'lu-bulb lu-hint-ghost' });
-            if (g) layer.appendChild(g);
-        } else {
-            const m = cs * 0.32, x0 = c * cs, y0 = r * cs;
-            layer.appendChild(PC.svgEl('line', { class: 'lu-x lu-hint-ghost', x1: x0 + m, y1: y0 + m, x2: x0 + cs - m, y2: y0 + cs - m }));
-            layer.appendChild(PC.svgEl('line', { class: 'lu-x lu-hint-ghost', x1: x0 + cs - m, y1: y0 + m, x2: x0 + m, y2: y0 + cs - m }));
+        // deduce: outline the source (anchor), then ghost + ring every forced cell.
+        if (h.anchor >= 0) {
+            const ar = (h.anchor / N) | 0, ac = h.anchor % N;
+            layer.appendChild(PC.svgEl('rect', {
+                class: 'lu-hint-anchor', x: ac * cs + cs * 0.06, y: ar * cs + cs * 0.06,
+                width: cs * 0.88, height: cs * 0.88, rx: cs * 0.1, ry: cs * 0.1,
+            }));
         }
-        ring(h.cell, false);
+        for (const i of h.cells) { ghost(i); ring(i, false); }
     }
 
     // -----------------------------------------------------------------
