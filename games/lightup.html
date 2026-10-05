@@ -3,12 +3,12 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Light Up · Puzzle Games</title>
+    <title>Sentinels · Puzzle Games</title>
     <link rel="icon" type="image/svg+xml" href="../favicon.svg">
     <link rel="stylesheet" href="../css/common.css">
     <link rel="stylesheet" href="../css/game.css">
     <style>
-        body { --game-color: #0d9488; }
+        body { --game-color: #4f46e5; }
     </style>
 </head>
 <body>
@@ -19,8 +19,8 @@
                 <span data-i18n="menu">Menu</span>
             </a>
             <div class="game-title">
-                <span class="game-icon" data-icon="lightbulb" aria-hidden="true"></span>
-                <span data-i18n="lightupName">Light Up</span>
+                <span class="game-icon" data-icon="user" aria-hidden="true"></span>
+                <span data-i18n="lightupName">Sentinels</span>
             </div>
             <div class="lang-toggle" id="lang-toggle" role="radiogroup" data-i18n-aria-label="language">
                 <button type="button" data-lang="en" role="radio" aria-checked="true">EN</button>
@@ -104,8 +104,8 @@
             <button type="button" class="lu-tool active" data-mode="cycle" role="radio" aria-checked="true" data-i18n-aria-label="lightupToolCycle" aria-label="Cycle" data-i18n-title="lightupToolCycle" title="Cycle">
                 <span class="lu-tool-ico cycle" data-icon="refresh-cw" aria-hidden="true"></span>
             </button>
-            <button type="button" class="lu-tool" data-mode="bulb" role="radio" aria-checked="false" data-i18n-aria-label="lightupToolBulb" aria-label="Bulb" data-i18n-title="lightupToolBulb" title="Bulb">
-                <span class="lu-tool-ico bulb" data-icon="lightbulb" aria-hidden="true"></span>
+            <button type="button" class="lu-tool" data-mode="bulb" role="radio" aria-checked="false" data-i18n-aria-label="lightupToolBulb" aria-label="Guard" data-i18n-title="lightupToolBulb" title="Guard">
+                <span class="lu-tool-ico bulb" data-icon="user" aria-hidden="true"></span>
             </button>
             <button type="button" class="lu-tool" data-mode="block" role="radio" aria-checked="false" data-i18n-aria-label="lightupToolMark" aria-label="Mark" data-i18n-title="lightupToolMark" title="Mark">
                 <span class="lu-tool-ico mark" data-icon="x" aria-hidden="true"></span>
@@ -120,9 +120,9 @@
         <section class="game-footer">
             <h4 data-i18n="howToPlay">How to play</h4>
             <ul>
-                <li data-i18n="lightupHelp1Html">Place a <span class="inline-icon lu-ico-bulb" data-icon="lightbulb"></span> on white cells to light the whole board — it shines across its row and column until a <strong>wall</strong> (dark cell) or the edge.</li>
-                <li data-i18n="lightupHelp2Html">No two <span class="inline-icon lu-ico-bulb" data-icon="lightbulb"></span> may shine on each other, and a numbered wall must hold <strong>exactly that many</strong> <span class="inline-icon lu-ico-bulb" data-icon="lightbulb"></span> in its four orthogonal neighbours.</li>
-                <li data-i18n="lightupHelp3Html">Pick an input mode — <span class="inline-icon lu-ico-cycle" data-icon="refresh-cw"></span> cycle, <span class="inline-icon lu-ico-bulb" data-icon="lightbulb"></span> bulb, <span class="inline-icon lu-ico-mark" data-icon="x"></span> mark, <span class="inline-icon lu-ico-erase" data-icon="eraser"></span> erase — then tap or drag. <span class="inline-icon lu-ico-mark" data-icon="x"></span> is just your own "no bulb here" note.</li>
+                <li data-i18n="lightupHelp1Html">Post a <span class="inline-icon lu-ico-bulb" data-icon="user"></span> on a floor cell to watch its whole row and column — its view runs until a <strong>wall</strong> (pillar) or the edge.</li>
+                <li data-i18n="lightupHelp2Html">No two <span class="inline-icon lu-ico-bulb" data-icon="user"></span> may see each other, and a numbered pillar must have <strong>exactly that many</strong> <span class="inline-icon lu-ico-bulb" data-icon="user"></span> in its four orthogonal neighbours.</li>
+                <li data-i18n="lightupHelp3Html">Pick an input mode — <span class="inline-icon lu-ico-cycle" data-icon="refresh-cw"></span> cycle, <span class="inline-icon lu-ico-bulb" data-icon="user"></span> guard, <span class="inline-icon lu-ico-mark" data-icon="x"></span> mark, <span class="inline-icon lu-ico-erase" data-icon="eraser"></span> erase — then tap or drag. <span class="inline-icon lu-ico-mark" data-icon="x"></span> is just your own "no guard here" note.</li>
             </ul>
         </section>
     </div>

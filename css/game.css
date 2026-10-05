@@ -1295,26 +1295,26 @@
 .lu-wall-num.over { fill: #ff8a8a; }
 .lu-grid-line { stroke: rgba(0, 0, 0, 0.18); stroke-width: 1; }
 .lu-grid-line.heavy { stroke: #1f2937; stroke-width: 3; stroke-linecap: square; }
-/* Lit glow across every white cell a bulb reaches; brighter on win. */
-.lu-lit { fill: #fde68a; opacity: 0.5; pointer-events: none; }
+/* "Watched" shading across every floor cell a guard's view reaches; stronger on win. */
+.lu-lit { fill: #c7d2fe; opacity: 0.5; pointer-events: none; }
 .lu-lit.won { opacity: 0.72; }
 .lu-x { stroke: #94a3b8; stroke-width: 3; stroke-linecap: round; pointer-events: none; }
 
-/* Bulbs (amber); red when two bulbs see each other. */
-.board-icon.lu-bulb { color: #f59e0b; }
+/* Guards (dark slate); red when two guards can see each other. */
+.board-icon.lu-bulb { color: #1e293b; }
 .board-icon.lu-bulb.bad { color: var(--accent-danger, #dc3545); }
-.board-icon.lu-reveal { color: #f59e0b; opacity: 0.4; }
+.board-icon.lu-reveal { color: #4f46e5; opacity: 0.4; }
 .lu-hint-ghost { opacity: 0.55; }
 
-/* Hint (theme teal, contrasts the amber bulbs); red for wrong marks. */
-.lu-hint-ring { fill: none; stroke: var(--game-color, #0d9488); stroke-width: 3; pointer-events: none; animation: zip-hint-pulse 1.15s ease-in-out infinite; }
+/* Hint (theme indigo, contrasts the dark guards); red for wrong marks. */
+.lu-hint-ring { fill: none; stroke: var(--game-color, #4f46e5); stroke-width: 3; pointer-events: none; animation: zip-hint-pulse 1.15s ease-in-out infinite; }
 .lu-hint-ring.wrong { stroke: var(--accent-danger, #dc3545); fill: rgba(220, 53, 69, 0.15); }
-/* The source (numbered wall / bulb) a batched hint comes from. */
-.lu-hint-anchor { fill: none; stroke: var(--game-color, #0d9488); stroke-width: 2.5; stroke-dasharray: 4 3; pointer-events: none; }
+/* The source (numbered pillar / guard) a batched hint comes from. */
+.lu-hint-anchor { fill: none; stroke: var(--game-color, #4f46e5); stroke-width: 2.5; stroke-dasharray: 4 3; pointer-events: none; }
 
 /* Inline help icons. */
-.inline-icon.lu-ico-bulb { color: #f59e0b; }
-.inline-icon.lu-ico-cycle { color: var(--game-color, #0d9488); }
+.inline-icon.lu-ico-bulb { color: #1e293b; }
+.inline-icon.lu-ico-cycle { color: var(--game-color, #4f46e5); }
 .inline-icon.lu-ico-mark { color: #94a3b8; }
 .inline-icon.lu-ico-erase { color: #94a3b8; }
 

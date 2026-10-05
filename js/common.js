@@ -284,6 +284,9 @@
             + '<path d="M21 3v5h-5"/>'
             + '<path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"/>'
             + '<path d="M3 21v-5h5"/>',
+        user:
+            '<path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"/>'
+            + '<circle cx="12" cy="7" r="4"/>',
         'gamepad-2':
             '<line x1="6" x2="10" y1="11" y2="11"/>'
             + '<line x1="8" x2="8" y1="9" y2="13"/>'
@@ -936,22 +939,22 @@
                 'Pick an input mode below — <span class="inline-icon nono-ico-cycle" data-icon="refresh-cw"></span> cycle (empty→fill→<span class="inline-icon nono-ico-mark" data-icon="x"></span>), <span class="inline-icon nono-ico-fill" data-icon="square"></span> fill, <span class="inline-icon nono-ico-mark" data-icon="x"></span> mark, or <span class="inline-icon nono-ico-erase" data-icon="eraser"></span> erase. Tap a cell to apply it (in fill/mark, tapping again clears it); when you drag, the first cell decides whether you add or remove.',
             nonogramHelp3Html:
                 'Solved when the <span class="inline-icon nono-ico-fill" data-icon="square"></span> cells match every row and column clue.',
-            lightupName: 'Light Up',
-            lightupTagline: 'Light every square.',
+            lightupName: 'Sentinels',
+            lightupTagline: 'Watch every corridor.',
             lightupCardBody:
-                'Place bulbs to light the whole grid — no two may shine on each other, and numbered walls fix the count.',
-            lightupBoardAria: 'Light Up puzzle board',
+                'Post guards so every corridor is watched — none may see another, and numbered pillars fix how many stand beside them.',
+            lightupBoardAria: 'Sentinels puzzle board',
             lightupToolsAria: 'Input mode',
             lightupToolCycle: 'Cycle',
-            lightupToolBulb: 'Bulb',
+            lightupToolBulb: 'Guard',
             lightupToolMark: 'Mark',
             lightupToolErase: 'Erase',
             lightupHelp1Html:
-                'Place a <span class="inline-icon lu-ico-bulb" data-icon="lightbulb"></span> on white cells to light the whole board — it shines across its row and column until a <strong>wall</strong> (dark cell) or the edge.',
+                'Post a <span class="inline-icon lu-ico-bulb" data-icon="user"></span> on a floor cell to watch its whole row and column — its view runs until a <strong>wall</strong> (pillar) or the edge.',
             lightupHelp2Html:
-                'No two <span class="inline-icon lu-ico-bulb" data-icon="lightbulb"></span> may shine on each other, and a numbered wall must hold <strong>exactly that many</strong> <span class="inline-icon lu-ico-bulb" data-icon="lightbulb"></span> in its four orthogonal neighbours.',
+                'No two <span class="inline-icon lu-ico-bulb" data-icon="user"></span> may see each other, and a numbered pillar must have <strong>exactly that many</strong> <span class="inline-icon lu-ico-bulb" data-icon="user"></span> in its four orthogonal neighbours.',
             lightupHelp3Html:
-                'Pick an input mode — <span class="inline-icon lu-ico-cycle" data-icon="refresh-cw"></span> cycle, <span class="inline-icon lu-ico-bulb" data-icon="lightbulb"></span> bulb, <span class="inline-icon lu-ico-mark" data-icon="x"></span> mark, <span class="inline-icon lu-ico-erase" data-icon="eraser"></span> erase — then tap or drag. <span class="inline-icon lu-ico-mark" data-icon="x"></span> is just your own “no bulb here” note.',
+                'Pick an input mode — <span class="inline-icon lu-ico-cycle" data-icon="refresh-cw"></span> cycle, <span class="inline-icon lu-ico-bulb" data-icon="user"></span> guard, <span class="inline-icon lu-ico-mark" data-icon="x"></span> mark, <span class="inline-icon lu-ico-erase" data-icon="eraser"></span> erase — then tap or drag. <span class="inline-icon lu-ico-mark" data-icon="x"></span> is just your own “no guard here” note.',
             clearBoard: 'Clear the board',
             zipHelp1Html:
                 'Drag from the cell marked <strong>1</strong> to draw a path through every white cell.',
@@ -1169,22 +1172,22 @@
                 '在下方選擇輸入模式 — <span class="inline-icon nono-ico-cycle" data-icon="refresh-cw"></span> 循環（空→填→<span class="inline-icon nono-ico-mark" data-icon="x"></span>）、<span class="inline-icon nono-ico-fill" data-icon="square"></span> 填滿、<span class="inline-icon nono-ico-mark" data-icon="x"></span> ✗、<span class="inline-icon nono-ico-erase" data-icon="eraser"></span> 擦除。點一下格子即套用（填滿／✗ 模式再點一次會清除）；拖曳時由起點決定是「加上」還是「擦掉」。',
             nonogramHelp3Html:
                 '當 <span class="inline-icon nono-ico-fill" data-icon="square"></span> 格子符合所有列與行的線索即過關。',
-            lightupName: 'Light Up',
-            lightupTagline: '點亮每個格子。',
+            lightupName: '守衛',
+            lightupTagline: '看守每一條走廊。',
             lightupCardBody:
-                '放置燈泡照亮整個盤面——兩盞燈不能互照，數字牆則限制周圍的燈泡數。',
-            lightupBoardAria: 'Light Up 盤面',
+                '部署守衛讓每條走廊都被看守——彼此不能互相看到，數字柱則限制周圍的守衛數。',
+            lightupBoardAria: '守衛盤面',
             lightupToolsAria: '輸入模式',
             lightupToolCycle: '循環',
-            lightupToolBulb: '燈泡',
+            lightupToolBulb: '守衛',
             lightupToolMark: '標記',
             lightupToolErase: '擦除',
             lightupHelp1Html:
-                '在白格放上一盞 <span class="inline-icon lu-ico-bulb" data-icon="lightbulb"></span>，照亮整個盤面——光會沿著所在的行與列射出，直到被<strong>牆</strong>（深色格）或邊界擋住。',
+                '在地板格放上一名 <span class="inline-icon lu-ico-bulb" data-icon="user"></span>，看守其所在的整行與整列——視線會一直延伸，直到被<strong>牆</strong>（柱子）或邊界擋住。',
             lightupHelp2Html:
-                '任兩盞 <span class="inline-icon lu-ico-bulb" data-icon="lightbulb"></span> <strong>不能</strong>互相照到；數字牆周圍四個正交鄰格裡，必須<strong>剛好</strong>有那麼多盞 <span class="inline-icon lu-ico-bulb" data-icon="lightbulb"></span>。',
+                '任兩名 <span class="inline-icon lu-ico-bulb" data-icon="user"></span> <strong>不能</strong>互相看到；數字柱周圍四個正交鄰格裡，必須<strong>剛好</strong>有那麼多名 <span class="inline-icon lu-ico-bulb" data-icon="user"></span>。',
             lightupHelp3Html:
-                '選擇輸入模式 — <span class="inline-icon lu-ico-cycle" data-icon="refresh-cw"></span> 循環、<span class="inline-icon lu-ico-bulb" data-icon="lightbulb"></span> 燈泡、<span class="inline-icon lu-ico-mark" data-icon="x"></span> 標記、<span class="inline-icon lu-ico-erase" data-icon="eraser"></span> 擦除 — 再點擊或拖曳。<span class="inline-icon lu-ico-mark" data-icon="x"></span> 只是你自己「這裡不放燈」的記號。',
+                '選擇輸入模式 — <span class="inline-icon lu-ico-cycle" data-icon="refresh-cw"></span> 循環、<span class="inline-icon lu-ico-bulb" data-icon="user"></span> 守衛、<span class="inline-icon lu-ico-mark" data-icon="x"></span> 標記、<span class="inline-icon lu-ico-erase" data-icon="eraser"></span> 擦除 — 再點擊或拖曳。<span class="inline-icon lu-ico-mark" data-icon="x"></span> 只是你自己「這裡不放守衛」的記號。',
             clearBoard: '清空盤面',
             zipHelp1Html:
                 '從標示 <strong>1</strong> 的格子開始拖曳，畫一條經過每個白色格子的路徑。',

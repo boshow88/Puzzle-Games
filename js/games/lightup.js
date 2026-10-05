@@ -1,17 +1,19 @@
 /**
- * Light Up (Akari) — game UI.
+ * Sentinels (Akari reskin) — game UI.
  *
  * Consumes window.PuzzleGenerators.lightup + the shared shell. Input mirrors
- * Nonogram's four modes (Cycle / Bulb / Mark ✗ / Erase): a tap cycles/toggles a
- * white cell, a drag paints the content decided by its start cell. Bulbs light
- * their row/column until a wall; win when every white cell is lit, no two bulbs
- * see each other, and every numbered wall is exact.
+ * Nonogram's four modes (Cycle / Guard / Mark ✗ / Erase): a tap cycles/toggles a
+ * floor cell, a drag paints the content decided by its start cell. A guard
+ * watches its row/column until a wall (pillar); win when every floor cell is
+ * watched, no two guards see each other, and every numbered pillar is exact.
+ * (Internally the emitter is still called "bulb"/BULB — the Akari core.)
  */
 (function () {
     'use strict';
 
     const PC = window.PuzzleCommon;
     const LU = window.PuzzleSolvers.lightup;
+    const EMITTER_ICON = 'user'; // the guard symbol (theme: Sentinels)
     const BOARD = 480;
 
     // Player marks (chosen so they equal the solver's UNKNOWN/BULB/NOBULB).
@@ -207,7 +209,7 @@
             const cx = c * cs + cs / 2, cy = r * cs + cs / 2;
             if (grid[i] === BULB) {
                 const bad = !won && bulbSeesBulb(i);
-                const g = PC.boardIcon('lightbulb', cx, cy, bulbSize, { className: 'lu-bulb' + (bad ? ' bad' : '') + (won ? ' won' : '') });
+                const g = PC.boardIcon(EMITTER_ICON, cx, cy, bulbSize, { className: 'lu-bulb' + (bad ? ' bad' : '') + (won ? ' won' : '') });
                 if (g) symLayer.appendChild(g);
             } else if (grid[i] === XMARK && !won) {
                 const m = cs * 0.3, x0 = c * cs, y0 = r * cs;
@@ -310,19 +312,19 @@
     // -----------------------------------------------------------------
     const HINT_TEXTS = {
         en: {
-            wrong: 'The highlighted cell(s) disagree with the unique solution — a bulb that shouldn’t be there, or a ✗ where a bulb belongs.',
-            clueBulb: (n) => `A numbered wall forces it: the ${n} highlighted cell(s) must hold a bulb.`,
-            clueNo: (n) => `A numbered wall is already satisfied: the ${n} highlighted cell(s) can’t hold a bulb (✗).`,
-            sight: (n) => `In this bulb’s line of sight, the ${n} highlighted cell(s) can’t hold a bulb (✗).`,
-            cover: () => 'This is the only cell that can still light a dark cell — it must hold a bulb.',
+            wrong: 'The highlighted cell(s) disagree with the unique solution — a guard that shouldn’t be there, or a ✗ where a guard belongs.',
+            clueBulb: (n) => `A numbered pillar forces it: the ${n} highlighted cell(s) must hold a guard.`,
+            clueNo: (n) => `A numbered pillar is already satisfied: the ${n} highlighted cell(s) can’t hold a guard (✗).`,
+            sight: (n) => `In this guard’s line of sight, the ${n} highlighted cell(s) can’t hold a guard (✗).`,
+            cover: () => 'This is the only cell that can still watch an unwatched corridor — it must hold a guard.',
             none: 'No basic deduction is available right now (it may need trial reasoning).',
         },
         zh: {
-            wrong: '醒目格與唯一解不符——有不該放的燈泡，或在該放燈的格打了 ✗。',
-            clueBulb: (n) => `數字牆逼出：醒目的 ${n} 格必須放燈泡。`,
-            clueNo: (n) => `數字牆已滿足：醒目的 ${n} 格不能放燈泡（打 ✗）。`,
-            sight: (n) => `這盞燈泡的視線上，醒目的 ${n} 格不能放燈泡（打 ✗）。`,
-            cover: () => '只剩這格能照亮某個暗格——必須放燈泡。',
+            wrong: '醒目格與唯一解不符——有不該放的守衛，或在該放守衛的格打了 ✗。',
+            clueBulb: (n) => `數字柱逼出：醒目的 ${n} 格必須放守衛。`,
+            clueNo: (n) => `數字柱已滿足：醒目的 ${n} 格不能放守衛（打 ✗）。`,
+            sight: (n) => `這名守衛的視線上，醒目的 ${n} 格不能放守衛（打 ✗）。`,
+            cover: () => '只剩這格能看守某條沒被看守的走廊——必須放守衛。',
             none: '目前沒有基礎可推的下一步（可能需要假設推理）。',
         },
     };
@@ -386,7 +388,7 @@
         const ghost = (i) => {
             const r = (i / N) | 0, c = i % N, cx = c * cs + cs / 2, cy = r * cs + cs / 2;
             if (h.state === BULB) {
-                const g = PC.boardIcon('lightbulb', cx, cy, cs * 0.6, { className: 'lu-bulb lu-hint-ghost' });
+                const g = PC.boardIcon(EMITTER_ICON, cx, cy, cs * 0.6, { className: 'lu-bulb lu-hint-ghost' });
                 if (g) layer.appendChild(g);
             } else {
                 const m = cs * 0.32, x0 = c * cs, y0 = r * cs;
@@ -436,7 +438,7 @@
             const { N, cs } = state;
             for (const i of state.solSet) {
                 const r = (i / N) | 0, c = i % N;
-                const g = PC.boardIcon('lightbulb', c * cs + cs / 2, r * cs + cs / 2, cs * 0.6, { className: 'lu-reveal' });
+                const g = PC.boardIcon(EMITTER_ICON, c * cs + cs / 2, r * cs + cs / 2, cs * 0.6, { className: 'lu-reveal' });
                 if (g) layer.appendChild(g);
             }
         }
