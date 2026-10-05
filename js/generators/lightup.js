@@ -215,23 +215,18 @@
     // anchor is the source wall/bulb index (-1 for coverage). null if nothing.
     function nextStep(ctx, clue, b) {
         const { N, wall, rays, wallNeigh, whites } = ctx;
-        // 1. A numbered wall that forces any of its neighbours → all of them.
+        // The caller virtually ✗'es every cell already in a guard's sight, so we
+        // never surface "already-watched" shadow cells. We therefore surface
+        // productive GUARD placements first, then genuine (non-shadow) exclusions.
+
+        // Pass 1a — a numbered pillar whose remaining open neighbours must all be guards.
         for (let i = 0; i < N * N; i++) {
             if (!wall[i] || clue[i] < 0) continue;
             let nb = 0, nu = 0; const unknowns = [];
             for (const j of wallNeigh[i]) { if (b[j] === BULB) nb++; else if (b[j] === UNKNOWN) { nu++; unknowns.push(j); } }
-            if (nu === 0) continue;
-            if (nb === clue[i]) return { cells: unknowns, state: NOBULB, reason: 'clue', anchor: i };
-            if (nb + nu === clue[i]) return { cells: unknowns, state: BULB, reason: 'clue', anchor: i };
+            if (nu > 0 && nb + nu === clue[i]) return { cells: unknowns, state: BULB, reason: 'clue', anchor: i };
         }
-        // 2. A placed bulb's line of sight → every unknown cell it rules out.
-        for (const i of whites) {
-            if (b[i] !== BULB) continue;
-            const uns = [];
-            for (const j of rays[i]) if (b[j] === UNKNOWN) uns.push(j);
-            if (uns.length) return { cells: uns, state: NOBULB, reason: 'sight', anchor: i };
-        }
-        // 3. Coverage: a dark cell with a single possible lighter (one at a time).
+        // Pass 1b — a still-dark cell with a single possible watcher → place it there.
         const lit = new Uint8Array(N * N);
         for (const i of whites) if (b[i] === BULB) { lit[i] = 1; for (const j of rays[i]) lit[j] = 1; }
         for (const i of whites) {
@@ -239,7 +234,14 @@
             let only = -1, cnt = 0;
             if (b[i] !== NOBULB) { only = i; cnt++; }
             for (const j of rays[i]) { if (b[j] !== NOBULB) { only = j; cnt++; if (cnt > 1) break; } }
-            if (cnt === 1 && b[only] === UNKNOWN) return { cells: [only], state: BULB, reason: 'cover', anchor: -1 };
+            if (cnt === 1 && b[only] === UNKNOWN) return { cells: [only], state: BULB, reason: 'cover', anchor: i };
+        }
+        // Pass 2 — a genuine exclusion: a satisfied pillar forbids guards on the rest.
+        for (let i = 0; i < N * N; i++) {
+            if (!wall[i] || clue[i] < 0) continue;
+            let nb = 0; const unknowns = [];
+            for (const j of wallNeigh[i]) { if (b[j] === BULB) nb++; else if (b[j] === UNKNOWN) unknowns.push(j); }
+            if (unknowns.length && nb === clue[i]) return { cells: unknowns, state: NOBULB, reason: 'clue', anchor: i };
         }
         return null;
     }

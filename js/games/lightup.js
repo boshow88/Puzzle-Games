@@ -310,22 +310,21 @@
     // -----------------------------------------------------------------
     // Hints — wrong marks first, else the next basic deduction.
     // -----------------------------------------------------------------
+    const XI = '<span class="inline-icon lu-ico-mark" data-icon="x"></span>'; // the ✗ mark as an icon
     const HINT_TEXTS = {
         en: {
-            wrong: 'The highlighted cell(s) disagree with the unique solution — a guard that shouldn’t be there, or a ✗ where a guard belongs.',
+            wrong: 'The highlighted cell(s) disagree with the solution — a guard that shouldn’t be there, or a ' + XI + ' where a guard belongs.',
             clueBulb: (n) => `A numbered pillar forces it: the ${n} highlighted cell(s) must hold a guard.`,
-            clueNo: (n) => `A numbered pillar is already satisfied: the ${n} highlighted cell(s) can’t hold a guard (✗).`,
-            sight: (n) => `In this guard’s line of sight, the ${n} highlighted cell(s) can’t hold a guard (✗).`,
-            cover: () => 'This is the only cell that can still watch an unwatched corridor — it must hold a guard.',
-            none: 'No basic deduction is available right now (it may need trial reasoning).',
+            clueNo: (n) => `A numbered pillar is already satisfied — the ${n} highlighted cell(s) can’t hold a guard (${XI}).`,
+            cover: () => 'Only a guard here can watch the highlighted dark cell.',
+            none: 'Nothing more to deduce right now.',
         },
         zh: {
-            wrong: '醒目格與唯一解不符——有不該放的守衛，或在該放守衛的格打了 ✗。',
+            wrong: '醒目格與唯一解不符——有不該放的守衛，或在該放守衛的格打了 ' + XI + '。',
             clueBulb: (n) => `數字柱逼出：醒目的 ${n} 格必須放守衛。`,
-            clueNo: (n) => `數字柱已滿足：醒目的 ${n} 格不能放守衛（打 ✗）。`,
-            sight: (n) => `這名守衛的視線上，醒目的 ${n} 格不能放守衛（打 ✗）。`,
-            cover: () => '只剩這格能看守某條沒被看守的走廊——必須放守衛。',
-            none: '目前沒有基礎可推的下一步（可能需要假設推理）。',
+            clueNo: (n) => `數字柱已滿足：醒目的 ${n} 格不能放守衛（${XI}）。`,
+            cover: () => '只有在這格放守衛，才能照亮醒目的暗格。',
+            none: '目前沒有可推的下一步。',
         },
     };
     function hintTexts() { const l = (PC.i18n && PC.i18n.locale) || 'en'; return HINT_TEXTS[l] || HINT_TEXTS.en; }
@@ -338,7 +337,12 @@
             else if (grid[i] === XMARK && solSet.has(i)) wrong.push(i);
         }
         if (wrong.length) return { kind: 'wrong', cells: wrong };
-        const step = LU.nextStep(ctx, clue, grid);
+        // Treat every cell already in a placed guard's sight as a virtual ✗, so
+        // the hint never nags you to mark "already-watched" cells — it surfaces
+        // guards to place and only genuine (non-shadow) exclusions.
+        const aug = grid.slice();
+        for (const i of ctx.whites) if (aug[i] === BULB) for (const j of ctx.rays[i]) if (aug[j] === EMPTY) aug[j] = XMARK;
+        const step = LU.nextStep(ctx, clue, aug);
         if (step) return { kind: 'deduce', cells: step.cells, state: step.state, reason: step.reason, anchor: step.anchor };
         return null;
     }
@@ -359,16 +363,13 @@
     function renderHintBanner() {
         const h = state.hint; if (!h || !state.hintBanner) return;
         const t = hintTexts();
-        let text;
-        if (h.kind === 'wrong') text = t.wrong;
-        else if (h.kind === 'none') text = t.none;
-        else {
-            const n = h.cells.length;
-            if (h.reason === 'clue') text = (h.state === BULB) ? t.clueBulb(n) : t.clueNo(n);
-            else if (h.reason === 'sight') text = t.sight(n);
-            else text = t.cover();
-        }
-        state.hintBanner.textContent = text;
+        let html;
+        if (h.kind === 'wrong') html = t.wrong;
+        else if (h.kind === 'none') html = t.none;
+        else if (h.reason === 'cover') html = t.cover();
+        else html = (h.state === BULB) ? t.clueBulb(h.cells.length) : t.clueNo(h.cells.length);
+        state.hintBanner.innerHTML = html;
+        if (PC.icons && PC.icons.render) PC.icons.render(state.hintBanner);
         state.hintBanner.classList.toggle('error', h.kind === 'wrong');
         state.hintBanner.hidden = false;
     }
@@ -397,8 +398,9 @@
             }
         };
         if (h.kind === 'wrong') { for (const i of h.cells) ring(i, true); return; }
-        // deduce: outline the source (anchor), then ghost + ring every forced cell.
-        if (h.anchor >= 0) {
+        // deduce: outline the source (numbered pillar, or for coverage the dark
+        // cell being rescued) — unless it coincides with a highlighted cell.
+        if (h.anchor >= 0 && h.cells.indexOf(h.anchor) === -1) {
             const ar = (h.anchor / N) | 0, ac = h.anchor % N;
             layer.appendChild(PC.svgEl('rect', {
                 class: 'lu-hint-anchor', x: ac * cs + cs * 0.06, y: ar * cs + cs * 0.06,
