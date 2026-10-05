@@ -20,13 +20,14 @@ so the rule sections below only mention game-specific deviations.
   size, clearing the timer.
 - **Reset**: clears everything the player has placed / drawn, but
   keeps the same puzzle.
-- **Undo** (Queens, Tango, Sudoku): steps back through your recent
-  moves — up to ~20, and a Reset counts as one step. `Ctrl`/`⌘`+`Z`
-  also works. Cleared on New Game.
+- **Undo** (all games): steps back through your recent moves — up to
+  ~20, and a Reset counts as one step. `Ctrl`/`⌘`+`Z` also works.
+  Cleared on New Game.
 - **Reveal**: toggles a faint overlay of the intended solution.
   In the cell-toggle games (Queens, Tango, Sudoku) it shows a small
   hint glyph in the corner of each editable cell; in Zip it draws the
-  canonical path under the player's line.
+  canonical path under the player's line; in Patches it outlines the
+  solution rectangles; in Nonogram it overlays the solved filled cells.
 - **Timer**: starts on New Game / size / difficulty change; stops on
   win.
 - **Violation feedback** (Queens, Tango, Sudoku): rule breaks are
@@ -318,7 +319,7 @@ its number clues, revealing a hidden picture.
 
 ### Board
 
-- N×N grid, with N from **5×5** to **12×12**.
+- N×N grid, with N from **6×6** to **16×16**.
 - Each **row** and **column** carries a clue: the ordered run-lengths of
   its filled cells. `3 1` means a run of 3 filled cells, then a gap of at
   least one empty cell, then a run of 1. A clue of `0` (shown faint) means
@@ -348,6 +349,11 @@ its number clues, revealing a hidden picture.
   whether to **fill** (solid square) or **mark `✗`** (cross), with a
   banner summarising the counts. Press again to dismiss.
 - **Reveal (?)**: overlays the solved picture.
+- A row's or column's **clue lights up** (a soft purple band) the instant its
+  filled runs match it exactly — a quick "this line's numbers are accounted
+  for" cue. It clears again if you change the line so it no longer matches.
+  (It reflects only the clue, not the hidden solution, so a coincidental match
+  still lights up. Empty `0` lines are never marked.)
 - **Undo (↶ / Ctrl+Z)**: steps back one brush action at a time (up to 20);
   Reset is undoable too, until you win.
 

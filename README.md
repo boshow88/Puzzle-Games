@@ -14,7 +14,7 @@ Pure static HTML/CSS/JS — deployable on GitHub Pages.
 | Tango  | Playable      | Dummy in-browser puzzle generator              |
 | Sudoku | Playable      | 6×6 / 9×9 / 12×12, notes, undo, shareable links |
 | Zip    | Playable      | Drag-to-draw path, unique-solution generator (checkpoints + walls), hint, undo & share, 5×5 – 12×12 |
-| Nonogram | Playable    | Line-logic generator/solver (unique boards), Fill/Mark/Clear brush, fill-vs-✗ hints, win animation, undo & share, 5×5 – 12×12 |
+| Nonogram | Playable    | Line-logic generator/solver (unique boards), Fill/Mark/Clear brush, fill-vs-✗ hints, clue-complete highlight, win animation, undo & share, 6×6 – 16×16 |
 
 Full rule reference: [`docs/rules.md`](docs/rules.md).
 
