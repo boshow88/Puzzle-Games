@@ -209,10 +209,10 @@
                     layer.appendChild(PC.svgEl('rect', attrs));
                 } else if (v === BLOCK) {
                     // The player's ✗ marks stay on the board, even after winning.
-                    const m = cs * 0.28;
+                    const m = cs * 0.28, sw = Math.max(1.4, cs * 0.06);
                     const x0 = ox + c * cs, y0 = oy + r * cs;
-                    layer.appendChild(PC.svgEl('line', { class: 'nono-x', x1: x0 + m, y1: y0 + m, x2: x0 + cs - m, y2: y0 + cs - m }));
-                    layer.appendChild(PC.svgEl('line', { class: 'nono-x', x1: x0 + cs - m, y1: y0 + m, x2: x0 + m, y2: y0 + cs - m }));
+                    layer.appendChild(PC.svgEl('line', { class: 'nono-x', 'stroke-width': sw, x1: x0 + m, y1: y0 + m, x2: x0 + cs - m, y2: y0 + cs - m }));
+                    layer.appendChild(PC.svgEl('line', { class: 'nono-x', 'stroke-width': sw, x1: x0 + cs - m, y1: y0 + m, x2: x0 + m, y2: y0 + cs - m }));
                 }
             }
         }
@@ -492,9 +492,9 @@
                         }));
                     }
                 } else {
-                    const m = cs * 0.3;
-                    layer.appendChild(PC.svgEl('line', { class: 'nono-hint-x', x1: x0 + m, y1: y0 + m, x2: x0 + cs - m, y2: y0 + cs - m }));
-                    layer.appendChild(PC.svgEl('line', { class: 'nono-hint-x', x1: x0 + cs - m, y1: y0 + m, x2: x0 + m, y2: y0 + cs - m }));
+                    const m = cs * 0.3, sw = Math.max(1.4, cs * 0.06);
+                    layer.appendChild(PC.svgEl('line', { class: 'nono-hint-x', 'stroke-width': sw, x1: x0 + m, y1: y0 + m, x2: x0 + cs - m, y2: y0 + cs - m }));
+                    layer.appendChild(PC.svgEl('line', { class: 'nono-hint-x', 'stroke-width': sw, x1: x0 + cs - m, y1: y0 + m, x2: x0 + m, y2: y0 + cs - m }));
                 }
                 layer.appendChild(PC.svgEl('rect', {
                     class: 'nono-hint-ring', x: x0 + cs * 0.1, y: y0 + cs * 0.1,

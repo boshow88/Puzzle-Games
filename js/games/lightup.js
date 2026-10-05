@@ -267,9 +267,9 @@
                 const g = PC.boardIcon(EMITTER_ICON, cx, cy, bulbSize, { className: 'lu-bulb' + (bad ? ' bad' : '') + (won ? ' won' : '') });
                 if (g) symLayer.appendChild(g);
             } else if (grid[i] === XMARK && !won) {
-                const m = cs * 0.3, x0 = c * cs, y0 = r * cs;
-                symLayer.appendChild(PC.svgEl('line', { class: 'lu-x', x1: x0 + m, y1: y0 + m, x2: x0 + cs - m, y2: y0 + cs - m }));
-                symLayer.appendChild(PC.svgEl('line', { class: 'lu-x', x1: x0 + cs - m, y1: y0 + m, x2: x0 + m, y2: y0 + cs - m }));
+                const m = cs * 0.3, sw = Math.max(1.4, cs * 0.06), x0 = c * cs, y0 = r * cs;
+                symLayer.appendChild(PC.svgEl('line', { class: 'lu-x', 'stroke-width': sw, x1: x0 + m, y1: y0 + m, x2: x0 + cs - m, y2: y0 + cs - m }));
+                symLayer.appendChild(PC.svgEl('line', { class: 'lu-x', 'stroke-width': sw, x1: x0 + cs - m, y1: y0 + m, x2: x0 + m, y2: y0 + cs - m }));
             }
         }
     }
@@ -450,9 +450,9 @@
                 const g = PC.boardIcon(EMITTER_ICON, cx, cy, cs * 0.6, { className: 'lu-bulb lu-hint-ghost' });
                 if (g) layer.appendChild(g);
             } else {
-                const m = cs * 0.32, x0 = c * cs, y0 = r * cs;
-                layer.appendChild(PC.svgEl('line', { class: 'lu-x lu-hint-ghost', x1: x0 + m, y1: y0 + m, x2: x0 + cs - m, y2: y0 + cs - m }));
-                layer.appendChild(PC.svgEl('line', { class: 'lu-x lu-hint-ghost', x1: x0 + cs - m, y1: y0 + m, x2: x0 + m, y2: y0 + cs - m }));
+                const m = cs * 0.32, sw = Math.max(1.4, cs * 0.06), x0 = c * cs, y0 = r * cs;
+                layer.appendChild(PC.svgEl('line', { class: 'lu-x lu-hint-ghost', 'stroke-width': sw, x1: x0 + m, y1: y0 + m, x2: x0 + cs - m, y2: y0 + cs - m }));
+                layer.appendChild(PC.svgEl('line', { class: 'lu-x lu-hint-ghost', 'stroke-width': sw, x1: x0 + cs - m, y1: y0 + m, x2: x0 + m, y2: y0 + cs - m }));
             }
         };
         if (h.kind === 'wrong') { for (const i of h.cells) ring(i, true); return; }
