@@ -1257,6 +1257,66 @@
 .nono-reveal { fill: var(--game-color, #7c3aed); opacity: 0.4; pointer-events: none; }
 
 /* ----------------------------------------------------------------
+   Light Up (Akari)
+   ---------------------------------------------------------------- */
+/* Input-mode selector — four minimal icon-only buttons (shares Nonogram's look). */
+.lu-tools {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: var(--space-sm);
+    width: 100%;
+    max-width: 480px;
+    margin: var(--space-md) auto 0;
+}
+.lu-tool {
+    appearance: none;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 10px 0;
+    border: 1px solid var(--border-strong);
+    background: var(--bg-secondary);
+    color: var(--text-secondary);
+    font-size: 1.4rem;
+    line-height: 1;
+    border-radius: var(--radius-md);
+    cursor: pointer;
+    transition: background var(--transition-fast), border-color var(--transition-fast),
+        color var(--transition-fast), transform var(--transition-fast);
+}
+.lu-tool:hover { background: var(--bg-hover); border-color: var(--text-muted); }
+.lu-tool:active { transform: translateY(1px); }
+.lu-tool.active { background: var(--game-color, var(--accent-primary)); border-color: var(--game-color, var(--accent-primary)); color: var(--text-on-accent); }
+
+/* Board: white cells, dark walls, numbers on walls. */
+.lu-cell { fill: #ffffff; }
+.lu-wall { fill: #334155; }
+.lu-wall-num { fill: #e8edf3; font-family: var(--font-body); font-weight: 700; user-select: none; }
+.lu-wall-num.over { fill: #ff8a8a; }
+.lu-grid-line { stroke: rgba(0, 0, 0, 0.18); stroke-width: 1; }
+.lu-grid-line.heavy { stroke: #1f2937; stroke-width: 3; stroke-linecap: square; }
+/* Lit glow across every white cell a bulb reaches; brighter on win. */
+.lu-lit { fill: #fde68a; opacity: 0.5; pointer-events: none; }
+.lu-lit.won { opacity: 0.72; }
+.lu-x { stroke: #94a3b8; stroke-width: 3; stroke-linecap: round; pointer-events: none; }
+
+/* Bulbs (amber); red when two bulbs see each other. */
+.board-icon.lu-bulb { color: #f59e0b; }
+.board-icon.lu-bulb.bad { color: var(--accent-danger, #dc3545); }
+.board-icon.lu-reveal { color: #f59e0b; opacity: 0.4; }
+.lu-hint-ghost { opacity: 0.55; }
+
+/* Hint (theme teal, contrasts the amber bulbs); red for wrong marks. */
+.lu-hint-ring { fill: none; stroke: var(--game-color, #0d9488); stroke-width: 3; pointer-events: none; animation: zip-hint-pulse 1.15s ease-in-out infinite; }
+.lu-hint-ring.wrong { stroke: var(--accent-danger, #dc3545); fill: rgba(220, 53, 69, 0.15); }
+
+/* Inline help icons. */
+.inline-icon.lu-ico-bulb { color: #f59e0b; }
+.inline-icon.lu-ico-cycle { color: var(--game-color, #0d9488); }
+.inline-icon.lu-ico-mark { color: #94a3b8; }
+.inline-icon.lu-ico-erase { color: #94a3b8; }
+
+/* ----------------------------------------------------------------
    Help / footer hints
    ---------------------------------------------------------------- */
 

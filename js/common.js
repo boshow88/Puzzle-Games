@@ -936,6 +936,22 @@
                 'Pick an input mode below — <span class="inline-icon nono-ico-cycle" data-icon="refresh-cw"></span> cycle (empty→fill→<span class="inline-icon nono-ico-mark" data-icon="x"></span>), <span class="inline-icon nono-ico-fill" data-icon="square"></span> fill, <span class="inline-icon nono-ico-mark" data-icon="x"></span> mark, or <span class="inline-icon nono-ico-erase" data-icon="eraser"></span> erase. Tap a cell to apply it (in fill/mark, tapping again clears it); when you drag, the first cell decides whether you add or remove.',
             nonogramHelp3Html:
                 'Solved when the <span class="inline-icon nono-ico-fill" data-icon="square"></span> cells match every row and column clue.',
+            lightupName: 'Light Up',
+            lightupTagline: 'Light every square.',
+            lightupCardBody:
+                'Place bulbs to light the whole grid — no two may shine on each other, and numbered walls fix the count.',
+            lightupBoardAria: 'Light Up puzzle board',
+            lightupToolsAria: 'Input mode',
+            lightupToolCycle: 'Cycle',
+            lightupToolBulb: 'Bulb',
+            lightupToolMark: 'Mark',
+            lightupToolErase: 'Erase',
+            lightupHelp1Html:
+                'Place <span class="inline-icon lu-ico-bulb" data-icon="lightbulb"></span> bulbs on white cells to light the whole board. A bulb shines across its row and column until a <strong>wall</strong> (dark cell) or the edge blocks it.',
+            lightupHelp2Html:
+                'Two bulbs may <strong>never</strong> shine on each other, and a numbered wall must have <strong>exactly that many</strong> bulbs in its four orthogonal neighbours.',
+            lightupHelp3Html:
+                'Pick an input mode — <span class="inline-icon lu-ico-cycle" data-icon="refresh-cw"></span> cycle, <span class="inline-icon lu-ico-bulb" data-icon="lightbulb"></span> bulb, <span class="inline-icon lu-ico-mark" data-icon="x"></span> mark, <span class="inline-icon lu-ico-erase" data-icon="eraser"></span> erase — then tap or drag. <span class="inline-icon lu-ico-mark" data-icon="x"></span> is just your own “no bulb here” note.',
             clearBoard: 'Clear the board',
             zipHelp1Html:
                 'Drag from the cell marked <strong>1</strong> to draw a path through every white cell.',
@@ -1153,6 +1169,22 @@
                 '在下方選擇輸入模式 — <span class="inline-icon nono-ico-cycle" data-icon="refresh-cw"></span> 循環（空→填→<span class="inline-icon nono-ico-mark" data-icon="x"></span>）、<span class="inline-icon nono-ico-fill" data-icon="square"></span> 填滿、<span class="inline-icon nono-ico-mark" data-icon="x"></span> ✗、<span class="inline-icon nono-ico-erase" data-icon="eraser"></span> 擦除。點一下格子即套用（填滿／✗ 模式再點一次會清除）；拖曳時由起點決定是「加上」還是「擦掉」。',
             nonogramHelp3Html:
                 '當 <span class="inline-icon nono-ico-fill" data-icon="square"></span> 格子符合所有列與行的線索即過關。',
+            lightupName: 'Light Up',
+            lightupTagline: '點亮每個格子。',
+            lightupCardBody:
+                '放置燈泡照亮整個盤面——兩盞燈不能互照,數字牆則限制周圍的燈泡數。',
+            lightupBoardAria: 'Light Up 盤面',
+            lightupToolsAria: '輸入模式',
+            lightupToolCycle: '循環',
+            lightupToolBulb: '燈泡',
+            lightupToolMark: '標記',
+            lightupToolErase: '擦除',
+            lightupHelp1Html:
+                '在白格放上 <span class="inline-icon lu-ico-bulb" data-icon="lightbulb"></span> 燈泡,照亮整個盤面。燈泡的光會沿著所在的行與列射出,直到被<strong>牆</strong>(深色格)或邊界擋住。',
+            lightupHelp2Html:
+                '兩盞燈泡<strong>絕不能</strong>互相照到;數字牆周圍四個正交鄰格裡,必須<strong>剛好</strong>有那麼多盞燈泡。',
+            lightupHelp3Html:
+                '選擇輸入模式 — <span class="inline-icon lu-ico-cycle" data-icon="refresh-cw"></span> 循環、<span class="inline-icon lu-ico-bulb" data-icon="lightbulb"></span> 燈泡、<span class="inline-icon lu-ico-mark" data-icon="x"></span> 標記、<span class="inline-icon lu-ico-erase" data-icon="eraser"></span> 擦除 — 再點擊或拖曳。<span class="inline-icon lu-ico-mark" data-icon="x"></span> 只是你自己「這裡不放燈」的記號。',
             clearBoard: '清空盤面',
             zipHelp1Html:
                 '從標示 <strong>1</strong> 的格子開始拖曳，畫一條經過每個白色格子的路徑。',
