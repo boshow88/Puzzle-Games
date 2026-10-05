@@ -1,6 +1,6 @@
 # Game Rules
 
-A central reference for the six puzzles in this collection. Each game
+A central reference for the seven puzzles in this collection. Each game
 page already shows a short *How to play* footer; this document is the
 long form — the complete rule set and the controls that map to them.
 
@@ -9,7 +9,7 @@ algorithms, file layout) live elsewhere.
 
 ## Shared conventions
 
-All six games share the same chrome and the same control vocabulary,
+All seven games share the same chrome and the same control vocabulary,
 so the rule sections below only mention game-specific deviations.
 
 - **Difficulty** (Easy / Medium / Hard): controls how heavily the
@@ -27,14 +27,16 @@ so the rule sections below only mention game-specific deviations.
   In the cell-toggle games (Queens, Tango, Sudoku) it shows a small
   hint glyph in the corner of each editable cell; in Zip it draws the
   canonical path under the player's line; in Patches it outlines the
-  solution rectangles; in Nonogram it overlays the solved filled cells.
+  solution rectangles; in Nonogram it overlays the solved filled cells;
+  in Guards it overlays the solution guards.
 - **Timer**: starts on New Game / size / difficulty change; stops on
   win.
-- **Violation feedback** (Queens, Tango, Sudoku): rule breaks are
-  shown as red marks on the offending cells. Conflicts directly
-  caused by your last move are debounced (so rapidly cycling a cell
-  doesn't strobe red); unrelated conflicts remain visible
-  immediately.
+- **Violation feedback** (Queens, Tango, Sudoku, Guards): rule breaks
+  are shown as red marks on the offending cells, held back briefly so
+  rapidly cycling a cell doesn't strobe red. Queens/Tango/Sudoku keep
+  unrelated conflicts visible and debounce only the ones your last move
+  touched; Guards clears a conflict the instant you resolve it and
+  reveals newly-created ones once you pause.
 - **Win**: every game shows a "You Win!" badge in the status row and
   tints the placed symbols / path gold.
 
@@ -337,12 +339,14 @@ its number clues, revealing a hidden picture.
 
 ### Controls
 
-- **Brush selector** (three equal-width buttons below the board): choose
-  **Fill**, **Mark** (`✗`), or **Clear**. Keyboard: `1`/`F`, `2`/`X`,
-  `3`/`C`.
-- **Tap or drag** cells to paint them with the active brush. Fill marks a
-  solution cell; `✗` is a personal "this cell is empty" marker — it has no
-  effect on the win check, it just helps you reason. Clear empties a cell.
+- **Four input modes** (icon buttons below the board): **Cycle**, **Fill**,
+  **Mark** (`✗`), **Erase**. Keyboard: `1` cycle, `2`/`F` fill, `3`/`X`
+  mark, `4`/`E` erase.
+  - **Cycle** steps a cell `empty → fill → ✗ → empty`.
+  - `✗` is a personal "this cell is empty" marker — it has no effect on the
+    win check, it just helps you reason.
+- **Tap** a cell to apply the active mode; **drag** to paint, with the first
+  cell deciding whether you add or clear.
 - **Hint (💡)**: if anything you've placed contradicts the solution, it
   rings those cells in red. Otherwise it spotlights the next row/column
   that single-line logic can advance, and shows per highlighted cell
@@ -381,3 +385,54 @@ same ladder, always offering the simplest next step first.
 
 Every filled cell matches the solution — i.e. all row and column clues are
 satisfied. `✗` marks are ignored by the win check.
+
+---
+
+## Guards
+
+**Goal.** Post guards on the floor so that every floor cell is watched, no
+two guards can see each other, and every numbered pillar has exactly as many
+guards beside it as its number. (This is the Akari / "Light Up" puzzle,
+reskinned — guards instead of bulbs, pillars instead of walls.)
+
+### Board
+
+- N×N grid; the size slider steps through a fixed set — **6, 8, 10, 12, 16,
+  20, 25**.
+- **Floor** cells are white and playable; **pillars** are the dark blocks.
+- Some pillars carry a **number 0–4**: how many guards must stand on the (up
+  to four) floor cells directly above, below, left and right of it.
+
+### Rules
+
+1. A guard **watches** its whole row and column outward in all four
+   directions, until the line of sight meets a pillar or the board edge.
+2. **Every floor cell must be watched** by at least one guard.
+3. **No two guards may see each other** — a guard may not stand on a cell
+   another guard already watches.
+4. Each **numbered pillar** has exactly that many guards on its orthogonally
+   adjacent floor cells. Unnumbered pillars constrain nothing.
+
+Every generated board is solvable by pure propagation (no guessing), which
+also makes its solution unique.
+
+### Controls
+
+- **Four input modes** (icon buttons below the board): **Cycle**, **Guard**,
+  **Mark** (`✗`), **Erase**. Keyboard: `1` cycle, `2`/`B` guard, `3`/`X`
+  mark, `4`/`E` erase.
+  - **Cycle** steps a cell `empty → guard → ✗ → empty`.
+  - `✗` is a personal "no guard here" marker; it has no effect on the win
+    check.
+- **Tap** a cell to apply the active mode; **drag** to paint, with the first
+  cell deciding what the drag lays down.
+- **Hint (💡)**: if the board currently breaks a rule it flags that first;
+  otherwise it surfaces the next forced guard / `✗`. Press again to dismiss.
+- **Reveal (?)**: overlays the solution guards.
+- **Undo (↶ / Ctrl+Z)**: steps back one action at a time (up to 20); Reset
+  is undoable too, until you win.
+
+### Win
+
+Every floor cell is watched, no two guards see each other, and every numbered
+pillar is exact.

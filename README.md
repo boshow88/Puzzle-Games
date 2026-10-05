@@ -1,6 +1,6 @@
 # Puzzle Games
 
-A web reimplementation of the LinkedIn puzzle games (Patches, Queens, Tango, Sudoku, Zip, Nonogram).
+A web reimplementation of the LinkedIn puzzle games (Patches, Queens, Tango, Sudoku, Zip, Nonogram), plus Guards (an Akari / "Light Up" variant).
 Pure static HTML/CSS/JS — deployable on GitHub Pages.
 
 **Play it live:** <https://boshow88.github.io/Puzzle-Games/>
@@ -14,7 +14,8 @@ Pure static HTML/CSS/JS — deployable on GitHub Pages.
 | Tango  | Playable      | Dummy in-browser puzzle generator              |
 | Sudoku | Playable      | 6×6 / 9×9 / 12×12, notes, undo, shareable links |
 | Zip    | Playable      | Drag-to-draw path, unique-solution generator (checkpoints + walls), hint, undo & share, 5×5 – 12×12 |
-| Nonogram | Playable    | Line-logic generator/solver (unique boards), Fill/Mark/Clear brush, fill-vs-✗ hints, clue-complete highlight, win animation, undo & share, 6×6 – 16×16 |
+| Nonogram | Playable    | Line-logic generator/solver (unique boards), Cycle/Fill/Mark/Erase brush, fill-vs-✗ hints, clue-complete highlight, win animation, undo & share, 6×6 – 16×16 |
+| Guards | Playable      | Akari / "Light Up": propagation-solvable (unique) generator with structured walls, debounced conflict display + conflict-first hints, reveal, undo & share, sizes 6–25 |
 
 Full rule reference: [`docs/rules.md`](docs/rules.md).
 
@@ -26,7 +27,7 @@ games/*.html            One page per game
 css/                    common.css (theme tokens + launcher), game.css (shared game UI)
 js/                     common.js + js/games/*.js (per-game logic/rendering) + js/generators/*.js (puzzle generators & solvers)
 data/                   reserved for puzzle JSON pools (not used yet)
-docs/rules.md           full rule reference for all six games
+docs/rules.md           full rule reference for all seven games
 ```
 
 ## Run locally
