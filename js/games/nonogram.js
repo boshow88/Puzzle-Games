@@ -1,10 +1,10 @@
 /**
  * Nonogram (Picross) — game UI.
  *
- * Consumes window.PuzzleGenerators.nonogram and the shared shell. A brush
- * selector (Fill / Mark / Clear) picks the active cell state; tapping or
- * dragging then paints cells to that state. Win when the filled cells match
- * the unique solution.
+ * Consumes window.PuzzleGenerators.nonogram and the shared shell. An input-mode
+ * selector (Cycle / Fill / Mark / Erase) decides how a tap changes a cell; a
+ * drag paints the content decided by its start cell (add vs remove), à la
+ * Queens. Win when the filled cells match the unique solution.
  */
 (function () {
     'use strict';
@@ -17,8 +17,16 @@
     const BOARD = 480;
 
     const EMPTY = 0, FILL = 1, BLOCK = 2;
-    // Brush modes: tapping/dragging sets a cell to the active brush's state.
-    const MODE_STATE = { fill: FILL, block: BLOCK, empty: EMPTY };
+    // Input modes, Queens-style: tapping a cell cycles/toggles its state, and a
+    // drag paints the content decided by its START cell (add vs remove). The
+    // four modes give a cell 3 / 2 / 2 / 1 reachable states respectively.
+    const VALID_MODES = ['cycle', 'fill', 'block', 'empty'];
+    function resolveTarget(mode, cur) {
+        if (mode === 'cycle') return cur === EMPTY ? FILL : cur === FILL ? BLOCK : EMPTY;
+        if (mode === 'fill') return cur === FILL ? EMPTY : FILL;
+        if (mode === 'block') return cur === BLOCK ? EMPTY : BLOCK;
+        return EMPTY; // 'empty' = erase
+    }
 
     // -----------------------------------------------------------------
     // Shareable URL (size/diff/seed), mirroring the other games.
@@ -49,7 +57,7 @@
     const state = {
         puzzle: null,
         grid: null,             // Int8Array N*N: 0 empty, 1 filled, 2 blocked
-        mode: 'fill',           // active brush: 'fill' | 'block' | 'empty'
+        mode: 'cycle',          // active input mode: 'cycle' | 'fill' | 'block' | 'empty'
         dragging: null,         // { pointerId, target, last:[r,c] }
         won: false,
         hint: null,
@@ -284,8 +292,8 @@
         try { board.setPointerCapture(ev.pointerId); } catch (_) { /* ignore */ }
         clearHint();
         pushUndo();
-        const target = MODE_STATE[state.mode];
         const [r, c] = cell;
+        const target = resolveTarget(state.mode, state.grid[idx(r, c)]);
         state.dragging = { pointerId: ev.pointerId, target, last: [r, c] };
         if (state.grid[idx(r, c)] !== target) {
             state.grid[idx(r, c)] = target;
@@ -307,7 +315,7 @@
     }
 
     function setMode(mode) {
-        if (!Object.prototype.hasOwnProperty.call(MODE_STATE, mode)) return;
+        if (!VALID_MODES.includes(mode)) return;
         state.mode = mode;
         const btns = document.querySelectorAll('#nono-tools .nono-tool');
         btns.forEach((b) => {
@@ -590,7 +598,7 @@
                 if (btn && btn.dataset.mode) setMode(btn.dataset.mode);
             });
         }
-        setMode('fill');
+        setMode('cycle');
 
         // Drag-paint game: opt out of the browser's own touch gestures so
         // finger-drags keep firing pointermove instead of scrolling the page.
@@ -612,9 +620,10 @@
             }
             if (ev.ctrlKey || ev.metaKey || ev.altKey) return;
             const k = ev.key.toLowerCase();
-            const mode = (k === '1' || k === 'f') ? 'fill'
-                : (k === '2' || k === 'x') ? 'block'
-                    : (k === '3' || k === 'c') ? 'empty' : null;
+            const mode = (k === '1') ? 'cycle'
+                : (k === '2' || k === 'f') ? 'fill'
+                    : (k === '3' || k === 'x') ? 'block'
+                        : (k === '4' || k === 'e') ? 'empty' : null;
             if (mode) { setMode(mode); ev.preventDefault(); }
         });
 

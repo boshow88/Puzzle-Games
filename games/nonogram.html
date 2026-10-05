@@ -100,18 +100,18 @@
             </svg>
         </div>
 
-        <div class="nono-tools" id="nono-tools" role="radiogroup" data-i18n-aria-label="nonogramToolsAria" aria-label="Cell brush">
-            <button type="button" class="nono-tool active" data-mode="fill" role="radio" aria-checked="true">
+        <div class="nono-tools" id="nono-tools" role="radiogroup" data-i18n-aria-label="nonogramToolsAria" aria-label="Input mode">
+            <button type="button" class="nono-tool active" data-mode="cycle" role="radio" aria-checked="true" data-i18n-aria-label="nonogramToolCycle" aria-label="Cycle" data-i18n-title="nonogramToolCycle" title="Cycle">
+                <span class="nono-tool-ico cycle" data-icon="refresh-cw" aria-hidden="true"></span>
+            </button>
+            <button type="button" class="nono-tool" data-mode="fill" role="radio" aria-checked="false" data-i18n-aria-label="nonogramToolFill" aria-label="Fill" data-i18n-title="nonogramToolFill" title="Fill">
                 <span class="nono-tool-ico fill" data-icon="square" aria-hidden="true"></span>
-                <span data-i18n="nonogramToolFill">Fill</span>
             </button>
-            <button type="button" class="nono-tool" data-mode="block" role="radio" aria-checked="false">
+            <button type="button" class="nono-tool" data-mode="block" role="radio" aria-checked="false" data-i18n-aria-label="nonogramToolMark" aria-label="Mark" data-i18n-title="nonogramToolMark" title="Mark">
                 <span class="nono-tool-ico mark" data-icon="x" aria-hidden="true"></span>
-                <span data-i18n="nonogramToolMark">Mark</span>
             </button>
-            <button type="button" class="nono-tool" data-mode="empty" role="radio" aria-checked="false">
-                <span class="nono-tool-ico empty" data-icon="square" aria-hidden="true"></span>
-                <span data-i18n="nonogramToolClear">Clear</span>
+            <button type="button" class="nono-tool" data-mode="empty" role="radio" aria-checked="false" data-i18n-aria-label="nonogramToolErase" aria-label="Erase" data-i18n-title="nonogramToolErase" title="Erase">
+                <span class="nono-tool-ico erase" data-icon="eraser" aria-hidden="true"></span>
             </button>
         </div>
 
@@ -121,7 +121,7 @@
             <h4 data-i18n="howToPlay">How to play</h4>
             <ul>
                 <li data-i18n="nonogramHelp1Html">Each clue number is a run of <strong>that many consecutive <span class="inline-icon nono-ico-fill" data-icon="square"></span> cells</strong>, in the listed order (left→right for rows, top→bottom for columns), with at least one gap between runs.</li>
-                <li data-i18n="nonogramHelp2Html">Pick a brush — <span class="inline-icon nono-ico-fill" data-icon="square"></span> fill, <span class="inline-icon nono-ico-mark" data-icon="x"></span> mark, or <span class="inline-icon nono-ico-empty" data-icon="square"></span> clear — then tap or drag cells to paint that state. <span class="inline-icon nono-ico-mark" data-icon="x"></span> just flags a cell you’ve ruled out.</li>
+                <li data-i18n="nonogramHelp2Html">Pick an input mode below — <span class="inline-icon nono-ico-cycle" data-icon="refresh-cw"></span> cycle (empty→fill→<span class="inline-icon nono-ico-mark" data-icon="x"></span>), <span class="inline-icon nono-ico-fill" data-icon="square"></span> fill, <span class="inline-icon nono-ico-mark" data-icon="x"></span> mark, or <span class="inline-icon nono-ico-erase" data-icon="eraser"></span> erase. Tap a cell to apply it (in fill/mark, tapping again clears it); when you drag, the first cell decides whether you add or remove.</li>
                 <li data-i18n="nonogramHelp3Html">Solved when the <span class="inline-icon nono-ico-fill" data-icon="square"></span> cells match every row and column clue.</li>
             </ul>
         </section>

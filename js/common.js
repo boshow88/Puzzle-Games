@@ -279,6 +279,11 @@
             '<rect width="18" height="18" x="3" y="3" rx="2"/>',
         x:
             '<path d="M18 6 6 18"/><path d="m6 6 12 12"/>',
+        'refresh-cw':
+            '<path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/>'
+            + '<path d="M21 3v5h-5"/>'
+            + '<path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"/>'
+            + '<path d="M3 21v-5h5"/>',
         'gamepad-2':
             '<line x1="6" x2="10" y1="11" y2="11"/>'
             + '<line x1="8" x2="8" y1="9" y2="13"/>'
@@ -920,14 +925,15 @@
                 'A separate site with arcade games.',
             visitLink: 'Visit \u2197',
             nonogramBoardAria: 'Nonogram puzzle board',
-            nonogramToolsAria: 'Cell brush',
+            nonogramToolsAria: 'Input mode',
+            nonogramToolCycle: 'Cycle',
             nonogramToolFill: 'Fill',
             nonogramToolMark: 'Mark',
-            nonogramToolClear: 'Clear',
+            nonogramToolErase: 'Erase',
             nonogramHelp1Html:
                 'Each clue number is a run of <strong>that many consecutive <span class="inline-icon nono-ico-fill" data-icon="square"></span> cells</strong>, in the listed order (left→right for rows, top→bottom for columns), with at least one gap between runs.',
             nonogramHelp2Html:
-                'Pick a brush — <span class="inline-icon nono-ico-fill" data-icon="square"></span> fill, <span class="inline-icon nono-ico-mark" data-icon="x"></span> mark, or <span class="inline-icon nono-ico-empty" data-icon="square"></span> clear — then tap or drag cells to paint that state. <span class="inline-icon nono-ico-mark" data-icon="x"></span> just flags a cell you’ve ruled out.',
+                'Pick an input mode below — <span class="inline-icon nono-ico-cycle" data-icon="refresh-cw"></span> cycle (empty→fill→<span class="inline-icon nono-ico-mark" data-icon="x"></span>), <span class="inline-icon nono-ico-fill" data-icon="square"></span> fill, <span class="inline-icon nono-ico-mark" data-icon="x"></span> mark, or <span class="inline-icon nono-ico-erase" data-icon="eraser"></span> erase. Tap a cell to apply it (in fill/mark, tapping again clears it); when you drag, the first cell decides whether you add or remove.',
             nonogramHelp3Html:
                 'Solved when the <span class="inline-icon nono-ico-fill" data-icon="square"></span> cells match every row and column clue.',
             clearBoard: 'Clear the board',
@@ -1136,14 +1142,15 @@
                 '另一個網站，收錄街機遊戲。',
             visitLink: '前往 \u2197',
             nonogramBoardAria: 'Nonogram 盤面',
-            nonogramToolsAria: '畫筆',
+            nonogramToolsAria: '輸入模式',
+            nonogramToolCycle: '循環',
             nonogramToolFill: '填滿',
             nonogramToolMark: '標記',
-            nonogramToolClear: '清除',
+            nonogramToolErase: '擦除',
             nonogramHelp1Html:
                 '每個線索數字代表一段<strong>連續的 <span class="inline-icon nono-ico-fill" data-icon="square"></span> 格</strong>，依數字順序排列（列由左到右、行由上到下），且段與段之間至少空一格。',
             nonogramHelp2Html:
-                '先選擇畫筆 — <span class="inline-icon nono-ico-fill" data-icon="square"></span> 填滿、<span class="inline-icon nono-ico-mark" data-icon="x"></span> 標記、<span class="inline-icon nono-ico-empty" data-icon="square"></span> 清除 — 再點擊或拖曳格子即可塗上該狀態。<span class="inline-icon nono-ico-mark" data-icon="x"></span> 只是標記你排除掉的格。',
+                '在下方選擇輸入模式 — <span class="inline-icon nono-ico-cycle" data-icon="refresh-cw"></span> 循環（空→填→<span class="inline-icon nono-ico-mark" data-icon="x"></span>）、<span class="inline-icon nono-ico-fill" data-icon="square"></span> 填滿、<span class="inline-icon nono-ico-mark" data-icon="x"></span> ✗、<span class="inline-icon nono-ico-erase" data-icon="eraser"></span> 擦除。點一下格子即套用（填滿／✗ 模式再點一次會清除）；拖曳時由起點決定是「加上」還是「擦掉」。',
             nonogramHelp3Html:
                 '當 <span class="inline-icon nono-ico-fill" data-icon="square"></span> 格子符合所有列與行的線索即過關。',
             clearBoard: '清空盤面',
