@@ -250,13 +250,28 @@
     // Generation
     // -----------------------------------------------------------------
     function randomLayout(N, rng, boost) {
-        // Moderate density: a board is only solvable by pure propagation (no
-        // guessing) once walls break it up enough — below ~0.28 almost nothing
-        // is. `boost` nudges it up if a size is proving hard to fill.
-        let p = 0.30 + (rng() * 0.05 - 0.025) + (boost || 0);
-        p = Math.max(0.22, Math.min(0.5, p));
+        // Structured walls: grow short straight runs instead of scattering single
+        // cells. Clustered/linear walls carve the grid into corridors, which makes
+        // a pure-propagation (⇒ unique) solution far more likely than fully-random
+        // placement — so we can run sparser and still fill the pool fast. `boost`
+        // raises the target density if a size is proving hard to fill.
+        let dens = 0.22 + (rng() * 0.04 - 0.02) + (boost || 0);
+        dens = Math.max(0.16, Math.min(0.5, dens));
+        const target = Math.round(N * N * dens);
         const wall = new Uint8Array(N * N);
-        for (let i = 0; i < N * N; i++) if (rng() < p) wall[i] = 1;
+        let placed = 0, guard = 0;
+        while (placed < target && guard++ < N * N * 8) {
+            let r = (rng() * N) | 0, c = (rng() * N) | 0;
+            if (wall[r * N + c]) continue;
+            const len = 1 + ((rng() * 3) | 0);              // run of 1–3 cells
+            const [dr, dc] = DIRS[(rng() * DIRS.length) | 0];
+            for (let s = 0; s < len && placed < target; s++) {
+                if (r < 0 || r >= N || c < 0 || c >= N) break;
+                const i = r * N + c;
+                if (!wall[i]) { wall[i] = 1; placed++; }
+                r += dr; c += dc;
+            }
+        }
         return wall;
     }
 
