@@ -247,8 +247,14 @@
     // -----------------------------------------------------------------
     // Generation
     // -----------------------------------------------------------------
-    function randomLayout(N, rng) {
-        const p = 0.16 + 0.10 * rng(); // wall density ~0.16–0.26
+    function randomLayout(N, rng, boost) {
+        // Denser walls for larger boards: long open lines make big boards almost
+        // never uniquely solvable, so yield collapses without this (≈0.5% at
+        // d=0.20 / N=16 vs ≈50% at d=0.38). `boost` nudges density up if a size
+        // is proving hard to fill.
+        const base = 0.24 + 0.14 * (N - 7) / 9;      // ~0.24 (7×7) → ~0.38 (16×16)
+        let p = base + (rng() * 0.06 - 0.03) + (boost || 0);
+        p = Math.max(0.18, Math.min(0.46, p));
         const wall = new Uint8Array(N * N);
         for (let i = 0; i < N * N; i++) if (rng() < p) wall[i] = 1;
         return wall;
@@ -295,55 +301,64 @@
         return clue;
     }
 
-    function attemptsFor(N) { return N <= 9 ? 90 : N <= 12 ? 60 : 36; }
+    function attemptsFor(N) { return N <= 9 ? 70 : N <= 12 ? 50 : 40; }
+
+    // One candidate from a given wall layout, or null if it isn't a clean,
+    // uniquely-solvable, logic-solvable board. Mutates nothing shared.
+    function buildCandidate(N, wall, rng) {
+        const ctx = makeCtx(N, wall);
+        if (ctx.whites.length < 4) return null;
+        const sol = buildSolution(ctx, rng);
+        if (!sol) return null;
+        const full = deriveClues(ctx, sol);
+        if (countSolutions(ctx, full, 2) !== 1) return null; // not unique even fully shown
+        // Drop a random share of numbers while it stays uniquely solvable, so the
+        // shown-number ratio varies as a *style* (bounded re-checks for speed).
+        const clue = full.slice();
+        const wallsWithNum = [];
+        for (let i = 0; i < N * N; i++) if (clue[i] >= 0) wallsWithNum.push(i);
+        PC.rng.shuffle(wallsWithNum, rng);
+        const dropP = 0.25 + 0.65 * rng();
+        const trials = Math.min(wallsWithNum.length, 30);
+        for (let k = 0; k < trials; k++) {
+            const w = wallsWithNum[k];
+            if (rng() >= dropP) continue;
+            const saved = clue[w]; clue[w] = -1;
+            if (countSolutions(ctx, clue, 2) !== 1) clue[w] = saved;
+        }
+        const st = solveTier(ctx, clue);
+        if (!st.solved) return null; // needs deeper than MAX_TRIAL → too guessy
+        const shown = wallsWithNum.filter((i) => clue[i] >= 0).length;
+        const ratio = wallsWithNum.length ? shown / wallsWithNum.length : 0;
+        return { wall, clue, sol, score: st.tier * 1000 + st.passes, tier: st.tier, passes: st.passes, ratio };
+    }
 
     async function generate(size, difficulty, seed, onProgress) {
         const N = size;
         const rng = PC.rng.make(seed >>> 0);
-        const attempts = attemptsFor(N);
+        const softCap = attemptsFor(N);
+        const hardCap = softCap * 10;
         if (onProgress) await onProgress(0.03);
 
+        // Collect a pool; keep going past softCap (nudging density up) only if we
+        // still have nothing, so the pool is never empty → no blank fallback.
         const pool = [];
-        for (let t = 0; t < attempts; t++) {
-            const wall = randomLayout(N, rng);
-            const ctx = makeCtx(N, wall);
-            if (ctx.whites.length < 4) continue;
-            const sol = buildSolution(ctx, rng);
-            if (!sol) continue;
-            const full = deriveClues(ctx, sol);
-            // Must be uniquely solvable with every number shown, else discard.
-            if (countSolutions(ctx, full, 2) !== 1) continue;
-
-            // Random reveal ratio: drop a random share of numbers while the
-            // puzzle stays uniquely solvable, so the shown-number ratio varies
-            // as a *style* rather than being the difficulty itself.
-            const clue = full.slice();
-            const wallsWithNum = [];
-            for (let i = 0; i < N * N; i++) if (clue[i] >= 0) wallsWithNum.push(i);
-            PC.rng.shuffle(wallsWithNum, rng);
-            const dropP = 0.25 + 0.65 * rng();
-            for (const w of wallsWithNum) {
-                if (rng() >= dropP) continue;
-                const saved = clue[w]; clue[w] = -1;
-                if (countSolutions(ctx, clue, 2) !== 1) clue[w] = saved;
-            }
-
-            const st = solveTier(ctx, clue);
-            if (!st.solved) continue; // needs deeper than MAX_TRIAL → too guessy, skip
-            const shown = wallsWithNum.filter((i) => clue[i] >= 0).length;
-            const ratio = wallsWithNum.length ? shown / wallsWithNum.length : 0;
-            pool.push({ wall, clue, sol, score: st.tier * 1000 + st.passes, tier: st.tier, passes: st.passes, ratio });
-
-            if (onProgress && (t & 7) === 0) await onProgress(0.03 + 0.92 * (t + 1) / attempts);
+        for (let t = 0; t < hardCap; t++) {
+            if (t >= softCap && pool.length >= 1) break;
+            const boost = Math.floor(t / softCap) * 0.05;
+            const cand = buildCandidate(N, randomLayout(N, rng, boost), rng);
+            if (cand) pool.push(cand);
+            if (onProgress && (t & 7) === 0) await onProgress(0.03 + 0.9 * Math.min(1, (t + 1) / softCap));
         }
 
         if (onProgress) await onProgress(0.97);
         if (!pool.length) {
-            // Degenerate fallback: a tiny all-revealed board (should ~never hit).
-            const wall = new Uint8Array(N * N); const ctx = makeCtx(N, wall);
-            const sol = buildSolution(ctx, rng) || new Int8Array(N * N);
-            const clue = deriveClues(ctx, sol);
-            pool.push({ wall, clue, sol, score: 0, tier: 0, passes: 1, ratio: 1 });
+            // Effectively unreachable (dense boards are easily unique), but never
+            // ship a blank board: keep trying at high density until one exists.
+            for (let tries = 0; tries < 500 && !pool.length; tries++) {
+                const cand = buildCandidate(N, randomLayout(N, rng, 0.18), rng);
+                if (cand) pool.push(cand);
+            }
         }
 
         pool.sort((a, b) => a.score - b.score);
