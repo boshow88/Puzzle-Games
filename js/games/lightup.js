@@ -28,7 +28,7 @@
         return EMPTY; // 'empty' = erase
     }
 
-    const MIN_SIZE = 7, MAX_SIZE = 16;
+    const MIN_SIZE = 7, MAX_SIZE = 20;
     const VALID_DIFFS = new Set(['easy', 'medium', 'hard']);
 
     function readUrlInitial() {
