@@ -504,10 +504,10 @@
         };
         const anchorOutline = (i) => {
             const r = (i / N) | 0, c = i % N;
-            layer.appendChild(PC.svgEl('rect', {
-                class: 'lu-hint-anchor', x: c * cs + cs * 0.06, y: r * cs + cs * 0.06,
-                width: cs * 0.88, height: cs * 0.88, rx: cs * 0.1, ry: cs * 0.1,
-            }));
+            const box = { x: c * cs + cs * 0.06, y: r * cs + cs * 0.06, width: cs * 0.88, height: cs * 0.88, rx: cs * 0.1, ry: cs * 0.1 };
+            // White casing under the dash so it stays visible on dark pillars.
+            layer.appendChild(PC.svgEl('rect', Object.assign({ class: 'lu-hint-anchor-halo' }, box)));
+            layer.appendChild(PC.svgEl('rect', Object.assign({ class: 'lu-hint-anchor' }, box)));
         };
         const ghostAt = (i, val, opts) => {
             opts = opts || {};
