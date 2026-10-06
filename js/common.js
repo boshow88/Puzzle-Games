@@ -1237,7 +1237,7 @@
             hashiName: 'Hashi',
             hashiTagline: '把每座島連起來。',
             hashiCardBody:
-                '用正確數量的橋連接數字島——不可交叉,且全部連成一網。',
+                '用正確數量的橋連接數字島——不可交叉，且全部連成一網。',
             hashiBoardAria: 'Hashi 盤面',
             hashiHelp1Html:
                 '<strong>橋</strong>是連接兩座島的直線 (上下或左右)。每座<strong>島</strong>上的數字，代表共有幾座橋連到它。一對島之間最多兩座橋，且不可跨過其他橋或島。',

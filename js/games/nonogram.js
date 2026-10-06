@@ -415,7 +415,7 @@
             },
         },
         zh: {
-            wrong: '醒目標示的格子與唯一解不符——有該留空的格被填了,或該填的格被劃掉了。',
+            wrong: '醒目標示的格子與唯一解不符——有該留空的格被填了，或該填的格被劃掉了。',
             none: '目前用單行邏輯已無法再推出新格子。',
             deduce: (n, h) => {
                 const label = h.orient === 'row' ? `第 ${n} 列` : `第 ${n} 行`;
@@ -426,9 +426,9 @@
                     if (h.squeezeFills === 0 && h.fillRuns.length === 1) {
                         const r = h.fillRuns[0];
                         if (r.left[0] === r.right[0]) parts.push(`長度 ${r.len} 的那段只有一種擺法 → 這 ${nFill} 格填滿`);
-                        else parts.push(`長度 ${r.len} 的那段不論靠左或靠右擺,都會蓋到這 ${nFill} 格 → 填滿`);
+                        else parts.push(`長度 ${r.len} 的那段不論靠左或靠右擺，都會蓋到這 ${nFill} 格 → 填滿`);
                     } else {
-                        parts.push(`線索中的各段不論怎麼擺,都會蓋到這 ${nFill} 格 → 填滿`);
+                        parts.push(`線索中的各段不論怎麼擺，都會蓋到這 ${nFill} 格 → 填滿`);
                     }
                 }
                 if (h.eliminate) {
