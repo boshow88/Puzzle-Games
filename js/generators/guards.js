@@ -41,7 +41,7 @@
     const DIFFS = {
         easy:   { gateDepth: 0, zeroFrac: 0.35, numFrac: 0.12 },
         medium: { gateDepth: 0, zeroFrac: 0.90, numFrac: 0.55 },
-        hard:   { gateDepth: 1, zeroFrac: 1.00, numFrac: 1.00 },
+        hard:   { gateDepth: 1, zeroFrac: 1.00, numFrac: 1.00, maxChain: 4 },
     };
 
     const DIRS = [[-1, 0], [1, 0], [0, -1], [0, 1]];
@@ -352,6 +352,26 @@
         return best;
     }
 
+    // Longest minimal refutation chain the shortest-chain depth-1 solver must use
+    // to finish `clue` from empty (0 if pure propagation alone solves it). Lets
+    // Hard reject the occasional board with a brutally long assume→contradiction
+    // chain, so every Hard hint stays followable.
+    function maxTrialChain(ctx, clue) {
+        const b = new Int8Array(ctx.N * ctx.N);
+        let maxLen = 0, guard = 0;
+        for (;;) {
+            if (++guard > ctx.N * ctx.N * 4) return Infinity;
+            if (!propagate(ctx, clue, b).ok) return Infinity;
+            let unknown = false;
+            for (const i of ctx.whites) if (b[i] === UNKNOWN) { unknown = true; break; }
+            if (!unknown) return maxLen;
+            const d = nextStepDeep(ctx, clue, b);
+            if (!d) return Infinity;
+            if (d.chain.length > maxLen) maxLen = d.chain.length;
+            b[d.cell] = d.state;
+        }
+    }
+
     // -----------------------------------------------------------------
     // Generation
     // -----------------------------------------------------------------
@@ -509,10 +529,11 @@
             }
         }
         const tier = solvesBy(ctx, clue, 0) ? 0 : 1;
+        const maxChain = (tier === 1 && cfg.gateDepth >= 1) ? maxTrialChain(ctx, clue) : 0;
         const passes = propagate(ctx, clue, new Int8Array(N * N)).passes;
         let shown = 0, total = 0, zerosShown = 0;
         for (let i = 0; i < N * N; i++) if (wall[i]) { total++; if (clue[i] >= 0) { shown++; if (clue[i] === 0) zerosShown++; } }
-        return { wall, clue, sol, shown, total, zerosShown, passes, tier, ratio: total ? shown / total : 0 };
+        return { wall, clue, sol, shown, total, zerosShown, passes, tier, maxChain, ratio: total ? shown / total : 0 };
     }
 
     async function generate(size, difficulty, seed, onProgress) {
@@ -527,7 +548,7 @@
         // Depth-1 minimisation is pricey on big boards; cap it to sizes where it
         // stays snappy (≤20, under ~1.5s). Beyond that, Hard falls back to the
         // sparsest no-guess board so the largest size never stalls.
-        const cfg = (difficulty === 'hard' && N > 20) ? { gateDepth: 0, zeroFrac: base.zeroFrac, numFrac: base.numFrac } : base;
+        const cfg = (difficulty === 'hard' && N > 20) ? { ...base, gateDepth: 0 } : base;
         if (onProgress) await onProgress(0.03);
 
         // Collect a pool. Easy/Medium stop once there's a board past the soft cap.
@@ -538,7 +559,7 @@
             const boost = Math.floor(t / softCap) * 0.05;
             const cand = buildCandidate(N, randomLayout(N, rng, boost), rng, cfg);
             if (cand) pool.push(cand);
-            if (difficulty === 'hard' && cfg.gateDepth >= 1) { if (cand && cand.tier === 1) break; }
+            if (difficulty === 'hard' && cfg.gateDepth >= 1) { if (cand && cand.tier === 1 && cand.maxChain <= cfg.maxChain) break; }
             else if (t >= softCap && pool.length >= 1) break;
             if (onProgress && (t & 7) === 0) await onProgress(0.03 + 0.9 * Math.min(1, (t + 1) / softCap));
         }
@@ -557,7 +578,7 @@
         // chain-depth percentile (easy = shallower end).
         let chosen;
         if (difficulty === 'hard') {
-            const deep = pool.filter((c) => c.tier === 1);
+            const deep = pool.filter((c) => c.tier === 1 && c.maxChain <= cfg.maxChain);
             const use = (deep.length ? deep : pool).sort((a, b) => a.passes - b.passes);
             chosen = use[use.length - 1];
         } else {
