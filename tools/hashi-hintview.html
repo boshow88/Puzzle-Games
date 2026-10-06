@@ -1,0 +1,98 @@
+<!doctype html>
+<html lang="en"><head>
+  <meta charset="utf-8" />
+  <title>Hashi — hint visual check</title>
+  <link rel="stylesheet" href="../css/common.css" />
+  <link rel="stylesheet" href="../css/game.css" />
+  <style>
+    body { margin: 16px; background: #fff; font: 13px ui-monospace, monospace; --game-color: #8a5a2c; }
+    .case { display: inline-block; margin: 8px 20px 8px 0; vertical-align: top; }
+    .cap { color: #333; margin-top: 4px; max-width: 460px; }
+  </style>
+  <script src="../js/common.js"></script>
+  <script src="../js/generators/hashi.js"></script>
+</head>
+<body>
+  <div id="root">building…</div>
+  <script>
+  (function () {
+    const PC = window.PuzzleCommon, HS = window.PuzzleSolvers.hashi, I = window.PuzzleGenerators.hashiInternals;
+    const UNKNOWN = HS.UNKNOWN;
+    let cs = 46, ox = 12, oy = 12, N = 9, islands = null, G = null;
+    const cx = (c) => c * cs + cs / 2 + ox, cy = (r) => r * cs + cs / 2 + oy;
+
+    function bridgeLine(cls, A, B, off, sw) { let dx = 0, dy = 0; if (A.r === B.r) dy = off; else dx = off; return PC.svgEl('line', { class: cls, 'stroke-width': sw, x1: cx(A.c) + dx, y1: cy(A.r) + dy, x2: cx(B.c) + dx, y2: cy(B.r) + dy }); }
+    function drawBridge(layer, e, val, cls, sw, off) { const A = islands[G.edges[e].a], B = islands[G.edges[e].b]; if (val === 1) layer.appendChild(bridgeLine(cls, A, B, 0, sw)); else if (val === 2) { layer.appendChild(bridgeLine(cls, A, B, -off, sw)); layer.appendChild(bridgeLine(cls, A, B, off, sw)); } }
+
+    function render(title, edgeVal, hint) {
+      const sw = Math.max(2, cs * 0.07), off = Math.max(2.2, cs * 0.1);
+      const W = N * cs + 2 * ox;
+      const svg = PC.svgEl('svg', { width: W, height: W, viewBox: `0 0 ${W} ${W}` });
+      svg.appendChild(PC.svgEl('rect', { class: 'hashi-bg', x: 0, y: 0, width: W, height: W }));
+      const lo = cx(0), hi = cx(N - 1);
+      for (let i = 0; i < N; i++) { const p = i * cs + cs / 2 + ox; svg.appendChild(PC.svgEl('line', { class: 'hashi-grid-line', x1: p, y1: lo, x2: p, y2: hi })); svg.appendChild(PC.svgEl('line', { class: 'hashi-grid-line', x1: lo, y1: p, x2: hi, y2: p })); }
+      // placed bridges
+      for (let e = 0; e < G.edges.length; e++) if (edgeVal[e] >= 1) drawBridge(svg, e, edgeVal[e], 'hashi-bridge', sw, off);
+      // hint helpers
+      const ringIsland = (v, cls) => svg.appendChild(PC.svgEl('circle', { class: cls, cx: cx(islands[v].c), cy: cy(islands[v].r), r: cs * 0.44 }));
+      const bandEdge = (e, cls) => { const A = islands[G.edges[e].a], B = islands[G.edges[e].b]; svg.appendChild(PC.svgEl('line', { class: cls, 'stroke-width': Math.max(sw + 4, cs * 0.18), 'stroke-linecap': 'round', x1: cx(A.c), y1: cy(A.r), x2: cx(B.c), y2: cy(B.r) })); };
+      const ghostEdge = (e, val, cls) => drawBridge(svg, e, val || 1, cls || 'hashi-bridge hashi-hint-ghost', sw, off);
+      const stepNum = (e, n) => { const A = islands[G.edges[e].a], B = islands[G.edges[e].b]; const t = PC.svgEl('text', { class: 'hashi-hint-step', x: (cx(A.c) + cx(B.c)) / 2, y: (cy(A.r) + cy(B.r)) / 2, 'text-anchor': 'middle', 'dominant-baseline': 'middle', 'font-size': Math.max(10, Math.round(cs * 0.3)) }); t.textContent = String(n); svg.appendChild(t); };
+      const badMark = (bad) => { if (!bad) return; if (bad.kind === 'degree') ringIsland(bad.island, 'hashi-hint-ring wrong'); else if (bad.kind === 'cross') for (const e of bad.edges) bandEdge(e, 'hashi-hint-band wrong'); else if (bad.kind === 'disconnect') { if (bad.islands) for (const v of bad.islands) ringIsland(v, 'hashi-hint-ring wrong'); if (typeof bad.edge === 'number') bandEdge(bad.edge, 'hashi-hint-band wrong'); } };
+      if (hint && hint.kind === 'deep') {
+        bandEdge(hint.edge, 'hashi-hint-assume');
+        if (hint.assume.value >= 1) ghostEdge(hint.edge, hint.assume.value, 'hashi-bridge bad hashi-hint-ghost');
+        let n = 0; for (const st of hint.chain) if (st.value >= 1) { ghostEdge(st.edge, st.value); stepNum(st.edge, ++n); }
+        badMark(hint.bad);
+      } else if (hint && hint.kind === 'deduce') {
+        if (hint.anchor) { if (hint.anchor.islands) for (const v of hint.anchor.islands) ringIsland(v, 'hashi-hint-anchor'); if (hint.anchor.edges) for (const e of hint.anchor.edges) bandEdge(e, 'hashi-hint-source'); }
+        bandEdge(hint.edge, 'hashi-hint-band');
+        if (hint.value >= 1) ghostEdge(hint.edge, hint.value);
+      }
+      // islands on top
+      const rad = cs * 0.34, font = Math.max(11, Math.round(cs * 0.4));
+      for (let v = 0; v < G.islands.length; v++) {
+        let sum = 0; for (const e of G.incident[v]) sum += edgeVal[e] >= 1 ? edgeVal[e] : 0;
+        const g = PC.svgEl('g', { class: 'hashi-island' + (sum === islands[v].need ? ' done' : '') });
+        g.appendChild(PC.svgEl('circle', { class: 'hashi-isle-disc', cx: cx(islands[v].c), cy: cy(islands[v].r), r: rad }));
+        const t = PC.svgEl('text', { class: 'hashi-isle-num', x: cx(islands[v].c), y: cy(islands[v].r), 'text-anchor': 'middle', 'dominant-baseline': 'middle', dy: '0.08em', 'font-size': font }); t.textContent = String(islands[v].need); g.appendChild(t); svg.appendChild(g);
+      }
+      const wrap = document.createElement('div'); wrap.className = 'case'; wrap.appendChild(svg);
+      const cap = document.createElement('div'); cap.className = 'cap'; cap.textContent = title; wrap.appendChild(cap);
+      document.getElementById('root').appendChild(wrap);
+    }
+
+    function loadBoard(p) { N = p.size; islands = p.islands; G = I.buildGraph(N, islands); cs = Math.min(46, Math.floor(420 / N)); }
+    function playerCur(edgeVal) { const cur = new Int8Array(G.edges.length); for (let e = 0; e < G.edges.length; e++) cur[e] = edgeVal[e] >= 1 ? edgeVal[e] : UNKNOWN; return cur; }
+
+    async function main() {
+      document.getElementById('root').textContent = '';
+      // Deduce-anchor panel: an easy board, first forced step from empty.
+      {
+        const p = await window.PuzzleGenerators.hashi(9, 'easy', 7); loadBoard(p);
+        const ev = new Int8Array(G.edges.length);
+        const step = HS.nextStep(G, islands.map((i) => i.need), playerCur(ev));
+        render('Deduce: dashed ring = source island, band+ghost = forced bridge (' + (step && step.reason) + ')', ev, step ? { kind: 'deduce', edge: step.edge, value: step.value, reason: step.reason, anchor: step.anchor, src: step.src } : null);
+      }
+      // Deep panel: a hard board, play forced moves until stuck, then deep hint.
+      for (let seed = 1; seed <= 40; seed++) {
+        const p = await window.PuzzleGenerators.hashi(11, 'hard', seed); loadBoard(p);
+        const needs = islands.map((i) => i.need);
+        const ev = new Int8Array(G.edges.length);
+        const cur = new Int8Array(G.edges.length).fill(UNKNOWN); // records 0s too
+        let guard = 0, deep = null;
+        for (;;) {
+          const s = HS.nextStep(G, needs, cur);
+          if (s) { cur[s.edge] = s.value; if (s.value >= 1) ev[s.edge] = s.value; if (++guard > 500) break; continue; }
+          deep = HS.nextStepDeep(G, needs, cur);
+          break;
+        }
+        if (deep) { console.log('DEEP seed=' + seed + ' kind=' + (deep.bad && deep.bad.kind) + ' chain=' + deep.chain.length + ' assume=' + deep.assume.value + ' forced=' + deep.value); render('Deep (assume→contradiction): dashed-red = refuted assumption, numbered = forced steps, red ring = where it breaks [' + (deep.bad && deep.bad.kind) + ', chain ' + deep.chain.length + ']', ev, { kind: 'deep', edge: deep.edge, value: deep.value, assume: deep.assume, chain: deep.chain, bad: deep.bad }); break; }
+        else console.log('NODEEP seed=' + seed + ' guard=' + guard);
+      }
+    }
+    main().catch((e) => console.log('HINTVIEW ERROR ' + (e && e.stack || e)));
+  })();
+  </script>
+</body>
+</html>

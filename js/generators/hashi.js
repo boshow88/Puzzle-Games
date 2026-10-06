@@ -319,67 +319,133 @@
     // Hints
     // -----------------------------------------------------------------
 
+    /** Islands not reachable from island 0 via edges that can still carry a
+     *  bridge (hi>=1); empty when the "possible graph" is connected. */
+    function strandedIslands(G, hi) {
+        const m = G.islands.length;
+        const dsu = makeDSU(m);
+        for (let e = 0; e < G.edges.length; e++) if (hi[e] >= 1) dsu.union(G.edges[e].a, G.edges[e].b);
+        const r0 = dsu.find(0), out = [];
+        for (let i = 1; i < m; i++) if (dsu.find(i) !== r0) out.push(i);
+        return out;
+    }
+
+    /** Traced propagation (connectivity on): like propagate, but records every
+     *  edge it forces (in order) and, on contradiction, where the rule breaks.
+     *  Returns { ok:true, chain:[{edge,value}] } or { ok:false, chain, bad },
+     *  bad one of: { kind:'degree', island }, { kind:'cross', edges:[e,f] },
+     *  { kind:'disconnect', islands }, { kind:'disconnect', edge }. */
+    function propagateTraced(G, needs, lo, hi) {
+        const E = G.edges.length;
+        const wasDecided = new Uint8Array(E), recorded = new Uint8Array(E), chain = [];
+        for (let e = 0; e < E; e++) wasDecided[e] = lo[e] === hi[e] ? 1 : 0;
+        const note = (e) => { if (lo[e] === hi[e] && !wasDecided[e] && !recorded[e]) { recorded[e] = 1; chain.push({ edge: e, value: lo[e] }); } };
+        let changed = true;
+        while (changed) {
+            changed = false;
+            for (let v = 0; v < G.islands.length; v++) {
+                const inc = G.incident[v];
+                let sumLo = 0, sumHi = 0;
+                for (const e of inc) { sumLo += lo[e]; sumHi += hi[e]; }
+                if (needs[v] < sumLo || needs[v] > sumHi) return { ok: false, chain, bad: { kind: 'degree', island: v } };
+                for (const e of inc) {
+                    const nlo = Math.max(lo[e], needs[v] - (sumHi - hi[e]));
+                    const nhi = Math.min(hi[e], needs[v] - (sumLo - lo[e]));
+                    if (nlo > nhi) return { ok: false, chain, bad: { kind: 'degree', island: v } };
+                    if (nlo > lo[e]) { lo[e] = nlo; changed = true; }
+                    if (nhi < hi[e]) { hi[e] = nhi; changed = true; }
+                    note(e);
+                }
+            }
+            for (let e = 0; e < E; e++) if (lo[e] >= 1) {
+                for (const f of G.cross[e]) {
+                    if (lo[f] >= 1) return { ok: false, chain, bad: { kind: 'cross', edges: [e, f] } };
+                    if (hi[f] !== 0) { hi[f] = 0; changed = true; note(f); }
+                }
+            }
+            const stranded = strandedIslands(G, hi);
+            if (stranded.length) return { ok: false, chain, bad: { kind: 'disconnect', islands: stranded } };
+            const isCut = cutEdges(G, hi);
+            for (let e = 0; e < E; e++) if (isCut[e] && lo[e] < 1) {
+                if (hi[e] < 1) return { ok: false, chain, bad: { kind: 'disconnect', edge: e } };
+                lo[e] = 1; changed = true; note(e);
+            }
+        }
+        return { ok: true, chain };
+    }
+
     /** Next forced edge by pure propagation from the player's state `cur`
-     *  (edge-value array, UNKNOWN=-1 for undrawn, else 0..2 the player set).
-     *  Returns { edge, value, reason } for an edge the player hasn't yet fixed to
-     *  that value, or null. `reason` ∈ {degree, cross, cut}. */
+     *  (edge-value array, UNKNOWN=-1 for undrawn, else 0..2). Returns
+     *  { edge, value, reason, anchor, src? } (see annotateStep) or null. */
     function nextStep(G, needs, cur) {
         const E = G.edges.length;
         const lo = new Int8Array(E), hi = new Int8Array(E).fill(2);
         for (let e = 0; e < E; e++) if (cur[e] !== UNKNOWN) { lo[e] = cur[e]; hi[e] = cur[e]; }
         if (!propagate(G, needs, lo, hi, true)) return null;
-        for (let e = 0; e < E; e++) {
-            if (lo[e] === hi[e] && cur[e] !== lo[e]) {
-                return { edge: e, value: lo[e], reason: reasonFor(G, needs, cur, e, lo[e]) };
+        // Prefer an actionable (≥1 bridge) forced edge; only surface a forced-empty
+        // connection when nothing buildable is left (the player can't draw a 0).
+        let zero = -1;
+        for (let e = 0; e < E; e++) if (lo[e] === hi[e] && cur[e] !== lo[e]) {
+            if (lo[e] >= 1) return annotateStep(G, needs, cur, e, lo[e], hi);
+            if (zero < 0) zero = e;
+        }
+        return zero >= 0 ? annotateStep(G, needs, cur, zero, 0, hi) : null;
+    }
+
+    /** Explain why edge e is forced to `val`: 'cross' (a placed perpendicular
+     *  bridge rules it out), 'cut' (connectivity needs it) or 'degree' (an
+     *  island's number pins it). `anchor` points the UI at the source (the
+     *  crossing bridge, or the island(s)); `src` carries that island's number and
+     *  current bridge count for concrete wording. */
+    function annotateStep(G, needs, cur, e, val, pHi) {
+        const { a, b } = G.edges[e], E = G.edges.length;
+        const cLo = new Int8Array(E), cHi = new Int8Array(E).fill(2);
+        for (let k = 0; k < E; k++) if (cur[k] !== UNKNOWN) { cLo[k] = cur[k]; cHi[k] = cur[k]; }
+        if (val === 0) {
+            for (const f of G.cross[e]) if (cLo[f] >= 1) return { edge: e, value: val, reason: 'cross', anchor: { edges: [f] } };
+        }
+        if (val >= 1) {
+            const hi2 = pHi.slice(); hi2[e] = 0;
+            if (!possibleConnected(G, hi2)) return { edge: e, value: val, reason: 'cut', anchor: { islands: [a, b] } };
+        }
+        for (const v of [a, b]) {
+            let sumLo = 0, sumHi = 0, have = 0;
+            for (const k of G.incident[v]) { sumLo += cLo[k]; sumHi += cHi[k]; have += cLo[k]; }
+            const forceLo = needs[v] - (sumHi - cHi[e]);
+            const forceHi = needs[v] - (sumLo - cLo[e]);
+            if ((val > 0 && forceLo >= val) || (val === 0 && forceHi <= 0)) {
+                return { edge: e, value: val, reason: 'degree', anchor: { islands: [v] }, src: { island: v, need: needs[v], have } };
             }
         }
-        return null;
+        return { edge: e, value: val, reason: 'degree', anchor: { islands: [a, b] } };
     }
 
-    /** Classify (roughly) why edge e is forced to `val` from state `cur`, for the
-     *  hint banner: 'degree' (an island's count forces it), 'cross' (a committed
-     *  perpendicular bridge rules it out), or 'cut' (connectivity needs it). */
-    function reasonFor(G, needs, cur, e, val) {
-        const E = G.edges.length;
-        const lo = new Int8Array(E), hi = new Int8Array(E).fill(2);
-        for (let k = 0; k < E; k++) if (cur[k] !== UNKNOWN) { lo[k] = cur[k]; hi[k] = cur[k]; }
-        // crossing: val 0 and some crossing edge already committed >0
-        if (val === 0) {
-            for (const f of G.cross[e]) if (lo[f] >= 1) return 'cross';
-        }
-        // connectivity: val>=1 and e is a cut edge of the possible graph
-        if (val >= 1) {
-            propagate(G, needs, lo, hi, true);
-            // recompute possible graph ignoring e → disconnected?
-            const hi2 = hi.slice(); hi2[e] = 0;
-            if (!possibleConnected(G, hi2)) return 'cut';
-        }
-        return 'degree';
-    }
-
-    /** Depth-1 refutation hint: find an undecided edge whose one value leads to a
-     *  contradiction, so the other is forced. Returns
-     *  { edge, value, assume:{edge,value} } (value = the forced one) or null. */
+    /** Depth-1 refutation hint with the SHORTEST chain: the undecided edge whose
+     *  one value leads to a contradiction via the fewest forced steps, so the
+     *  other value is forced. Returns
+     *  { edge, value, assume:{edge,value}, chain:[{edge,value}], bad } or null. */
     function nextStepDeep(G, needs, cur) {
         const E = G.edges.length;
-        const base = { lo: new Int8Array(E), hi: new Int8Array(E).fill(2) };
-        for (let e = 0; e < E; e++) if (cur[e] !== UNKNOWN) { base.lo[e] = cur[e]; base.hi[e] = cur[e]; }
-        if (!propagate(G, needs, base.lo, base.hi, true)) return null;
+        const baseLo = new Int8Array(E), baseHi = new Int8Array(E).fill(2);
+        for (let e = 0; e < E; e++) if (cur[e] !== UNKNOWN) { baseLo[e] = cur[e]; baseHi[e] = cur[e]; }
+        if (!propagate(G, needs, baseLo, baseHi, true)) return null;
+        let best = null;
         for (let e = 0; e < E; e++) {
-            if (base.lo[e] === base.hi[e]) continue;
-            const feas = [];
-            let badV = -1;
-            for (let v = base.lo[e]; v <= base.hi[e]; v++) {
-                const l = base.lo.slice(), h = base.hi.slice();
-                l[e] = v; h[e] = v;
+            if (baseLo[e] === baseHi[e]) continue;
+            const feas = []; let badV = -1;
+            for (let v = baseLo[e]; v <= baseHi[e]; v++) {
+                const l = baseLo.slice(), h = baseHi.slice(); l[e] = v; h[e] = v;
                 if (propagate(G, needs, l, h, true)) feas.push(v);
                 else if (badV < 0) badV = v;
             }
-            // A clean one-step deduction: ruling out the impossible value(s) leaves
-            // exactly one feasible value for this edge.
-            if (feas.length === 1 && badV >= 0) return { edge: e, value: feas[0], assume: { edge: e, value: badV } };
+            if (feas.length === 1 && badV >= 0) {
+                const l = baseLo.slice(), h = baseHi.slice(); l[e] = badV; h[e] = badV;
+                const tr = propagateTraced(G, needs, l, h);
+                const len = tr.chain ? tr.chain.length : 0;
+                if (!best || len < best.len) best = { edge: e, value: feas[0], assume: { edge: e, value: badV }, chain: tr.chain || [], bad: tr.bad || null, len };
+            }
         }
-        return null;
+        return best ? { edge: best.edge, value: best.value, assume: best.assume, chain: best.chain, bad: best.bad } : null;
     }
 
     /** Verify a player's full edge-value array solves the puzzle. */

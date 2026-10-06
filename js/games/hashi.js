@@ -388,6 +388,11 @@
     // -----------------------------------------------------------------
     // Hints
     // -----------------------------------------------------------------
+    // Action phrasing for a forced edge value (verb form) and an assumed value.
+    const actEn = (v) => (v === 0 ? 'stay empty' : v === 2 ? 'take two bridges' : 'take one bridge');
+    const asmEn = (v) => (v === 0 ? 'no bridge' : v === 2 ? 'two bridges' : 'one bridge');
+    const actZh = (v) => (v === 0 ? '留空' : v === 2 ? '架兩座橋' : '架一座橋');
+    const asmZh = (v) => (v === 0 ? '不架橋' : v === 2 ? '架兩座橋' : '架一座橋');
     const HINT_TEXTS = {
         en: {
             conflict: (h) => h.cross && h.over
@@ -396,10 +401,18 @@
                     ? 'The highlighted bridges cross each other — bridges may never cross.'
                     : 'The highlighted island has more bridges than its number allows.',
             wrong: 'The highlighted bridge(s) disagree with the unique solution — remove or re-count them.',
-            degree: (n) => `An island’s number forces it: the highlighted connection must carry ${n === 2 ? 'two bridges' : 'one bridge'}.`,
-            cross: 'A bridge already placed rules this one out, so the highlighted connection stays empty.',
-            cut: 'Without the highlighted bridge an island could never connect, so it must be built.',
-            deep: (h) => `Assume the highlighted connection takes ${h.assume.value === 0 ? 'no bridge' : h.assume.value + ' bridge(s)'} and it leads to a dead end — so it must take ${h.value} bridge(s).`,
+            degree: (h) => (h.src
+                ? `The circled ${h.src.need} already has ${h.src.have} bridge${h.src.have === 1 ? '' : 's'}, so the highlighted connection must ${actEn(h.value)}.`
+                : `The circled island’s number forces the highlighted connection to ${actEn(h.value)}.`),
+            cross: 'The circled bridge is in the way, so the highlighted connection must stay empty.',
+            cut: (h) => `Without the highlighted bridge the circled island could never connect, so it must ${actEn(h.value)}.`,
+            deep: (h) => {
+                const brk = h.bad && h.bad.kind === 'cross' ? 'two bridges would be forced to cross'
+                    : h.bad && h.bad.kind === 'disconnect' ? 'an island could no longer connect'
+                        : 'an island couldn’t reach its number';
+                const lead = h.chain && h.chain.length ? 'the numbered steps are forced and ' : '';
+                return `Assume the dashed connection takes ${asmEn(h.assume.value)}: ${lead}${brk} (circled). So it must ${actEn(h.value)}.`;
+            },
             none: 'Nothing more to deduce right now.',
         },
         zh: {
@@ -409,10 +422,18 @@
                     ? '醒目的橋互相交叉了——橋絕不能交叉。'
                     : '醒目的島橋數超過它的數字了。',
             wrong: '醒目的橋與唯一解不符——請移除或重算它們。',
-            degree: (n) => `島上的數字逼出：醒目的這條連線必須架 ${n === 2 ? '兩座橋' : '一座橋'}。`,
-            cross: '已架的橋排除了這條，所以醒目的連線維持空白。',
-            cut: '少了醒目的這座橋，就有島永遠連不進來，所以它一定要架。',
-            deep: (h) => `假設醒目的連線架 ${h.assume.value === 0 ? '零座橋' : h.assume.value + ' 座橋'}，會走進死路——所以它必須架 ${h.value} 座橋。`,
+            degree: (h) => (h.src
+                ? `圈起來的 ${h.src.need} 已經接了 ${h.src.have} 座橋，所以醒目的這條必須${actZh(h.value)}。`
+                : `圈起來那座島的數字逼出：醒目的這條必須${actZh(h.value)}。`),
+            cross: '圈起來的橋擋住了，所以醒目的這條必須留空。',
+            cut: (h) => `少了醒目的這座橋，圈起來的島就連不進來，所以它必須${actZh(h.value)}。`,
+            deep: (h) => {
+                const brk = h.bad && h.bad.kind === 'cross' ? '會逼出兩橋交叉'
+                    : h.bad && h.bad.kind === 'disconnect' ? '會有島連不起來'
+                        : '會有島的橋數湊不出來';
+                const lead = h.chain && h.chain.length ? '順著編號的幾步，' : '';
+                return `假設虛線這條${asmZh(h.assume.value)}：${lead}${brk}（圈起來處）。所以它必須${actZh(h.value)}。`;
+            },
             none: '目前沒有可推的下一步。',
         },
     };
@@ -439,9 +460,9 @@
         if (wrong.length) return { kind: 'wrong', edges: wrong };
         const cur = playerCur();
         const step = HS.nextStep(state.G, state.needs, cur);
-        if (step) return { kind: 'deduce', edge: step.edge, value: step.value, reason: step.reason };
+        if (step) return { kind: 'deduce', edge: step.edge, value: step.value, reason: step.reason, anchor: step.anchor, src: step.src };
         const deep = HS.nextStepDeep(state.G, state.needs, cur);
-        if (deep) return { kind: 'deep', edge: deep.edge, value: deep.value, assume: deep.assume };
+        if (deep) return { kind: 'deep', edge: deep.edge, value: deep.value, assume: deep.assume, chain: deep.chain, bad: deep.bad };
         return null;
     }
 
@@ -467,8 +488,8 @@
         else if (h.kind === 'none') html = t.none;
         else if (h.kind === 'deep') html = t.deep(h);
         else if (h.reason === 'cross') html = t.cross;
-        else if (h.reason === 'cut') html = t.cut;
-        else html = t.degree(h.value);
+        else if (h.reason === 'cut') html = t.cut(h);
+        else html = t.degree(h);
         state.hintBanner.innerHTML = html;
         if (PC.icons && PC.icons.render) PC.icons.render(state.hintBanner);
         state.hintBanner.classList.toggle('error', h.kind === 'wrong' || h.kind === 'conflict');
@@ -482,39 +503,61 @@
         const h = state.hint; if (!h || h.kind === 'none') return;
         const { cs } = state;
         const sw = Math.max(2, cs * 0.07), offUnit = Math.max(2.2, cs * 0.1);
-        const ringIsland = (v, wrong) => {
+        const ringIsland = (v, cls) => {
             const is = state.islands[v];
-            layer.appendChild(PC.svgEl('circle', { class: 'hashi-hint-ring' + (wrong ? ' wrong' : '') + ' hashi-hint-mark', cx: cx(is.c), cy: cy(is.r), r: cs * 0.44 }));
+            layer.appendChild(PC.svgEl('circle', { class: cls + ' hashi-hint-mark', cx: cx(is.c), cy: cy(is.r), r: cs * 0.44 }));
         };
-        const markEdge = (e, cls) => {
+        const bandEdge = (e, cls) => {
+            const { a, b } = state.G.edges[e], A = state.islands[a], B = state.islands[b];
+            layer.appendChild(PC.svgEl('line', { class: cls + ' hashi-hint-mark', 'stroke-width': Math.max(sw + 4, cs * 0.18), 'stroke-linecap': 'round', x1: cx(A.c), y1: cy(A.r), x2: cx(B.c), y2: cy(B.r) }));
+        };
+        const ghostEdge = (e, value, cls) => {
             const g = PC.svgEl('g', { class: 'hashi-hint-mark' });
-            // draw a highlight band along the corridor
-            const { a, b } = state.G.edges[e];
-            const A = state.islands[a], B = state.islands[b];
-            g.appendChild(PC.svgEl('line', { class: cls, 'stroke-width': Math.max(sw + 4, cs * 0.18), 'stroke-linecap': 'round', x1: cx(A.c), y1: cy(A.r), x2: cx(B.c), y2: cy(B.r) }));
+            drawBridge(g, e, value || 1, cls || 'hashi-bridge hashi-hint-ghost', sw, offUnit);
             layer.appendChild(g);
         };
+        const stepNum = (e, n) => {
+            const { a, b } = state.G.edges[e], A = state.islands[a], B = state.islands[b];
+            const t = PC.svgEl('text', {
+                class: 'hashi-hint-step hashi-hint-mark', x: (cx(A.c) + cx(B.c)) / 2, y: (cy(A.r) + cy(B.r)) / 2,
+                'text-anchor': 'middle', 'dominant-baseline': 'middle', 'font-size': Math.max(10, Math.round(cs * 0.3)),
+            });
+            t.textContent = String(n); layer.appendChild(t);
+        };
+        const badMark = (bad) => {
+            if (!bad) return;
+            if (bad.kind === 'degree' && typeof bad.island === 'number') ringIsland(bad.island, 'hashi-hint-ring wrong');
+            else if (bad.kind === 'cross' && bad.edges) for (const e of bad.edges) bandEdge(e, 'hashi-hint-band wrong');
+            else if (bad.kind === 'disconnect') {
+                if (bad.islands) for (const v of bad.islands) ringIsland(v, 'hashi-hint-ring wrong');
+                if (typeof bad.edge === 'number') bandEdge(bad.edge, 'hashi-hint-band wrong');
+            }
+        };
+
         if (h.kind === 'conflict') {
-            for (const e of h.edges) markEdge(e, 'hashi-hint-band wrong');
-            for (const w of h.isles) ringIsland(w, true);
+            for (const e of h.edges) bandEdge(e, 'hashi-hint-band wrong');
+            for (const w of h.isles) ringIsland(w, 'hashi-hint-ring wrong');
             return;
         }
-        if (h.kind === 'wrong') { for (const e of h.edges) markEdge(e, 'hashi-hint-band wrong'); return; }
+        if (h.kind === 'wrong') { for (const e of h.edges) bandEdge(e, 'hashi-hint-band wrong'); return; }
         if (h.kind === 'deep') {
-            markEdge(h.edge, 'hashi-hint-band');
-            // ghost the forced bridges
-            const gg = PC.svgEl('g', { class: 'hashi-hint-mark' });
-            drawBridge(gg, h.edge, h.value || 1, 'hashi-bridge hashi-hint-ghost', sw, offUnit);
-            layer.appendChild(gg);
+            // the refuted assumption (dashed red + red ghost), the forced numbered
+            // steps it triggers, and where the rule finally breaks.
+            bandEdge(h.edge, 'hashi-hint-assume');
+            if (h.assume.value >= 1) ghostEdge(h.edge, h.assume.value, 'hashi-bridge bad hashi-hint-ghost');
+            let n = 0;
+            if (h.chain) for (const st of h.chain) if (st.value >= 1) { ghostEdge(st.edge, st.value); stepNum(st.edge, ++n); }
+            badMark(h.bad);
             return;
         }
-        // deduce
-        markEdge(h.edge, 'hashi-hint-band');
-        if (h.value >= 1) {
-            const gg = PC.svgEl('g', { class: 'hashi-hint-mark' });
-            drawBridge(gg, h.edge, h.value, 'hashi-bridge hashi-hint-ghost', sw, offUnit);
-            layer.appendChild(gg);
+        // deduce: anchor the source (island ring / crossing bridge), then band +
+        // ghost the forced connection.
+        if (h.anchor) {
+            if (h.anchor.islands) for (const v of h.anchor.islands) ringIsland(v, 'hashi-hint-anchor');
+            if (h.anchor.edges) for (const e of h.anchor.edges) bandEdge(e, 'hashi-hint-source');
         }
+        bandEdge(h.edge, 'hashi-hint-band');
+        if (h.value >= 1) ghostEdge(h.edge, h.value);
     }
 
     // -----------------------------------------------------------------
