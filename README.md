@@ -16,7 +16,7 @@ Pure static HTML/CSS/JS — deployable on GitHub Pages.
 | Zip    | Playable      | Drag-to-draw path, unique-solution generator (checkpoints + walls), hint, undo & share, 5×5 – 12×12 |
 | Nonogram | Playable    | Line-logic generator/solver (unique boards), Cycle/Fill/Mark/Erase brush, fill-vs-✗ hints, clue-complete highlight, win animation, undo & share, 6×6 – 16×16 |
 | Guards | Playable      | Akari / "Light Up": unique-solution generator (Easy/Medium pure-logic, Hard needs one assume→contradiction step), walk-through hints, debounced conflicts, reveal, undo & share, sizes 6–25 |
-| Hashi  | Playable      | Bridges / Hashiwokakero: edge-CSP generator/solver (unique boards; degree + no-cross + connectivity propagation, Easy/Medium pure-logic, Hard needs one assume→contradiction step), drag-to-build bridges (0→1→2), deferred conflicts, corridor hints, reveal, undo & share, sizes 7–15 |
+| Hashi  | WIP           | Bridges / Hashiwokakero: edge-CSP generator/solver (unique boards; degree + no-cross + connectivity propagation, Easy/Medium pure-logic, Hard needs one assume→contradiction step), drag-to-build bridges (0→1→2), deferred conflicts, corridor hints, reveal, undo & share, sizes 7–15 |
 
 Full rule reference: [`docs/rules.md`](docs/rules.md).
 
