@@ -388,6 +388,16 @@
             clueBulb: (n) => `A numbered pillar forces it: the ${n} highlighted cell(s) must hold a guard.`,
             clueNo: (n) => `A numbered pillar is already satisfied — the ${n} highlighted cell(s) can’t hold a guard (${XI}).`,
             cover: () => 'Only a guard here can watch the highlighted dark cell.',
+            deep: (h) => {
+                const cause = h.bad.kind === 'sight' ? 'two guards would end up seeing each other'
+                    : h.bad.kind === 'cover' ? 'a floor cell could no longer be watched'
+                        : 'a numbered pillar could no longer reach its count';
+                const assume = h.hyp.val === BULB
+                    ? 'Assume a guard on the dashed cell'
+                    : 'Assume the dashed cell takes no guard (' + XI + ')';
+                const concl = h.state === BULB ? 'so it must hold a guard.' : 'so it must be ' + XI + '.';
+                return assume + ': follow the numbered steps and ' + cause + ' — ' + concl;
+            },
             none: 'Nothing more to deduce right now.',
         },
         zh: {
@@ -400,6 +410,16 @@
             clueBulb: (n) => `數字柱逼出：醒目的 ${n} 格必須放守衛。`,
             clueNo: (n) => `數字柱已滿足：醒目的 ${n} 格不能放守衛（${XI}）。`,
             cover: () => '只有在這格放守衛，才能照亮醒目的暗格。',
+            deep: (h) => {
+                const cause = h.bad.kind === 'sight' ? '會逼出兩名互相看到的守衛'
+                    : h.bad.kind === 'cover' ? '會有一格地板再也無法被看守'
+                        : '會有一座數字柱湊不到它的數字';
+                const assume = h.hyp.val === BULB
+                    ? '假設虛線這格放守衛'
+                    : '假設虛線這格不放守衛（' + XI + '）';
+                const concl = h.state === BULB ? '所以它必須放守衛。' : '所以它必須打 ' + XI + '。';
+                return assume + '：順著編號步驟推下去，' + cause + ' — ' + concl;
+            },
             none: '目前沒有可推的下一步。',
         },
     };
@@ -430,6 +450,11 @@
         for (const i of ctx.whites) if (aug[i] === BULB) for (const j of ctx.rays[i]) if (aug[j] === EMPTY) aug[j] = XMARK;
         const step = LU.nextStep(ctx, clue, aug);
         if (step) return { kind: 'deduce', cells: step.cells, state: step.state, reason: step.reason, anchor: step.anchor };
+        // 4) Pure propagation stalled (Hard boards) — surface a one-step
+        //    "assume → contradiction" deduction with its chain, so the UI can walk
+        //    the player through each forced step and point at the broken rule.
+        const deep = LU.nextStepDeep && LU.nextStepDeep(ctx, clue, aug);
+        if (deep) return { kind: 'deep', cell: deep.cell, state: deep.state, hyp: deep.hyp, chain: deep.chain, bad: deep.bad };
         return null;
     }
 
@@ -451,6 +476,7 @@
         const t = hintTexts();
         let html;
         if (h.kind === 'conflict') html = t.conflict(h);
+        else if (h.kind === 'deep') html = t.deep(h);
         else if (h.kind === 'wrong') html = t.wrong;
         else if (h.kind === 'none') html = t.none;
         else if (h.reason === 'cover') html = t.cover();
@@ -473,28 +499,50 @@
                 width: cs * 0.84, height: cs * 0.84, rx: cs * 0.14, ry: cs * 0.14,
             }));
         };
-        const ghost = (i) => {
+        const anchorOutline = (i) => {
+            const r = (i / N) | 0, c = i % N;
+            layer.appendChild(PC.svgEl('rect', {
+                class: 'lu-hint-anchor', x: c * cs + cs * 0.06, y: r * cs + cs * 0.06,
+                width: cs * 0.88, height: cs * 0.88, rx: cs * 0.1, ry: cs * 0.1,
+            }));
+        };
+        const ghostAt = (i, val, opts) => {
+            opts = opts || {};
             const r = (i / N) | 0, c = i % N, cx = c * cs + cs / 2, cy = r * cs + cs / 2;
-            if (h.state === BULB) {
-                const g = PC.boardIcon(EMITTER_ICON, cx, cy, cs * 0.6, { className: 'lu-bulb lu-hint-ghost' });
+            const bad = opts.bad ? ' bad' : '';
+            if (val === BULB) {
+                const g = PC.boardIcon(EMITTER_ICON, cx, cy, cs * 0.6, { className: 'lu-bulb lu-hint-ghost' + bad });
                 if (g) layer.appendChild(g);
             } else {
                 const m = cs * 0.32, sw = Math.max(1.4, cs * 0.06), x0 = c * cs, y0 = r * cs;
-                layer.appendChild(PC.svgEl('line', { class: 'lu-x lu-hint-ghost', 'stroke-width': sw, x1: x0 + m, y1: y0 + m, x2: x0 + cs - m, y2: y0 + cs - m }));
-                layer.appendChild(PC.svgEl('line', { class: 'lu-x lu-hint-ghost', 'stroke-width': sw, x1: x0 + cs - m, y1: y0 + m, x2: x0 + m, y2: y0 + cs - m }));
+                layer.appendChild(PC.svgEl('line', { class: 'lu-x lu-hint-ghost' + bad, 'stroke-width': sw, x1: x0 + m, y1: y0 + m, x2: x0 + cs - m, y2: y0 + cs - m }));
+                layer.appendChild(PC.svgEl('line', { class: 'lu-x lu-hint-ghost' + bad, 'stroke-width': sw, x1: x0 + cs - m, y1: y0 + m, x2: x0 + m, y2: y0 + cs - m }));
+            }
+            if (opts.num) {
+                const tn = PC.svgEl('text', {
+                    class: 'lu-hint-step', x: c * cs + cs * 0.26, y: r * cs + cs * 0.27,
+                    'text-anchor': 'middle', 'dominant-baseline': 'middle', 'font-size': Math.max(9, Math.round(cs * 0.3)),
+                });
+                tn.textContent = String(opts.num);
+                layer.appendChild(tn);
             }
         };
+
         if (h.kind === 'wrong' || h.kind === 'conflict') { for (const i of h.cells) ring(i, true); return; }
-        // deduce: outline the source (numbered pillar, or for coverage the dark
-        // cell being rescued) — unless it coincides with a highlighted cell.
-        if (h.anchor >= 0 && h.cells.indexOf(h.anchor) === -1) {
-            const ar = (h.anchor / N) | 0, ac = h.anchor % N;
-            layer.appendChild(PC.svgEl('rect', {
-                class: 'lu-hint-anchor', x: ac * cs + cs * 0.06, y: ar * cs + cs * 0.06,
-                width: cs * 0.88, height: cs * 0.88, rx: cs * 0.1, ry: cs * 0.1,
-            }));
+
+        if (h.kind === 'deep') {
+            anchorOutline(h.cell);
+            ghostAt(h.cell, h.hyp.val, { bad: true });                            // the refuted assumption
+            h.chain.forEach((st, k) => ghostAt(st.cell, st.val, { num: k + 1 })); // the forced steps, in order
+            const badCells = new Set(h.bad.cells);
+            if (typeof h.bad.pillar === 'number' && h.bad.pillar >= 0) badCells.add(h.bad.pillar);
+            for (const i of badCells) ring(i, true);                              // where the rule breaks
+            return;
         }
-        for (const i of h.cells) { ghost(i); ring(i, false); }
+
+        // deduce: outline the source, then ghost + ring each forced cell.
+        if (h.anchor >= 0 && h.cells.indexOf(h.anchor) === -1) anchorOutline(h.anchor);
+        for (const i of h.cells) { ghostAt(i, h.state); ring(i, false); }
     }
 
     // -----------------------------------------------------------------

@@ -1314,6 +1314,11 @@
 .board-icon.lu-bulb.bad { color: var(--accent-danger, #dc3545); }
 .board-icon.lu-reveal { color: #4f46e5; opacity: 0.4; }
 .lu-hint-ghost { opacity: 0.55; }
+/* Deep (assume→contradiction) hint: the refuted assumption shows red (the guard
+   reuses .lu-bulb.bad; the ✗ gets a red stroke), and each forced ghost carries a
+   white-haloed step number so the chain reads in order. */
+.lu-x.lu-hint-ghost.bad { stroke: var(--accent-danger, #dc3545); }
+.lu-hint-step { fill: #1e293b; font-family: var(--font-body); font-weight: 700; paint-order: stroke; stroke: #ffffff; stroke-width: 3px; stroke-linejoin: round; pointer-events: none; }
 
 /* Hint (theme indigo, contrasts the dark guards); red for wrong marks. */
 .lu-hint-ring { fill: none; stroke: var(--game-color, #4f46e5); stroke-width: 3; pointer-events: none; animation: zip-hint-pulse 1.15s ease-in-out infinite; }
