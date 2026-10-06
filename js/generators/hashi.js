@@ -484,6 +484,12 @@
             if (!clear) continue;
             // new island can't sit where a perpendicular bridge already passes
             if (occupied[nr * N + nc]) continue;
+            // forbid orthogonally-adjacent islands: a gap-1 pair can never be
+            // bridged, and keeping all pairs ≥2 apart makes the even "spread to
+            // fill" step provably safe (spreading only widens gaps).
+            let adjacent = false;
+            for (const dd of DIRS) { const ar = nr + dd[0], ac = nc + dd[1]; if (ar >= 0 && ar < N && ac >= 0 && ac < N && at[ar * N + ac] !== -1) { adjacent = true; break; } }
+            if (adjacent) continue;
             const v = rng() < cfg.doubleFrac ? 2 : 1;
             const b = place(nr, nc);
             bridges.push({ a: src, b, v });
@@ -516,6 +522,29 @@
         const outBridges = [];
         for (let e = 0; e < G0.edges.length; e++) if (val[e] >= 1) outBridges.push({ a: G0.edges[e].a, b: G0.edges[e].b, v: val[e] });
         return { islands: islands.map((p) => ({ r: p.r, c: p.c })), bridges: outBridges };
+    }
+
+    // Even "spread to fill": remap the used rows / columns so the layout fills the
+    // whole N×N frame (touching all four edges) with even spacing. Only widens the
+    // gaps between used lines (insertion, never compression) and preserves their
+    // order, so — given generation forbids adjacent islands — every bridge keeps a
+    // clear ≥1-cell corridor, no new candidate bridge appears, and crossings are
+    // unchanged. Hence the solution and its uniqueness are preserved.
+    function computeSpread(used, N) {
+        const k = used.length, pos = {};
+        if (k === 1) { pos[used[0]] = (N - 1) >> 1; return pos; }
+        const span = used[k - 1] - used[0];
+        let slack = (N - 1) - span; if (slack < 0) slack = 0;
+        const m = k - 1, base = Math.floor(slack / m), rem = slack % m;
+        let acc = 0; pos[used[0]] = 0;
+        for (let i = 0; i < m; i++) { acc += (used[i + 1] - used[i]) + base + (i < rem ? 1 : 0); pos[used[i + 1]] = acc; }
+        return pos;
+    }
+    function spreadToFill(islands, N) {
+        const usedR = Array.from(new Set(islands.map((p) => p.r))).sort((a, b) => a - b);
+        const usedC = Array.from(new Set(islands.map((p) => p.c))).sort((a, b) => a - b);
+        const R = computeSpread(usedR, N), C = computeSpread(usedC, N);
+        return islands.map((p) => ({ r: R[p.r], c: C[p.c], need: p.need }));
     }
 
     function attemptsFor(N) { return N <= 9 ? 160 : N <= 13 ? 120 : 90; }
@@ -586,11 +615,27 @@
         for (let e = 0; e < chosen.G.edges.length; e++) if (chosen.solVal[e] >= 1) {
             solution.push({ a: chosen.G.edges[e].a, b: chosen.G.edges[e].b, v: chosen.solVal[e] });
         }
+
+        // Spread the layout evenly to fill the N×N frame (touch all four edges).
+        // Island indices are stable, so the index-based `solution` still applies.
+        // Re-verify validity + uniqueness on the spread coords as a safety net; if
+        // anything regressed (shouldn't, given no adjacent islands), keep the
+        // original compact layout rather than ship a broken board.
+        let outIslands = chosen.islands;
+        {
+            const spread = spreadToFill(chosen.islands, N);
+            const G2 = buildGraph(N, spread);
+            const needs2 = spread.map((p) => p.need);
+            const sv2 = new Int8Array(G2.edges.length);
+            for (const s of solution) { const e = G2.edges.findIndex((ed) => (ed.a === s.a && ed.b === s.b) || (ed.a === s.b && ed.b === s.a)); if (e >= 0) sv2[e] = s.v; }
+            if (verify(G2, needs2, sv2) && countSolutions(G2, needs2, 2, true).count === 1) outIslands = spread;
+        }
+
         if (onProgress) await onProgress(1);
         return {
             id: `hashi-${N}x${N}-${difficulty}-${(seed >>> 0).toString(36)}`,
             game: 'hashi', size: N, difficulty,
-            islands: chosen.islands.map((p) => ({ r: p.r, c: p.c, need: p.need })),
+            islands: outIslands.map((p) => ({ r: p.r, c: p.c, need: p.need })),
             solution,
             stats: { islands: chosen.m, bridges: chosen.bridges, elims: chosen.elims, depth: chosen.depth, poolSize: pool.length },
         };

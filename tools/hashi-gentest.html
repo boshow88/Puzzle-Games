@@ -94,6 +94,14 @@
             }
             // the shipped solution is valid
             if (!S.verify(graph, needs, solVal)) fail(`${N} ${diff} #${seed}: shipped solution invalid`);
+            // spread-to-fill: the layout should touch all four edges of the frame
+            {
+              let minR = N, maxR = -1, minC = N, maxC = -1;
+              const rows = new Set(), cols = new Set();
+              for (const is of p.islands) { rows.add(is.r); cols.add(is.c); minR = Math.min(minR, is.r); maxR = Math.max(maxR, is.r); minC = Math.min(minC, is.c); maxC = Math.max(maxC, is.c); }
+              if (rows.size >= 2 && (minR !== 0 || maxR !== N - 1)) fail(`${N} ${diff} #${seed}: rows don't fill frame (${minR}..${maxR} of 0..${N - 1})`);
+              if (cols.size >= 2 && (minC !== 0 || maxC !== N - 1)) fail(`${N} ${diff} #${seed}: cols don't fill frame (${minC}..${maxC} of 0..${N - 1})`);
+            }
             // uniqueness (solver)
             const cs = S.countSolutions(graph, needs, 2, true);
             if (cs.count !== 1) fail(`${N} ${diff} #${seed}: solver count=${cs.count} (want 1)`);
