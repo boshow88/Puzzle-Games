@@ -282,15 +282,15 @@
                 const ns = wallNeigh[i];
                 let nb = 0, nu = 0; const bulbs = [], nobulbs = [], unknowns = [];
                 for (const j of ns) { if (b[j] === BULB) { nb++; bulbs.push(j); } else if (b[j] === UNKNOWN) { nu++; unknowns.push(j); } else nobulbs.push(j); }
-                if (nb > clue[i]) return { ok: false, trace, bad: { kind: 'clue', pillar: i, cells: bulbs } };
-                if (nb + nu < clue[i]) return { ok: false, trace, bad: { kind: 'clue', pillar: i, cells: ns.slice() } };
+                if (nb > clue[i]) return { ok: false, trace, bad: { kind: 'clue', pillar: i, cells: bulbs.slice(), seed: bulbs.slice() } };
+                if (nb + nu < clue[i]) return { ok: false, trace, bad: { kind: 'clue', pillar: i, cells: ns.slice(), seed: nobulbs.slice() } };
                 if (nb === clue[i] && nu > 0) { for (const j of unknowns) set(j, NOBULB, bulbs.slice()); changed = true; }
                 else if (nb + nu === clue[i] && nu > 0) { for (const j of unknowns) set(j, BULB, nobulbs.slice()); changed = true; }
             }
             for (const i of whites) {
                 if (b[i] !== BULB) continue;
                 for (const j of rays[i]) {
-                    if (b[j] === BULB) return { ok: false, trace, bad: { kind: 'sight', cells: [i, j] } };
+                    if (b[j] === BULB) return { ok: false, trace, bad: { kind: 'sight', cells: [i, j], seed: [i, j] } };
                     if (b[j] === UNKNOWN) { set(j, NOBULB, [i]); changed = true; }
                 }
             }
@@ -301,7 +301,7 @@
                 let only = -1, cnt = 0; const ruled = [];
                 if (b[i] !== NOBULB) { only = i; cnt++; } else ruled.push(i);
                 for (const j of rays[i]) { if (b[j] !== NOBULB) { only = j; cnt++; } else ruled.push(j); }
-                if (cnt === 0) return { ok: false, trace, bad: { kind: 'cover', cells: [i] } };
+                if (cnt === 0) return { ok: false, trace, bad: { kind: 'cover', cells: [i], seed: [i].concat(rays[i]) } };
                 if (cnt === 1 && b[only] === UNKNOWN) { set(only, BULB, ruled.length ? ruled : [i]); changed = true; }
             }
         }
@@ -312,7 +312,7 @@
     function backwardClose(trace, bad) {
         const stepByCell = new Map();
         for (const s of trace) stepByCell.set(s.cell, s);
-        const needed = new Set(), q = bad.cells.slice();
+        const needed = new Set(), q = (bad.seed || bad.cells).slice();
         while (q.length) {
             const c = q.shift();
             if (needed.has(c)) continue;
@@ -337,13 +337,18 @@
                 const res = propagateTraced(ctx, clue, t);
                 if (!res.ok) {
                     const chain = backwardClose(res.trace, res.bad);
-                    if (!best || chain.length < best.chain.length) {
-                        best = { cell: X, state: V === BULB ? NOBULB : BULB, hyp: { cell: X, val: V }, chain, bad: res.bad };
+                    const len = chain.length;
+                    // Prefer a short, non-empty chain (an instructive walk-through) over a
+                    // 0-step "immediate" refutation; keep very long (cluttered) chains last.
+                    const score = len === 0 ? 400 : (len <= 6 ? len : 500 + len);
+                    if (!best || score < best.score) {
+                        best = { score, cell: X, state: V === BULB ? NOBULB : BULB, hyp: { cell: X, val: V }, chain, bad: res.bad };
                     }
                     break; // X=V refutes itself ⇒ X is the opposite; skip V's twin
                 }
             }
         }
+        if (best) delete best.score;
         return best;
     }
 

@@ -377,48 +377,51 @@
     // Hints — wrong marks first, else the next basic deduction.
     // -----------------------------------------------------------------
     const XI = '<span class="inline-icon lu-ico-mark" data-icon="x"></span>'; // the ✗ mark as an icon
+    const GI = '<span class="inline-icon lu-ico-bulb" data-icon="user"></span>'; // the guard as an icon
     const HINT_TEXTS = {
         en: {
-            wrong: 'The highlighted cell(s) disagree with the solution — a guard that shouldn’t be there, or a ' + XI + ' where a guard belongs.',
+            wrong: 'The highlighted cell(s) disagree with the solution — a ' + GI + ' that shouldn’t be there, or a ' + XI + ' where a ' + GI + ' belongs.',
             conflict: (h) => h.sight && h.over
-                ? 'The highlighted cells break a rule — two guards can see each other, and a numbered pillar has too many guards beside it.'
+                ? 'The highlighted cells break a rule — two ' + GI + ' can see each other, and a numbered pillar has too many ' + GI + ' beside it.'
                 : h.sight
-                    ? 'The highlighted guards can see each other — no two guards may.'
-                    : 'This numbered pillar has too many guards beside it — it must hold exactly its number.',
-            clueBulb: (n) => `A numbered pillar forces it: the ${n} highlighted cell(s) must hold a guard.`,
-            clueNo: (n) => `A numbered pillar is already satisfied — the ${n} highlighted cell(s) can’t hold a guard (${XI}).`,
-            cover: () => 'Only a guard here can watch the highlighted dark cell.',
+                    ? 'The highlighted ' + GI + ' can see each other — no two may.'
+                    : 'This numbered pillar has too many ' + GI + ' beside it — it must hold exactly its number.',
+            clueBulb: (n) => `A numbered pillar forces it: the ${n} highlighted cell(s) must hold a ${GI}.`,
+            clueNo: (n) => `A numbered pillar is already satisfied — the ${n} highlighted cell(s) can’t hold a ${GI} (${XI}).`,
+            cover: () => 'Only a ' + GI + ' here can watch the highlighted dark cell.',
             deep: (h) => {
-                const cause = h.bad.kind === 'sight' ? 'two guards would end up seeing each other'
+                const cause = h.bad.kind === 'sight' ? 'two ' + GI + ' would end up seeing each other'
                     : h.bad.kind === 'cover' ? 'a floor cell could no longer be watched'
                         : 'a numbered pillar could no longer reach its count';
                 const assume = h.hyp.val === BULB
-                    ? 'Assume a guard on the dashed cell'
-                    : 'Assume the dashed cell takes no guard (' + XI + ')';
-                const concl = h.state === BULB ? 'so it must hold a guard.' : 'so it must be ' + XI + '.';
-                return assume + ': follow the numbered steps and ' + cause + ' — ' + concl;
+                    ? 'Assume a ' + GI + ' on the dashed cell'
+                    : 'Assume the dashed cell takes no ' + GI + ' (' + XI + ')';
+                const concl = h.state === BULB ? 'so it must hold a ' + GI + '.' : 'so it must be ' + XI + '.';
+                const mid = h.chain && h.chain.length ? 'follow the numbered steps and ' + cause : cause + ' right away';
+                return assume + ': ' + mid + ' — ' + concl;
             },
             none: 'Nothing more to deduce right now.',
         },
         zh: {
-            wrong: '醒目格與唯一解不符——有不該放的守衛，或在該放守衛的格打了 ' + XI + '。',
+            wrong: '醒目格與唯一解不符——有不該放的 ' + GI + '，或在該放 ' + GI + ' 的格打了 ' + XI + '。',
             conflict: (h) => h.sight && h.over
-                ? '醒目的格子違反了規則——有兩名守衛互相看到，且有數字柱旁的守衛過多。'
+                ? '醒目的格子違反了規則——有兩名 ' + GI + ' 互相看到，且有數字柱旁的 ' + GI + ' 過多。'
                 : h.sight
-                    ? '醒目的兩名守衛互相看到了——任兩名守衛都不能看到對方。'
-                    : '醒目的數字柱旁守衛太多了——數量必須剛好等於柱上的數字。',
-            clueBulb: (n) => `數字柱逼出：醒目的 ${n} 格必須放守衛。`,
-            clueNo: (n) => `數字柱已滿足：醒目的 ${n} 格不能放守衛（${XI}）。`,
-            cover: () => '只有在這格放守衛，才能照亮醒目的暗格。',
+                    ? '醒目的兩名 ' + GI + ' 互相看到了——任兩名都不能看到對方。'
+                    : '醒目的數字柱旁 ' + GI + ' 太多了——數量必須剛好等於柱上的數字。',
+            clueBulb: (n) => `數字柱逼出：醒目的 ${n} 格必須放 ${GI}。`,
+            clueNo: (n) => `數字柱已滿足：醒目的 ${n} 格不能放 ${GI}（${XI}）。`,
+            cover: () => '只有在這格放 ' + GI + '，才能照亮醒目的暗格。',
             deep: (h) => {
-                const cause = h.bad.kind === 'sight' ? '會逼出兩名互相看到的守衛'
+                const cause = h.bad.kind === 'sight' ? '會逼出兩名互相看到的 ' + GI
                     : h.bad.kind === 'cover' ? '會有一格地板再也無法被看守'
                         : '會有一座數字柱湊不到它的數字';
                 const assume = h.hyp.val === BULB
-                    ? '假設虛線這格放守衛'
-                    : '假設虛線這格不放守衛（' + XI + '）';
-                const concl = h.state === BULB ? '所以它必須放守衛。' : '所以它必須打 ' + XI + '。';
-                return assume + '：順著編號步驟推下去，' + cause + ' — ' + concl;
+                    ? '假設虛線這格放 ' + GI
+                    : '假設虛線這格不放 ' + GI + '（' + XI + '）';
+                const concl = h.state === BULB ? '所以它必須放 ' + GI + '。' : '所以它必須打 ' + XI + '。';
+                const mid = h.chain && h.chain.length ? '順著編號步驟推下去，' + cause : '就會立刻' + cause;
+                return assume + '：' + mid + ' — ' + concl;
             },
             none: '目前沒有可推的下一步。',
         },
