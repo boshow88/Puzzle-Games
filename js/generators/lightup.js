@@ -282,8 +282,11 @@
                 const ns = wallNeigh[i];
                 let nb = 0, nu = 0; const bulbs = [], nobulbs = [], unknowns = [];
                 for (const j of ns) { if (b[j] === BULB) { nb++; bulbs.push(j); } else if (b[j] === UNKNOWN) { nu++; unknowns.push(j); } else nobulbs.push(j); }
-                if (nb > clue[i]) return { ok: false, trace, bad: { kind: 'clue', pillar: i, cells: bulbs.slice(), seed: bulbs.slice() } };
-                if (nb + nu < clue[i]) return { ok: false, trace, bad: { kind: 'clue', pillar: i, cells: ns.slice(), seed: nobulbs.slice() } };
+                // The forced guards / ✗s around the pillar become numbered chain
+                // steps (seed), and ONLY the pillar is the red "where it breaks"
+                // locus (cells empty here; repaint rings bad.pillar).
+                if (nb > clue[i]) return { ok: false, trace, bad: { kind: 'clue', pillar: i, cells: [], seed: bulbs.slice() } };
+                if (nb + nu < clue[i]) return { ok: false, trace, bad: { kind: 'clue', pillar: i, cells: [], seed: nobulbs.slice() } };
                 if (nb === clue[i] && nu > 0) { for (const j of unknowns) set(j, NOBULB, bulbs.slice()); changed = true; }
                 else if (nb + nu === clue[i] && nu > 0) { for (const j of unknowns) set(j, BULB, nobulbs.slice()); changed = true; }
             }
@@ -336,19 +339,16 @@
                 const t = b.slice(); t[X] = V;
                 const res = propagateTraced(ctx, clue, t);
                 if (!res.ok) {
+                    // The simplest deduction is the shortest refutation chain (an
+                    // immediate contradiction is simpler than a multi-step one).
                     const chain = backwardClose(res.trace, res.bad);
-                    const len = chain.length;
-                    // Prefer a short, non-empty chain (an instructive walk-through) over a
-                    // 0-step "immediate" refutation; keep very long (cluttered) chains last.
-                    const score = len === 0 ? 400 : (len <= 6 ? len : 500 + len);
-                    if (!best || score < best.score) {
-                        best = { score, cell: X, state: V === BULB ? NOBULB : BULB, hyp: { cell: X, val: V }, chain, bad: res.bad };
+                    if (!best || chain.length < best.chain.length) {
+                        best = { cell: X, state: V === BULB ? NOBULB : BULB, hyp: { cell: X, val: V }, chain, bad: res.bad };
                     }
                     break; // X=V refutes itself ⇒ X is the opposite; skip V's twin
                 }
             }
         }
-        if (best) delete best.score;
         return best;
     }
 

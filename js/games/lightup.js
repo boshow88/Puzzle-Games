@@ -392,7 +392,7 @@
             deep: (h) => {
                 const cause = h.bad.kind === 'sight' ? 'two ' + GI + ' would end up seeing each other'
                     : h.bad.kind === 'cover' ? 'a floor cell could no longer be watched'
-                        : 'a numbered pillar could no longer reach its count';
+                        : 'a numbered pillar would get the wrong number of ' + GI + ' beside it';
                 const assume = h.hyp.val === BULB
                     ? 'Assume a ' + GI + ' on the dashed cell'
                     : 'Assume the dashed cell takes no ' + GI + ' (' + XI + ')';
@@ -415,7 +415,7 @@
             deep: (h) => {
                 const cause = h.bad.kind === 'sight' ? '會逼出兩名互相看到的 ' + GI
                     : h.bad.kind === 'cover' ? '會有一格地板再也無法被看守'
-                        : '會有一座數字柱湊不到它的數字';
+                        : '數字柱旁的 ' + GI + ' 數會不對';
                 const assume = h.hyp.val === BULB
                     ? '假設虛線這格放 ' + GI
                     : '假設虛線這格不放 ' + GI + '（' + XI + '）';
