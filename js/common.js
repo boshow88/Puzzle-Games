@@ -839,15 +839,15 @@
             queensHintKindCol: 'column',
             queensHintKindRegion: 'region',
             queensHintT1:
-                'The highlighted ♛ dominates its row, column, region, and adjacent cells. Rule out the striped cells.',
+                'The highlighted <span class="inline-icon queen" data-icon="crown"></span> dominates its row, column, region, and adjacent cells. Rule out the striped cells.',
             queensHintT2: (kind) =>
-                `Every other cell in the highlighted ${kind} has been ruled out — place ♛ on the marked cell.`,
+                `Every other cell in the highlighted ${kind} has been ruled out — place <span class="inline-icon queen" data-icon="crown"></span> on the marked cell.`,
             queensHintT3: (axis) =>
-                `Each highlighted region needs one ♛, and those ${axis}s are already spoken for — every other region's cell in them is impossible.`,
+                `Each highlighted region needs one <span class="inline-icon queen" data-icon="crown"></span>, and those ${axis}s are already spoken for — every other region's cell in them is impossible.`,
             queensHintCover: (kind) =>
-                `The highlighted ${kind} must contain a ♛. Every candidate here would kill the striped cells, so the striped cells cannot hold a queen.`,
+                `The highlighted ${kind} must contain a <span class="inline-icon queen" data-icon="crown"></span>. Every candidate here would kill the striped cells, so the striped cells cannot hold a queen.`,
             queensHintConflict:
-                'The highlighted ♛ break a rule (same row, column, region, or adjacent).',
+                'The highlighted <span class="inline-icon queen" data-icon="crown"></span> break a rule (same row, column, region, or adjacent).',
             queensHintWrongOne:
                 'The highlighted cell is incorrect.',
             queensHintWrongMany: (n) =>
@@ -1079,15 +1079,15 @@
             queensHintKindCol: '行',
             queensHintKindRegion: '區域',
             queensHintT1:
-                '此♛把同行、同列、同區域或相鄰位置的格子封死了。排除掉條紋格子。',
+                '此<span class="inline-icon queen" data-icon="crown"></span>把同行、同列、同區域或相鄰位置的格子封死了。排除掉條紋格子。',
             queensHintT2: (kind) =>
-                `此${kind}的其他所有格子都被排除了。請將♛放置在醒目標示的格子中。`,
+                `此${kind}的其他所有格子都被排除了。請將<span class="inline-icon queen" data-icon="crown"></span>放置在醒目標示的格子中。`,
             queensHintT3: (axis) =>
-                `每個醒目標示的區域都需要一個♛。這幾${axis}已經沒有地方放其他區域的♛了。排除掉條紋格子。`,
+                `每個醒目標示的區域都需要一個<span class="inline-icon queen" data-icon="crown"></span>。這幾${axis}已經沒有地方放其他區域的<span class="inline-icon queen" data-icon="crown"></span>了。排除掉條紋格子。`,
             queensHintCover: (kind) =>
-                `醒目標示的${kind}內必須有♛。條紋格子中的♛把此${kind}封死了。排除掉條紋格子。`,
+                `醒目標示的${kind}內必須有<span class="inline-icon queen" data-icon="crown"></span>。條紋格子中的<span class="inline-icon queen" data-icon="crown"></span>把此${kind}封死了。排除掉條紋格子。`,
             queensHintConflict:
-                '醒目標示的 ♛ 違反了規則（同行、同列、同區域或相鄰）。',
+                '醒目標示的 <span class="inline-icon queen" data-icon="crown"></span> 違反了規則（同行、同列、同區域或相鄰）。',
             queensHintWrongOne:
                 '醒目標示的格子不正確。',
             queensHintWrongMany: (n) =>

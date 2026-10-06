@@ -1082,9 +1082,10 @@
         // through PC.i18n.t so string or function entries work.
         const arg = h.argKey ? PC.i18n.t(h.argKey)
             : (h.textArgRaw != null ? h.textArgRaw : undefined);
-        banner.textContent = arg !== undefined
+        banner.innerHTML = arg !== undefined
             ? PC.i18n.t(h.textKey, arg)
             : PC.i18n.t(h.textKey);
+        if (PC.icons && PC.icons.render) PC.icons.render(banner);
         banner.classList.toggle('error', h.mode === 'error');
         banner.hidden = false;
     }

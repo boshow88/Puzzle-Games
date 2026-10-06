@@ -979,7 +979,15 @@
             badge.textContent = h.badgeText;
             state.hintBanner.appendChild(badge);
         }
-        state.hintBanner.appendChild(document.createTextNode(text));
+        // Render the sun/moon glyphs the solver emits as inline icons (consistent
+        // with the help + board); the = / × wall glyphs stay as text (they match
+        // the glyphs drawn on the board).
+        const body = document.createElement('span');
+        body.innerHTML = text
+            .replace(/☀/g, '<span class="inline-icon sun" data-icon="sun"></span>')
+            .replace(/☾/g, '<span class="inline-icon moon" data-icon="moon"></span>');
+        if (PC.icons && PC.icons.render) PC.icons.render(body);
+        state.hintBanner.appendChild(body);
         state.hintBanner.hidden = false;
     }
 
