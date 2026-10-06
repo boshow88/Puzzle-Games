@@ -275,7 +275,7 @@
                     symLayer.appendChild(g);
                 }
             } else if (grid[i] === XMARK && !won) {
-                const m = cs * 0.3, sw = Math.max(1.4, cs * 0.06), x0 = c * cs, y0 = r * cs;
+                const m = cs * 0.34, sw = Math.max(1, cs * 0.05), x0 = c * cs, y0 = r * cs;
                 symLayer.appendChild(PC.svgEl('line', { class: 'lu-x', 'stroke-width': sw, x1: x0 + m, y1: y0 + m, x2: x0 + cs - m, y2: y0 + cs - m }));
                 symLayer.appendChild(PC.svgEl('line', { class: 'lu-x', 'stroke-width': sw, x1: x0 + cs - m, y1: y0 + m, x2: x0 + m, y2: y0 + cs - m }));
             }
@@ -517,13 +517,13 @@
                 const g = PC.boardIcon(EMITTER_ICON, cx, cy, cs * 0.6, { className: 'lu-bulb lu-hint-ghost' + bad });
                 if (g) layer.appendChild(g);
             } else {
-                const m = cs * 0.32, sw = Math.max(1.4, cs * 0.06), x0 = c * cs, y0 = r * cs;
+                const m = cs * 0.34, sw = Math.max(1, cs * 0.05), x0 = c * cs, y0 = r * cs;
                 layer.appendChild(PC.svgEl('line', { class: 'lu-x lu-hint-ghost' + bad, 'stroke-width': sw, x1: x0 + m, y1: y0 + m, x2: x0 + cs - m, y2: y0 + cs - m }));
                 layer.appendChild(PC.svgEl('line', { class: 'lu-x lu-hint-ghost' + bad, 'stroke-width': sw, x1: x0 + cs - m, y1: y0 + m, x2: x0 + m, y2: y0 + cs - m }));
             }
             if (opts.num) {
                 const tn = PC.svgEl('text', {
-                    class: 'lu-hint-step', x: c * cs + cs * 0.26, y: r * cs + cs * 0.27,
+                    class: 'lu-hint-step', x: c * cs + cs * 0.2, y: r * cs + cs * 0.22,
                     'text-anchor': 'middle', 'dominant-baseline': 'middle', 'font-size': Math.max(9, Math.round(cs * 0.3)),
                 });
                 tn.textContent = String(opts.num);
