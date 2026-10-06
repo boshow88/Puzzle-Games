@@ -1231,6 +1231,9 @@
 /* Hint: spotlight the forced line, ring the forced cells (theme colour), or
    red for wrong cells. Reuses the zip-hint-pulse keyframe. */
 .nono-hint-line { fill: rgba(124, 58, 237, 0.12); pointer-events: none; }
+/* The two extreme placements of the forcing run (leftmost / rightmost); where
+   they overlap is the forced fill the hint rings. */
+.nono-hint-range { fill: var(--game-color, #7c3aed); opacity: 0.5; pointer-events: none; }
 .nono-hint-ring {
     fill: none;
     stroke: var(--game-color, #7c3aed);

@@ -1,0 +1,93 @@
+<!doctype html>
+<html lang="en"><head>
+  <meta charset="utf-8" />
+  <title>Nonogram — hint visual check</title>
+  <link rel="stylesheet" href="../css/game.css" />
+  <style>
+    body { margin: 16px; background: #fff; font: 13px ui-monospace, monospace; }
+    .case { display: inline-block; margin: 8px 18px 8px 0; vertical-align: top; }
+    .cap { max-width: 440px; color: #333; }
+    svg { background: #fff; }
+    .nono-cell { fill: #fff; stroke: #d8d8e0; stroke-width: 1; }
+  </style>
+  <script src="../js/common.js"></script>
+  <script src="../js/generators/nonogram.js"></script>
+</head>
+<body>
+  <div id="root">building…</div>
+  <script>
+  (function () {
+    const PC = window.PuzzleCommon, S = window.PuzzleSolvers.nonogram;
+    const UNKNOWN = 0, FILL = 1, BLANK = 2;
+    const cs = 44, ox = 10, oy = 10;
+
+    // Exact copy of the game's drawRange so this mirrors the real geometry.
+    function drawRange(layer, orient, index, span, cs, ox, oy, isRight) {
+      const n = span[1] - span[0] + 1;
+      const thick = cs * 0.22, edge = cs * 0.1, inset = cs * 0.06;
+      let x, y, w, hgt;
+      if (orient === 'row') {
+        x = ox + span[0] * cs + inset; w = n * cs - 2 * inset; hgt = thick;
+        y = oy + index * cs + (isRight ? cs - edge - thick : edge);
+      } else {
+        y = oy + span[0] * cs + inset; hgt = n * cs - 2 * inset; w = thick;
+        x = ox + index * cs + (isRight ? cs - edge - thick : edge);
+      }
+      layer.appendChild(PC.svgEl('rect', { class: 'nono-hint-range' + (isRight ? ' right' : ''), x, y, width: w, height: hgt, rx: thick / 2, ry: thick / 2 }));
+    }
+
+    function render(title, N, rowClues, colClues, forceOrient) {
+      const h = S.nextStep(rowClues, colClues, N, new Int8Array(N * N));
+      if (forceOrient && h.orient !== forceOrient) {
+        // Reuse a row deduction's geometry to exercise the column drawing path.
+        h.orient = forceOrient;
+        h.cells = h.cells.map((c) => ({ r: c.c, c: c.r, state: c.state }));
+      }
+      const wrap = document.createElement('div'); wrap.className = 'case';
+      const svg = PC.svgEl('svg', { width: N * cs + 2 * ox, height: N * cs + 2 * oy, viewBox: `0 0 ${N * cs + 2 * ox} ${N * cs + 2 * oy}` });
+      for (let r = 0; r < N; r++) for (let c = 0; c < N; c++)
+        svg.appendChild(PC.svgEl('rect', { class: 'nono-cell', x: ox + c * cs, y: oy + r * cs, width: cs, height: cs }));
+      // line wash
+      if (h.orient === 'row') svg.appendChild(PC.svgEl('rect', { class: 'nono-hint-line', x: ox, y: oy + h.index * cs, width: N * cs, height: cs }));
+      else svg.appendChild(PC.svgEl('rect', { class: 'nono-hint-line', x: ox + h.index * cs, y: oy, width: cs, height: N * cs }));
+      // range bars — only the "ears" beyond the forced overlap
+      for (const run of h.fillRuns) {
+        const ovLo = run.right[0], ovHi = run.left[1];
+        if (run.left[0] <= ovLo - 1) drawRange(svg, h.orient, h.index, [run.left[0], ovLo - 1], cs, ox, oy, false);
+        if (ovHi + 1 <= run.right[1]) drawRange(svg, h.orient, h.index, [ovHi + 1, run.right[1]], cs, ox, oy, true);
+      }
+      // cell ghosts + rings
+      for (const cell of h.cells) {
+        const x0 = ox + cell.c * cs, y0 = oy + cell.r * cs;
+        if (cell.state === FILL) {
+          svg.appendChild(PC.svgEl('rect', { class: 'nono-hint-fill', x: x0 + cs * 0.21, y: y0 + cs * 0.21, width: cs * 0.58, height: cs * 0.58, rx: cs * 0.1, ry: cs * 0.1 }));
+        } else {
+          const m = cs * 0.3, sw = Math.max(1, cs * 0.05);
+          svg.appendChild(PC.svgEl('line', { class: 'nono-hint-x', 'stroke-width': sw, x1: x0 + m, y1: y0 + m, x2: x0 + cs - m, y2: y0 + cs - m }));
+          svg.appendChild(PC.svgEl('line', { class: 'nono-hint-x', 'stroke-width': sw, x1: x0 + cs - m, y1: y0 + m, x2: x0 + m, y2: y0 + cs - m }));
+        }
+        svg.appendChild(PC.svgEl('rect', { class: 'nono-hint-ring', x: x0 + cs * 0.1, y: y0 + cs * 0.1, width: cs * 0.8, height: cs * 0.8, rx: cs * 0.12, ry: cs * 0.12 }));
+      }
+      wrap.appendChild(svg);
+      const cap = document.createElement('div'); cap.className = 'cap';
+      cap.textContent = title + '  clue [' + (h.clue.length ? h.clue.join(' ') : '0') + '] ' + h.orient + ' ' + (h.index + 1)
+        + '  | fills ' + (h.overlapFills + h.squeezeFills) + ' x ' + h.eliminate
+        + '  | runs ' + JSON.stringify(h.fillRuns.map(r => [r.left, r.right]));
+      wrap.appendChild(cap);
+      return wrap;
+    }
+
+    const root = document.getElementById('root'); root.textContent = '';
+    const blank = (N) => Array.from({ length: N }, () => []);
+    // A: slide overlap, width 10, run 7 → overlap cols 2..7 (6 cells).
+    { const N = 10, rc = blank(N); rc[0] = [7]; root.appendChild(render('A overlap (slide)', N, rc, blank(N))); }
+    // B: pinned run that fills whole line (width 5, run 5).
+    { const N = 5, rc = blank(N); rc[0] = [5]; root.appendChild(render('B pinned (one way)', N, rc, blank(N))); }
+    // C: overlap + elimination (width 5, run 3 → fill middle + the two ends unreachable? run3 overlap col2; blanks none at tier1). Use [1 1 1] on width5 → all blanks except... actually [1 1 1] width5: only arrangement 0,2,4 → fills 0,2,4, blanks 1,3.
+    { const N = 5, rc = blank(N); rc[0] = [1, 1, 1]; root.appendChild(render('C fill + eliminate', N, rc, blank(N))); }
+    // D: column overlap drawing path (run 6 overlap, drawn vertically).
+    { const N = 10, rc = blank(N); rc[0] = [6]; root.appendChild(render('D column overlap', N, rc, blank(N), 'col')); }
+  })();
+  </script>
+</body>
+</html>

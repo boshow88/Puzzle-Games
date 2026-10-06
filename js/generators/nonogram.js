@@ -292,7 +292,7 @@
     /** One hint step from the player's current grid, preferring the simplest
      *  technique: the first row/col where tier 1 forces a new cell, else tier 2,
      *  else tier 3. Returns { orient:'row'|'col', index, clue, cells:[{r,c,state}],
-     *  tier } or null if nothing is deducible right now. */
+     *  tier, ...reasoning } (see annotateStep) or null if nothing is deducible. */
     function nextStep(rowClues, colClues, N, grid) {
         const line = new Int8Array(N);
         const scanTier = (tier) => {
@@ -317,7 +317,49 @@
             }
             return null;
         };
-        return scanTier(1) || scanTier(2) || scanTier(3);
+        const step = scanTier(1) || scanTier(2) || scanTier(3);
+        return step ? annotateStep(step, N, grid) : null;
+    }
+
+    /** Attach human-readable reasoning to a hint step. For the chosen line we
+     *  re-run the full placement analysis (given the player's current marks)
+     *  and classify each forced cell:
+     *    • a FILLED cell is attributed to the run whose leftmost and rightmost
+     *      feasible placements both cover it (the classic overlap) — recorded
+     *      in `fillRuns` with that run's left/right spans so the UI can draw
+     *      the "slide range" whose overlap is the forced fill;
+     *    • a filled cell no single run's overlap explains (rare tier-3 squeeze)
+     *      counts as `squeezeFills`;
+     *    • a BLANKED cell is one no run can reach → `eliminate`.
+     *  Spans are inclusive cell indices along the line. */
+    function annotateStep(step, N, grid) {
+        const isRow = step.orient === 'row';
+        const k = step.index, clue = step.clue;
+        const line = new Int8Array(N);
+        for (let i = 0; i < N; i++) line[i] = isRow ? grid[k * N + i] : grid[i * N + k];
+        const a = lineAnalyze(clue, N, line);
+        const runSet = new Map();
+        let overlapFills = 0, squeezeFills = 0, eliminate = 0;
+        for (const cell of step.cells) {
+            if (cell.state !== FILL) { eliminate++; continue; }
+            const i = isRow ? cell.c : cell.r;
+            let found = -1;
+            if (a) for (let j = 0; j < clue.length; j++) {
+                if (a.runMax[j] <= i && i <= a.runMin[j] + clue[j] - 1) { found = j; break; }
+            }
+            if (found >= 0) { overlapFills++; runSet.set(found, true); }
+            else squeezeFills++;
+        }
+        const fillRuns = [];
+        if (a) for (const j of runSet.keys()) {
+            const len = clue[j];
+            fillRuns.push({ len, left: [a.runMin[j], a.runMin[j] + len - 1], right: [a.runMax[j], a.runMax[j] + len - 1] });
+        }
+        step.fillRuns = fillRuns;
+        step.overlapFills = overlapFills;
+        step.squeezeFills = squeezeFills;
+        step.eliminate = eliminate;
+        return step;
     }
 
     // -----------------------------------------------------------------

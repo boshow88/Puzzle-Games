@@ -1,0 +1,106 @@
+<!doctype html>
+<html lang="en"><head>
+  <meta charset="utf-8" />
+  <title>Nonogram — hint reasoning probe</title>
+  <script src="../js/common.js"></script>
+  <script src="../js/generators/nonogram.js"></script>
+</head>
+<body>
+  <pre id="out">running…</pre>
+  <script>
+  (async function () {
+    const log = [];
+    const P = (s) => { log.push(s); console.log(s); };
+    try {
+      const G = window.PuzzleGenerators.nonogram;
+      const S = window.PuzzleSolvers.nonogram;
+      const UNKNOWN = 0, FILL = 1, BLANK = 2;
+
+      // Mirror of the game's zh/en banner builders so we can eyeball wording.
+      function banner(locale, n, h) {
+        const nFill = h.overlapFills + h.squeezeFills;
+        const clueStr = h.clue.length ? h.clue.join(' ') : '0';
+        if (locale === 'zh') {
+          const label = h.orient === 'row' ? ('第 ' + n + ' 列') : ('第 ' + n + ' 行');
+          const parts = [];
+          if (nFill) {
+            if (h.squeezeFills === 0 && h.fillRuns.length === 1) {
+              const r = h.fillRuns[0];
+              if (r.left[0] === r.right[0]) parts.push('長度 ' + r.len + ' 的那段只有一種擺法 → 這 ' + nFill + ' 格填滿');
+              else parts.push('長度 ' + r.len + ' 的那段不論靠左或靠右擺,都會蓋到這 ' + nFill + ' 格 → 填滿');
+            } else parts.push('線索中的各段不論怎麼擺,都會蓋到這 ' + nFill + ' 格 → 填滿');
+          }
+          if (h.eliminate) { if (h.clue.length === 0) parts.push('這條線索是 0,整條留空 → 打叉'); else parts.push('這 ' + h.eliminate + ' 格任何段都排不進去 → 打叉'); }
+          return label + '(線索 [' + clueStr + ']):' + parts.join(';') + '。';
+        }
+        const label = h.orient === 'row' ? ('Row ' + n) : ('Column ' + n);
+        const cc = (k) => (k === 1 ? 'this 1 cell' : 'these ' + k + ' cells');
+        const parts = [];
+        if (nFill) {
+          if (h.squeezeFills === 0 && h.fillRuns.length === 1) {
+            const r = h.fillRuns[0];
+            if (r.left[0] === r.right[0]) parts.push('the length-' + r.len + ' run fits only one way → fill ' + cc(nFill));
+            else parts.push('the length-' + r.len + ' run covers ' + cc(nFill) + ' however far left or right it slides → fill');
+          } else parts.push('the clue’s runs cover ' + cc(nFill) + ' in every placement → fill');
+        }
+        if (h.eliminate) { if (h.clue.length === 0) parts.push('the clue is 0, so the whole line stays blank → mark ✗'); else parts.push('no run can reach ' + cc(h.eliminate) + ' → mark ✗'); }
+        return label + ' (clue [' + clueStr + ']): ' + parts.join('; ') + '.';
+      }
+
+      let fails = 0;
+      const fail = (m) => { P('FAIL ' + m); fails++; };
+
+      for (const N of [5, 8, 10]) {
+        for (const diff of ['easy', 'medium', 'hard']) {
+          for (const seed of [7, 23]) {
+            const p = await G(N, diff, seed);
+            const grid = new Int8Array(N * N);
+            let steps = 0, shown = 0;
+            while (true) {
+              const h = S.nextStep(p.rowClues, p.colClues, N, grid);
+              if (!h) break;
+              steps++;
+              // Invariant: counts partition the forced cells.
+              const nF = h.cells.filter((x) => x.state === FILL).length;
+              const nB = h.cells.length - nF;
+              if (h.overlapFills + h.squeezeFills !== nF) fail(`${N} ${diff} #${seed}: fill count mismatch (${h.overlapFills}+${h.squeezeFills} vs ${nF})`);
+              if (h.eliminate !== nB) fail(`${N} ${diff} #${seed}: eliminate mismatch (${h.eliminate} vs ${nB})`);
+              // Invariant: every fillRun span is in-bounds and left<=right, overlap non-empty.
+              for (const run of h.fillRuns) {
+                for (const sp of [run.left, run.right]) {
+                  if (sp[0] < 0 || sp[1] >= N || sp[1] - sp[0] + 1 !== run.len) fail(`${N} ${diff} #${seed}: bad span ${JSON.stringify(sp)} len ${run.len}`);
+                }
+                // Rightmost start must be >= leftmost start (runMax >= runMin).
+                if (run.right[0] < run.left[0]) fail(`${N} ${diff} #${seed}: rightmost start before leftmost`);
+                const ovLo = run.right[0], ovHi = run.left[1];
+                if (ovHi < ovLo) fail(`${N} ${diff} #${seed}: empty overlap for run len ${run.len}`);
+              }
+              // Print first 2 steps per puzzle for eyeballing.
+              if (shown < 2) {
+                shown++;
+                P(`[${N} ${diff} #${seed}] ZH ${banner('zh', h.index + 1, h)}`);
+                P(`[${N} ${diff} #${seed}] EN ${banner('en', h.index + 1, h)}`);
+              }
+              // Apply the step.
+              for (const c of h.cells) grid[c.r * N + c.c] = c.state;
+              if (steps > N * N * 2) { fail(`${N} ${diff} #${seed}: step loop runaway`); break; }
+            }
+            // Confirm solved.
+            let solved = true;
+            for (let r = 0; r < N && solved; r++) for (let c = 0; c < N; c++) {
+              const want = p.solution[r][c] ? FILL : BLANK;
+              if (grid[r * N + c] === UNKNOWN || (p.solution[r][c] === 1) !== (grid[r * N + c] === FILL)) { solved = false; break; }
+            }
+            if (!solved) fail(`${N} ${diff} #${seed}: hint chain did not solve`);
+          }
+        }
+      }
+      P('PROBE ' + (fails === 0 ? 'PASS' : 'FAIL') + ' fails=' + fails);
+    } catch (err) {
+      P('PROBE ERROR ' + (err && err.stack || err));
+    }
+    document.getElementById('out').textContent = log.join('\n');
+  })();
+  </script>
+</body>
+</html>

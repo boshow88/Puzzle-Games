@@ -390,27 +390,53 @@
     const HINT_UI_TEXTS = {
         en: {
             wrong: 'The highlighted cell(s) don’t match the unique solution — a filled cell must be blank, or a blanked cell must be filled.',
-            actions: (f, m) => {
-                const parts = [];
-                if (f) parts.push(`fill ${f}`);
-                if (m) parts.push(`mark ${m} with ✗`);
-                return parts.join(' and ');
-            },
-            row: (n, clue, act) => `Row ${n}: clue ${clue} → ${act} (highlighted).`,
-            col: (n, clue, act) => `Column ${n}: clue ${clue} → ${act} (highlighted).`,
             none: 'Nothing more can be deduced by single-line logic right now.',
+            // h = { orient, clue, fillRuns, overlapFills, squeezeFills, eliminate }
+            deduce: (n, h) => {
+                const label = h.orient === 'row' ? `Row ${n}` : `Column ${n}`;
+                const clueStr = h.clue.length ? h.clue.join(' ') : '0';
+                const cc = (k) => (k === 1 ? 'this 1 cell' : `these ${k} cells`);
+                const parts = [];
+                const nFill = h.overlapFills + h.squeezeFills;
+                if (nFill) {
+                    if (h.squeezeFills === 0 && h.fillRuns.length === 1) {
+                        const r = h.fillRuns[0];
+                        if (r.left[0] === r.right[0]) parts.push(`the length-${r.len} run fits only one way → fill ${cc(nFill)}`);
+                        else parts.push(`the length-${r.len} run covers ${cc(nFill)} however far left or right it slides → fill`);
+                    } else {
+                        parts.push(`the clue’s runs cover ${cc(nFill)} in every placement → fill`);
+                    }
+                }
+                if (h.eliminate) {
+                    if (h.clue.length === 0) parts.push('the clue is 0, so the whole line stays blank → mark ✗');
+                    else parts.push(`no run can reach ${cc(h.eliminate)} → mark ✗`);
+                }
+                return `${label} (clue [${clueStr}]): ${parts.join('; ')}.`;
+            },
         },
         zh: {
             wrong: '醒目標示的格子與唯一解不符——有該留空的格被填了,或該填的格被劃掉了。',
-            actions: (f, m) => {
-                const parts = [];
-                if (f) parts.push(`填滿 ${f} 格`);
-                if (m) parts.push(`打叉 ${m} 格`);
-                return parts.join('、');
-            },
-            row: (n, clue, act) => `第 ${n} 列:依線索 ${clue},可${act}(見醒目格)。`,
-            col: (n, clue, act) => `第 ${n} 行:依線索 ${clue},可${act}(見醒目格)。`,
             none: '目前用單行邏輯已無法再推出新格子。',
+            deduce: (n, h) => {
+                const label = h.orient === 'row' ? `第 ${n} 列` : `第 ${n} 行`;
+                const clueStr = h.clue.length ? h.clue.join(' ') : '0';
+                const parts = [];
+                const nFill = h.overlapFills + h.squeezeFills;
+                if (nFill) {
+                    if (h.squeezeFills === 0 && h.fillRuns.length === 1) {
+                        const r = h.fillRuns[0];
+                        if (r.left[0] === r.right[0]) parts.push(`長度 ${r.len} 的那段只有一種擺法 → 這 ${nFill} 格填滿`);
+                        else parts.push(`長度 ${r.len} 的那段不論靠左或靠右擺,都會蓋到這 ${nFill} 格 → 填滿`);
+                    } else {
+                        parts.push(`線索中的各段不論怎麼擺,都會蓋到這 ${nFill} 格 → 填滿`);
+                    }
+                }
+                if (h.eliminate) {
+                    if (h.clue.length === 0) parts.push('這條線索是 0,整條留空 → 打叉');
+                    else parts.push(`這 ${h.eliminate} 格任何段都排不進去 → 打叉`);
+                }
+                return `${label}(線索 [${clueStr}]):${parts.join(';')}。`;
+            },
         },
     };
     function hintTexts() { const l = (PC.i18n && PC.i18n.locale) || 'en'; return HINT_UI_TEXTS[l] || HINT_UI_TEXTS.en; }
@@ -426,7 +452,10 @@
         const step = Solver.nextStep(p.rowClues, p.colClues, N, state.grid);
         // Keep each forced cell's target state (FILL / BLOCK) so the hint can
         // tell the player whether to fill or ✗ it.
-        if (step) return { kind: 'deduce', orient: step.orient, index: step.index, clue: step.clue, cells: step.cells };
+        if (step) return {
+            kind: 'deduce', orient: step.orient, index: step.index, clue: step.clue, cells: step.cells,
+            fillRuns: step.fillRuns, overlapFills: step.overlapFills, squeezeFills: step.squeezeFills, eliminate: step.eliminate,
+        };
         return null;
     }
 
@@ -453,15 +482,35 @@
         let text;
         if (h.kind === 'wrong') text = t.wrong;
         else if (h.kind === 'none') text = t.none;
-        else {
-            const nFill = h.cells.filter((x) => x.state === FILL).length;
-            const nMark = h.cells.length - nFill;
-            const act = t.actions(nFill, nMark);
-            text = (h.orient === 'row' ? t.row : t.col)(h.index + 1, '[' + h.clue.join(' ') + ']', act);
-        }
+        else text = t.deduce(h.index + 1, h);
         state.hintBanner.textContent = text;
         state.hintBanner.classList.toggle('error', h.kind === 'wrong');
         state.hintBanner.hidden = false;
+    }
+
+    // Draw one placement of a run (an inclusive cell-index span) as a slim bar
+    // hugging an edge of the highlighted line: the leftmost placement rides the
+    // top/left edge, the rightmost rides the bottom/right edge, so the player
+    // sees the run's two extremes and the overlap between them.
+    function drawRange(layer, orient, index, span, cs, ox, oy, isRight) {
+        const n = span[1] - span[0] + 1;
+        const thick = cs * 0.22, edge = cs * 0.1, inset = cs * 0.06;
+        let x, y, w, hgt;
+        if (orient === 'row') {
+            x = ox + span[0] * cs + inset;
+            w = n * cs - 2 * inset;
+            hgt = thick;
+            y = oy + index * cs + (isRight ? cs - edge - thick : edge);
+        } else {
+            y = oy + span[0] * cs + inset;
+            hgt = n * cs - 2 * inset;
+            w = thick;
+            x = ox + index * cs + (isRight ? cs - edge - thick : edge);
+        }
+        layer.appendChild(PC.svgEl('rect', {
+            class: 'nono-hint-range' + (isRight ? ' right' : ''),
+            x, y, width: w, height: hgt, rx: thick / 2, ry: thick / 2,
+        }));
     }
 
     function repaintHint() {
@@ -477,6 +526,15 @@
                 layer.appendChild(PC.svgEl('rect', { class: 'nono-hint-line', x: ox, y: oy + h.index * cs, width: N * cs, height: cs }));
             } else {
                 layer.appendChild(PC.svgEl('rect', { class: 'nono-hint-line', x: ox + h.index * cs, y: oy, width: cs, height: N * cs }));
+            }
+            // Slide range: for each forcing run, draw only the "ears" — the
+            // cells each extreme placement reaches BEYOND the forced overlap —
+            // so the certain (ringed) cells stay uncluttered. A pinned run (no
+            // slide room) draws nothing.
+            if (h.fillRuns) for (const run of h.fillRuns) {
+                const ovLo = run.right[0], ovHi = run.left[1];
+                if (run.left[0] <= ovLo - 1) drawRange(layer, h.orient, h.index, [run.left[0], ovLo - 1], cs, ox, oy, false);
+                if (ovHi + 1 <= run.right[1]) drawRange(layer, h.orient, h.index, [ovHi + 1, run.right[1]], cs, ox, oy, true);
             }
             // Per cell: a ghost of the suggested action (fill square / ✗) plus a
             // ring. When the solution is revealed we skip the fill ghost (the
