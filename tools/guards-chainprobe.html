@@ -1,0 +1,82 @@
+<!doctype html>
+<html lang="en"><head>
+  <meta charset="utf-8" />
+  <title>Guards — Hard chain-length probe</title>
+  <script src="../js/common.js"></script>
+  <script src="../js/generators/guards.js"></script>
+</head>
+<body>
+  <pre id="out">running…</pre>
+  <script>
+  (async function () {
+    const log = [];
+    const P = (s) => { log.push(s); console.log(s); };
+    try {
+      const GEN = window.PuzzleGenerators.guards;
+      const S = window.PuzzleSolvers.guards;             // makeCtx, propagate, nextStepDeep
+      const I = window.PuzzleGenerators.guardsInternals;  // UNKNOWN, makeCtx ...
+      const UNKNOWN = I.UNKNOWN;
+
+      // Faithful copy of the generator's maxTrialChain using the public solver.
+      function maxTrialChain(ctx, clue) {
+        const b = new Int8Array(ctx.N * ctx.N);
+        let maxLen = 0, guard = 0;
+        for (;;) {
+          if (++guard > ctx.N * ctx.N * 4) return Infinity;
+          if (!S.propagate(ctx, clue, b).ok) return Infinity;
+          let unknown = false;
+          for (const i of ctx.whites) if (b[i] === UNKNOWN) { unknown = true; break; }
+          if (!unknown) return maxLen;
+          const d = S.nextStepDeep(ctx, clue, b);
+          if (!d) return Infinity;
+          if (d.chain.length > maxLen) maxLen = d.chain.length;
+          b[d.cell] = d.state;
+        }
+      }
+
+      function reconstruct(p) {
+        const N = p.size;
+        const wall = new Uint8Array(N * N);
+        const clue = new Array(N * N).fill(-1);
+        for (let r = 0; r < N; r++) for (let c = 0; c < N; c++) {
+          const v = p.grid[r][c], i = r * N + c;
+          if (v !== -2) { wall[i] = 1; if (v >= 0) clue[i] = v; }
+        }
+        return { N, ctx: S.makeCtx(N, wall), clue };
+      }
+
+      const CAP = 3;
+      let fails = 0, worst = 0;
+      const dist = {}; // chain length -> count
+      for (const N of [9, 12, 16, 20]) {
+        const lens = [];
+        for (let seed = 1; seed <= 8; seed++) {
+          const p = await GEN(N, 'hard', seed);
+          const { ctx, clue } = reconstruct(p);
+          const mc = maxTrialChain(ctx, clue);
+          lens.push(mc);
+          dist[mc] = (dist[mc] || 0) + 1;
+          if (mc > worst) worst = mc;
+          if (mc > CAP) { fails++; P(`FAIL N=${N} seed=${seed}: maxChain=${mc} > ${CAP} (tier=${p.stats.tier})`); }
+        }
+        P(`N=${N} hard chains: [${lens.join(', ')}]  max=${Math.max.apply(null, lens)}`);
+      }
+      // N>20 should be tier-0 (chain 0) by design.
+      for (const N of [25]) {
+        for (let seed = 1; seed <= 3; seed++) {
+          const p = await GEN(N, 'hard', seed);
+          const { ctx, clue } = reconstruct(p);
+          const mc = maxTrialChain(ctx, clue);
+          P(`N=${N} hard seed=${seed}: maxChain=${mc} tier=${p.stats.tier}`);
+        }
+      }
+      P('DIST ' + JSON.stringify(dist));
+      P('CHAINPROBE ' + (fails === 0 ? 'PASS' : 'FAIL') + ' fails=' + fails + ' worst=' + worst + ' cap=' + CAP);
+    } catch (err) {
+      P('CHAINPROBE ERROR ' + (err && err.stack || err));
+    }
+    document.getElementById('out').textContent = log.join('\n');
+  })();
+  </script>
+</body>
+</html>

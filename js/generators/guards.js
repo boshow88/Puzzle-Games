@@ -41,7 +41,7 @@
     const DIFFS = {
         easy:   { gateDepth: 0, zeroFrac: 0.35, numFrac: 0.12 },
         medium: { gateDepth: 0, zeroFrac: 0.90, numFrac: 0.55 },
-        hard:   { gateDepth: 1, zeroFrac: 1.00, numFrac: 1.00, maxChain: 4 },
+        hard:   { gateDepth: 1, zeroFrac: 1.00, numFrac: 1.00, maxChain: 3 },
     };
 
     const DIRS = [[-1, 0], [1, 0], [0, -1], [0, 1]];
