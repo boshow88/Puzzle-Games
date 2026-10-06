@@ -47,6 +47,7 @@
         needs: null,            // Int16Array of island numbers
         solVal: null,           // Int8Array solution bridge count per edge
         edgeVal: null,          // Int8Array player bridge count per edge (0..2)
+        doneMark: null,         // Int8Array per-island "handled" annotation
         dirEdge: null,          // per island: {U,D,L,R} → edge index
         won: false,
         hint: null, hintBanner: null,
@@ -74,6 +75,7 @@
             if (e >= 0) state.solVal[e] = br.v;
         }
         state.edgeVal = new Int8Array(E);
+        state.doneMark = new Int8Array(state.islands.length); // player's "handled" flags
         // Per-island direction → edge map for drag resolution.
         state.dirEdge = state.islands.map(() => ({}));
         for (let e = 0; e < E; e++) {
@@ -149,6 +151,16 @@
         const svg = board;
         while (svg.firstChild) svg.removeChild(svg.firstChild);
         svg.appendChild(PC.svgEl('rect', { class: 'hashi-bg', x: 0, y: 0, width: BOARD, height: BOARD }));
+        // Faint lattice through the island centres, so islands read as sitting on
+        // grid intersections and the row/column relationships are easy to see.
+        const grid = PC.svgEl('g', { class: 'hashi-grid' });
+        const lo = cx(0), hi = cx(state.N - 1);
+        for (let i = 0; i < state.N; i++) {
+            const p = i * state.cs + state.cs / 2;
+            grid.appendChild(PC.svgEl('line', { class: 'hashi-grid-line', x1: p, y1: lo, x2: p, y2: hi }));
+            grid.appendChild(PC.svgEl('line', { class: 'hashi-grid-line', x1: lo, y1: p, x2: hi, y2: p }));
+        }
+        svg.appendChild(grid);
         const bridges = PC.svgEl('g'); bridges.setAttribute('id', 'hashi-bridges'); svg.appendChild(bridges);
         const hint = PC.svgEl('g'); hint.setAttribute('id', 'hashi-hint'); svg.appendChild(hint);
         const reveal = PC.svgEl('g'); reveal.setAttribute('id', 'hashi-reveal'); svg.appendChild(reveal);
@@ -197,15 +209,35 @@
             const bad = !won && crossSet.has(e);
             drawBridge(bl, e, state.edgeVal[e], 'hashi-bridge' + (bad ? ' bad' : '') + (won ? ' won' : ''), sw, offUnit);
         }
+        // Drag highlight + a preview of the bridge the release will lay down.
+        const d = state.dragging;
+        const active = new Set();
+        if (d && d.mode === 'island' && !won) {
+            active.add(d.from);
+            if (d.pending >= 0) {
+                const ed = G.edges[d.pending];
+                active.add(ed.a); active.add(ed.b);
+                const cur = state.edgeVal[d.pending];
+                const nv = d.button === 2 ? (cur + 2) % 3 : (cur + 1) % 3;
+                if (nv === 0) drawBridge(bl, d.pending, Math.max(1, cur), 'hashi-pending-line erase', sw, offUnit);
+                else drawBridge(bl, d.pending, nv, 'hashi-pending-line', sw, offUnit);
+            }
+        }
         // Islands
         const rad = cs * 0.34;
         const font = Math.max(11, Math.round(cs * 0.4));
         for (let v = 0; v < G.islands.length; v++) {
             const is = state.islands[v];
-            const sum = islandSum(v);
-            const done = sum === state.needs[v];
+            const satisfied = islandSum(v) === state.needs[v];
             const over = !won && overSet.has(v);
-            const g = PC.svgEl('g', { class: 'hashi-island' + (done ? ' done' : '') + (over ? ' bad' : '') + (won ? ' won' : '') });
+            const marked = !won && state.doneMark[v];
+            const cls = 'hashi-island'
+                + (satisfied ? ' done' : '')
+                + (marked ? ' marked' : '')
+                + (over ? ' bad' : '')
+                + (won ? ' won' : '')
+                + (active.has(v) ? ' active' : '');
+            const g = PC.svgEl('g', { class: cls });
             g.appendChild(PC.svgEl('circle', { class: 'hashi-isle-disc', cx: cx(is.c), cy: cy(is.r), r: rad }));
             const t = PC.svgEl('text', {
                 class: 'hashi-isle-num', x: cx(is.c), y: cy(is.r),
@@ -236,70 +268,88 @@
         }
         return best;
     }
+    // Which candidate bridge a free point sits on (clicking the space between two
+    // islands), or -1 if the point isn't clearly inside a corridor.
+    function edgeAtPoint(pt) {
+        let best = -1, bestD = state.cs * 0.4;
+        for (let e = 0; e < state.G.edges.length; e++) {
+            const { a, b } = state.G.edges[e];
+            const A = state.islands[a], B = state.islands[b];
+            const ax = cx(A.c), ay = cy(A.r), bx = cx(B.c), by = cy(B.r);
+            const vx = bx - ax, vy = by - ay, L2 = (vx * vx + vy * vy) || 1;
+            const t = ((pt.x - ax) * vx + (pt.y - ay) * vy) / L2;
+            if (t < 0.15 || t > 0.85) continue; // keep clear of the island ends
+            const d = Math.hypot(pt.x - (ax + t * vx), pt.y - (ay + t * vy));
+            if (d < bestD) { bestD = d; best = e; }
+        }
+        return best;
+    }
+
+    // During an island drag, the neighbour edge once the pointer crosses the
+    // midline toward that neighbour; -1 while still on the start island's side.
     function pendingFromDrag(from, pt) {
         const A = state.islands[from];
-        const dx = pt.x - cx(A.c), dy = pt.y - cy(A.r);
-        if (Math.hypot(dx, dy) < state.cs * 0.4) return -1; // still on the island
+        const ax = cx(A.c), ay = cy(A.r);
+        const dx = pt.x - ax, dy = pt.y - ay;
+        if (Math.hypot(dx, dy) < state.cs * 0.3) return -1;
         const dir = Math.abs(dx) > Math.abs(dy) ? (dx > 0 ? 'R' : 'L') : (dy > 0 ? 'D' : 'U');
         const e = state.dirEdge[from][dir];
-        return (e === undefined) ? -1 : e;
+        if (e === undefined) return -1;
+        const ed = state.G.edges[e], nb = ed.a === from ? ed.b : ed.a;
+        const vx = cx(state.islands[nb].c) - ax, vy = cy(state.islands[nb].r) - ay, L2 = (vx * vx + vy * vy) || 1;
+        const t = (dx * vx + dy * vy) / L2;
+        return t >= 0.5 ? e : -1; // past the midline between the two islands
     }
 
     function onPointerDown(ev) {
         if (!state.puzzle || state.won) return;
-        if (ev.button !== undefined && ev.button !== 0) return;
+        const btn = ev.button;
+        if (btn !== undefined && btn !== 0 && btn !== 2) return; // left / right only
         const pt = eventToPoint(ev); if (!pt) return;
+        const button = btn === 2 ? 2 : 0;
+        let drag = null;
         const from = nearestIsland(pt);
-        if (from < 0) return;
+        if (from >= 0) drag = { pointerId: ev.pointerId, button, from, pending: -1, mode: 'island' };
+        else { const e = edgeAtPoint(pt); if (e >= 0) drag = { pointerId: ev.pointerId, button, edge: e, mode: 'bridge' }; }
+        if (!drag) return;
         ev.preventDefault();
         try { board.setPointerCapture(ev.pointerId); } catch (_) { /* ignore */ }
         clearHint();
-        state.dragging = { pointerId: ev.pointerId, from, pending: -1 };
-        paintPending();
+        state.dragging = drag;
+        if (drag.mode === 'island') repaint(); // light up the start island
     }
     function onPointerMove(ev) {
         const d = state.dragging;
-        if (!d || ev.pointerId !== d.pointerId) return;
+        if (!d || ev.pointerId !== d.pointerId || d.mode !== 'island') return;
         const pt = eventToPoint(ev); if (!pt) return;
         const pend = pendingFromDrag(d.from, pt);
-        if (pend !== d.pending) { d.pending = pend; paintPending(); }
+        if (pend !== d.pending) { d.pending = pend; repaint(); }
     }
     function onPointerEnd(ev) {
         const d = state.dragging;
         if (!d || ev.pointerId !== d.pointerId) return;
         try { board.releasePointerCapture(ev.pointerId); } catch (_) { /* ignore */ }
-        const pend = d.pending;
         state.dragging = null;
-        clearPending();
-        if (pend >= 0) cycleEdge(pend);
+        if (d.mode === 'bridge') { cycleEdge(d.edge, d.button); return; }
+        if (d.pending >= 0) cycleEdge(d.pending, d.button); // dragged island → island
+        else toggleDone(d.from);                            // tapped an island
     }
 
-    function cycleEdge(e) {
+    // Left cycles up (0→1→2→0); right cycles down (0→2→1→0).
+    function cycleEdge(e, button) {
         pushUndo();
-        state.edgeVal[e] = (state.edgeVal[e] + 1) % 3;
+        const v = state.edgeVal[e];
+        state.edgeVal[e] = button === 2 ? (v + 2) % 3 : (v + 1) % 3;
         afterChange();
     }
 
-    function paintPending() {
-        clearPending();
-        const d = state.dragging; if (!d || d.pending < 0) return;
-        const layer = board.querySelector('#hashi-hint'); if (!layer) return;
-        const sw = Math.max(2, state.cs * 0.07);
-        const next = (state.edgeVal[d.pending] + 1) % 3;
-        const g = PC.svgEl('g', { class: 'hashi-pending' });
-        if (next === 0) {
-            // previewing removal: faint dashed through the corridor
-            drawBridge(g, d.pending, Math.max(1, state.edgeVal[d.pending]), 'hashi-pending-line erase', sw, Math.max(2.2, state.cs * 0.1));
-        } else {
-            drawBridge(g, d.pending, next, 'hashi-pending-line', sw, Math.max(2.2, state.cs * 0.1));
-        }
-        layer.appendChild(g);
-    }
-    function clearPending() {
-        const layer = board && board.querySelector('#hashi-hint');
-        if (!layer) return;
-        const p = layer.querySelector('.hashi-pending');
-        if (p) layer.removeChild(p);
+    // A personal "I've finished this island" flag. It doesn't affect the puzzle,
+    // but it is undoable (snapshots carry doneMark too).
+    function toggleDone(v) {
+        pushUndo();
+        state.doneMark[v] ^= 1;
+        repaint();
+        updateUndoButton();
     }
 
     function afterChange() {
@@ -321,10 +371,11 @@
     // -----------------------------------------------------------------
     // Undo
     // -----------------------------------------------------------------
-    function snapshotState() { return { edgeVal: state.edgeVal.slice() }; }
+    function snapshotState() { return { edgeVal: state.edgeVal.slice(), doneMark: state.doneMark.slice() }; }
     function restoreSnapshot(snap) {
         const wasWon = state.won;
         state.edgeVal = snap.edgeVal.slice();
+        if (snap.doneMark) state.doneMark = snap.doneMark.slice();
         state.dragging = null; state.won = false;
         if (wasWon) shell.clearWin();
         showAllViolationsNow();
@@ -358,10 +409,10 @@
                     ? '醒目的橋互相交叉了——橋絕不能交叉。'
                     : '醒目的島橋數超過它的數字了。',
             wrong: '醒目的橋與唯一解不符——請移除或重算它們。',
-            degree: (n) => `島上的數字逼出:醒目的這條連線必須架 ${n === 2 ? '兩座橋' : '一座橋'}。`,
-            cross: '已架的橋排除了這條,所以醒目的連線維持空白。',
-            cut: '少了醒目的這座橋,就有島永遠連不進來,所以它一定要架。',
-            deep: (h) => `假設醒目的連線架 ${h.assume.value === 0 ? '零座橋' : h.assume.value + ' 座橋'},會走進死路——所以它必須架 ${h.value} 座橋。`,
+            degree: (n) => `島上的數字逼出：醒目的這條連線必須架 ${n === 2 ? '兩座橋' : '一座橋'}。`,
+            cross: '已架的橋排除了這條，所以醒目的連線維持空白。',
+            cut: '少了醒目的這座橋，就有島永遠連不進來，所以它一定要架。',
+            deep: (h) => `假設醒目的連線架 ${h.assume.value === 0 ? '零座橋' : h.assume.value + ' 座橋'}，會走進死路——所以它必須架 ${h.value} 座橋。`,
             none: '目前沒有可推的下一步。',
         },
     };
@@ -486,6 +537,7 @@
         if (!state.puzzle) return;
         if (state.won) { if (undoHistory) undoHistory.clear(); } else pushUndo();
         state.edgeVal = new Int8Array(state.G.edges.length);
+        state.doneMark = new Int8Array(state.islands.length);
         state.won = false; clearViolations(); clearHint(); repaint(); updateStatusRow(); updateUndoButton();
     }
     function onReveal() {

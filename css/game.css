@@ -1341,6 +1341,9 @@
    Hashi (Bridges)
    ---------------------------------------------------------------- */
 .hashi-bg { fill: #faf6ef; }
+/* Faint lattice through the island centres — islands read as sitting on grid
+   intersections, making row/column relationships easy to see. */
+.hashi-grid-line { stroke: rgba(138, 90, 44, 0.14); stroke-width: 1; pointer-events: none; }
 
 /* Bridges — theme brown; a double draws as two parallel lines. */
 .hashi-bridge { stroke: var(--game-color, #8a5a2c); stroke-linecap: round; pointer-events: none; }
@@ -1352,9 +1355,16 @@
 .hashi-island .hashi-isle-disc { fill: #fffdf8; stroke: var(--game-color, #8a5a2c); stroke-width: 2.5; }
 .hashi-island .hashi-isle-num { fill: #3a2a18; font-family: var(--font-body); font-weight: 700; user-select: none; }
 .hashi-island.done .hashi-isle-disc { fill: #eadbc4; }
+/* Player's "done/handled" annotation — a muted green tint, distinct from the
+   amber "count satisfied" tint and the red error state (which override it). */
+.hashi-island.marked .hashi-isle-disc { fill: #dfeadf; stroke: #94b394; }
+.hashi-island.marked .hashi-isle-num { fill: #5f8a5f; }
 .hashi-island.bad .hashi-isle-disc { fill: rgba(220, 53, 69, 0.15); stroke: var(--accent-danger, #dc3545); }
 .hashi-island.bad .hashi-isle-num { fill: var(--accent-danger, #dc3545); }
 .hashi-island.won .hashi-isle-disc { fill: #fde68a; stroke: #d4a017; animation: board-symbol-pop 0.5s ease both; }
+/* Drag highlight: the start island, and the target once the pointer crosses the
+   midline — both discs brighten. */
+.hashi-island.active .hashi-isle-disc { fill: #fff2d6; stroke: var(--game-color, #8a5a2c); stroke-width: 3.5; }
 
 /* Drag preview of the bridge about to be built (solid) or removed (dashed). */
 .hashi-pending-line { stroke: var(--game-color, #8a5a2c); stroke-linecap: round; opacity: 0.4; }

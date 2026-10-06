@@ -34,6 +34,8 @@
       const wrap = document.createElement('div'); wrap.className = 'case';
       const svg = PC.svgEl('svg', { width: N * cs, height: N * cs, viewBox: `0 0 ${N * cs} ${N * cs}` });
       svg.appendChild(PC.svgEl('rect', { class: 'hashi-bg', x: 0, y: 0, width: N * cs, height: N * cs }));
+      const lo = cs / 2, hi = (N - 1) * cs + cs / 2;
+      for (let i = 0; i < N; i++) { const p = i * cs + cs / 2; svg.appendChild(PC.svgEl('line', { class: 'hashi-grid-line', x1: p, y1: lo, x2: p, y2: hi })); svg.appendChild(PC.svgEl('line', { class: 'hashi-grid-line', x1: lo, y1: p, x2: hi, y2: p })); }
       build(svg);
       wrap.appendChild(svg);
       const cap = document.createElement('div'); cap.className = 'cap'; cap.textContent = title; wrap.appendChild(cap);
@@ -48,7 +50,9 @@
         const done = sum === needs[v];
         const bad = opts.badIsles && opts.badIsles.has(v);
         const won = opts.won;
-        const g = PC.svgEl('g', { class: 'hashi-island' + (done ? ' done' : '') + (bad ? ' bad' : '') + (won ? ' won' : '') });
+        const marked = opts.marked && opts.marked.has(v);
+        const active = opts.active && opts.active.has(v);
+        const g = PC.svgEl('g', { class: 'hashi-island' + (done ? ' done' : '') + (marked ? ' marked' : '') + (bad ? ' bad' : '') + (won ? ' won' : '') + (active ? ' active' : '') });
         g.appendChild(PC.svgEl('circle', { class: 'hashi-isle-disc', cx: cx(islands[v].c), cy: cy(islands[v].r), r: rad }));
         const t = PC.svgEl('text', { class: 'hashi-isle-num', x: cx(islands[v].c), y: cy(islands[v].r), 'text-anchor': 'middle', 'dominant-baseline': 'middle', dy: '0.08em', 'font-size': font });
         t.textContent = String(needs[v]); g.appendChild(t); svg.appendChild(g);
@@ -63,10 +67,10 @@
 
     document.getElementById('root').textContent = '';
 
-    panel('A · solved (bridges + doubles)', (svg) => {
+    panel('A · solved + grid, done-mark (green), drag-active (amber)', (svg) => {
       const bl = PC.svgEl('g'); svg.appendChild(bl);
       for (let e = 0; e < graph.edges.length; e++) if (sol[e] >= 1) drawBridge(bl, graph, islands, e, sol[e], 'hashi-bridge', sw, off);
-      drawIslands(svg, graph, islands, needs, sol);
+      drawIslands(svg, graph, islands, needs, sol, { marked: new Set([0, 2]), active: new Set([1, 3]) });
     });
 
     panel('B · won (gold)', (svg) => {

@@ -992,13 +992,13 @@
                 'Link the numbered islands with the right number of bridges — no crossings, all connected.',
             hashiBoardAria: 'Hashi puzzle board',
             hashiHelp1Html:
-                'Each <strong>island</strong> shows how many <strong>bridges</strong> must touch it. Drag from one island to another in the same row or column (with a clear gap) to build a bridge.',
+                'A <strong>bridge</strong> is a straight line (horizontal or vertical) joining two <strong>islands</strong>. Each island\u2019s number is how many bridges connect to it. A pair of islands takes at most two bridges, and bridges can\u2019t cross another bridge or an island.',
             hashiHelp2Html:
-                'Each drag cycles that connection <strong>0 → 1 → 2</strong> bridges. Bridges run straight, at most two between a pair, and may <strong>never cross</strong>.',
+                'Build a bridge: <strong>drag</strong> from one island to a neighbour, or <strong>click the gap between two islands</strong>. <strong>Left</strong> cycles up (0 \u2192 1 \u2192 2 \u2192 0), <strong>right</strong> cycles down (0 \u2192 2 \u2192 1 \u2192 0).',
             hashiHelp3Html:
-                'Every island must end with exactly its number of bridges, and all islands must join into a <strong>single connected network</strong>.',
+                'Click an island to mark it <strong>done</strong> (just for tracking).',
             hashiHelp4Html:
-                'Solved when every island’s number is satisfied and all islands are connected.',
+                'Solved when every island\u2019s number is satisfied and all islands form a <strong>single connected network</strong>.',
             clearBoard: 'Clear the board',
             zipHelp1Html:
                 'Drag from the cell marked <strong>1</strong> to draw a path through every white cell.',
@@ -1240,13 +1240,13 @@
                 '用正確數量的橋連接數字島——不可交叉,且全部連成一網。',
             hashiBoardAria: 'Hashi 盤面',
             hashiHelp1Html:
-                '每座<strong>島</strong>上的數字,代表要有幾座<strong>橋</strong>接到它。從一座島往同列或同行、中間無阻隔的另一座島拖曳,即可架橋。',
+                '<strong>橋</strong>是連接兩座島的直線 (上下或左右)。每座<strong>島</strong>上的數字，代表共有幾座橋連到它。一對島之間最多兩座橋，且不可跨過其他橋或島。',
             hashiHelp2Html:
-                '每拖一次,這條連線會在 <strong>0 → 1 → 2</strong> 座橋之間循環。橋只能直走,一對島之間最多兩座,且<strong>絕不可交叉</strong>。',
+                '架橋：從一座島<strong>拖曳</strong>到相鄰的島。或直接<strong>點兩島之間的橋位</strong>。<strong>左鍵</strong>遞增 (空 → 一 → 兩 → 空)，<strong>右鍵</strong>反向 (空 → 兩 → 一 → 空)。',
             hashiHelp3Html:
-                '每座島最後的橋數必須剛好等於它的數字,且所有島要連成<strong>單一連通網路</strong>。',
+                '點擊可把島標記為「<strong>已完成</strong>」(僅追蹤)。',
             hashiHelp4Html:
-                '當每座島的數字都滿足、且所有島相連時即過關。',
+                '當每座島的數字都滿足、且所有島連成<strong>單一相通的網路</strong>時即過關。',
             clearBoard: '清空盤面',
             zipHelp1Html:
                 '從標示 <strong>1</strong> 的格子開始拖曳，畫一條經過每個白色格子的路徑。',
