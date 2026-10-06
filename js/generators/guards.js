@@ -18,10 +18,10 @@
  * solution; the generator keeps only those and bands Easy/Medium/Hard by score.
  *
  * Exposed:
- *   window.PuzzleGenerators.lightup(size, difficulty, seed, onProgress)
- *     → { id, game:'lightup', size, difficulty, grid, solution, stats }
- *   window.PuzzleSolvers.lightup       — { propagate, solveTier, countSolutions }
- *   window.PuzzleGenerators.lightupInternals — for the self-test
+ *   window.PuzzleGenerators.guards(size, difficulty, seed, onProgress)
+ *     → { id, game:'guards', size, difficulty, grid, solution, stats }
+ *   window.PuzzleSolvers.guards       — { propagate, solveTier, countSolutions }
+ *   window.PuzzleGenerators.guardsInternals — for the self-test
  */
 (function (global) {
     'use strict';
@@ -581,8 +581,8 @@
 
         if (onProgress) await onProgress(1);
         return {
-            id: `lightup-${N}x${N}-${difficulty}-${(seed >>> 0).toString(36)}`,
-            game: 'lightup', size: N, difficulty,
+            id: `guards-${N}x${N}-${difficulty}-${(seed >>> 0).toString(36)}`,
+            game: 'guards', size: N, difficulty,
             grid, solution,
             stats: { score: chosen.passes, passes: chosen.passes, shown: chosen.shown, total: chosen.total, ratio: chosen.ratio, tier: chosen.tier, poolSize: pool.length },
         };
@@ -590,9 +590,9 @@
 
     if (!global.PuzzleGenerators) global.PuzzleGenerators = {};
     if (!global.PuzzleSolvers) global.PuzzleSolvers = {};
-    global.PuzzleGenerators.lightup = generate;
-    global.PuzzleSolvers.lightup = { makeCtx, propagate, solveTier, countSolutions, verify, nextStep, nextStepDeep };
-    global.PuzzleGenerators.lightupInternals = {
+    global.PuzzleGenerators.guards = generate;
+    global.PuzzleSolvers.guards = { makeCtx, propagate, solveTier, countSolutions, verify, nextStep, nextStepDeep };
+    global.PuzzleGenerators.guardsInternals = {
         makeCtx, propagate, deductiveSolve, solveTier, solvesBy, solvesDepth1, countSolutions, verify,
         nextStep, nextStepDeep, buildSolution, deriveClues, randomLayout, attemptsFor, UNKNOWN, BULB, NOBULB,
     };

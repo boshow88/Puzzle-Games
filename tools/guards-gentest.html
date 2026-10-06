@@ -9,7 +9,7 @@
     th:first-child,td:first-child{text-align:left}
   </style>
   <script src="../js/common.js"></script>
-  <script src="../js/generators/lightup.js"></script>
+  <script src="../js/generators/guards.js"></script>
 </head>
 <body>
   <h1 id="verdict">running…</h1>
@@ -17,8 +17,8 @@
   <script>
   (async function () {
     try {
-    const G = window.PuzzleGenerators.lightup;
-    const I = window.PuzzleGenerators.lightupInternals;
+    const G = window.PuzzleGenerators.guards;
+    const I = window.PuzzleGenerators.guardsInternals;
     const BULB = I.BULB, NOBULB = I.NOBULB;
     const tick = () => Promise.resolve();
     const out = []; let fails = 0;

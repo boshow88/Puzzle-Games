@@ -1,7 +1,7 @@
 /**
  * Guards (Akari reskin) — game UI.
  *
- * Consumes window.PuzzleGenerators.lightup + the shared shell. Input mirrors
+ * Consumes window.PuzzleGenerators.guards + the shared shell. Input mirrors
  * Nonogram's four modes (Cycle / Guard / Mark ✗ / Erase): a tap cycles/toggles a
  * floor cell, a drag paints the content decided by its start cell. A guard
  * watches its row/column until a wall (pillar); win when every floor cell is
@@ -12,7 +12,7 @@
     'use strict';
 
     const PC = window.PuzzleCommon;
-    const LU = window.PuzzleSolvers.lightup;
+    const LU = window.PuzzleSolvers.guards;
     const EMITTER_ICON = 'user'; // the guard symbol (theme: Guards)
     const BOARD = 480;
     const VIOLATION_DELAY_MS = 800; // defer red conflict marks while a cell is being cycled
@@ -78,7 +78,7 @@
     function idx(r, c) { return r * state.N + c; }
 
     async function generatePuzzle(size, difficulty, seed) {
-        return window.PuzzleGenerators.lightup(size, difficulty, seed, null);
+        return window.PuzzleGenerators.guards(size, difficulty, seed, null);
     }
 
     function parsePuzzle(p) {
@@ -591,7 +591,7 @@
     // -----------------------------------------------------------------
     function init() {
         shell = PC.shell.create({
-            gameId: 'lightup',
+            gameId: 'guards',
             difficulty: { default: urlInitial ? urlInitial.difficulty : 'medium' },
             size: { kind: 'slider', values: SIZE_STEPS, min: MIN_SIZE, max: MAX_SIZE, default: urlInitial ? urlInitial.size : 10 },
             onNewGame: startNewGame,
