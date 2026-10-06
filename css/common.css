@@ -322,6 +322,7 @@ button {
 .game-card.patches { --game-color: #e5484d; }
 .game-card.nonogram { --game-color: #7c3aed; }
 .game-card.lightup { --game-color: #4f46e5; }
+.game-card.hashi   { --game-color: #8a5a2c; }
 /* Cross-link to the sibling Arcade Games site — a neutral slate so it reads
    as an external link, not another coloured puzzle. */
 .game-card.arcade-link { --game-color: #64748b; }

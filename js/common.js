@@ -978,6 +978,19 @@
                 'Four input modes: <span class="inline-icon lu-ico-cycle" data-icon="refresh-cw"></span> cycle, <span class="inline-icon lu-ico-bulb" data-icon="user"></span> guard, <span class="inline-icon lu-ico-mark" data-icon="x"></span> mark, <span class="inline-icon lu-ico-erase" data-icon="eraser"></span> erase. Tap to apply, or drag to paint from the first cell.',
             lightupHelp4Html:
                 'Solved when every floor cell is watched and no rule is broken.',
+            hashiName: 'Hashi',
+            hashiTagline: 'Bridge every island.',
+            hashiCardBody:
+                'Link the numbered islands with the right number of bridges — no crossings, all connected.',
+            hashiBoardAria: 'Hashi puzzle board',
+            hashiHelp1Html:
+                'Each <strong>island</strong> shows how many <strong>bridges</strong> must touch it. Drag from one island to another in the same row or column (with a clear gap) to build a bridge.',
+            hashiHelp2Html:
+                'Each drag cycles that connection <strong>0 → 1 → 2</strong> bridges. Bridges run straight, at most two between a pair, and may <strong>never cross</strong>.',
+            hashiHelp3Html:
+                'Every island must end with exactly its number of bridges, and all islands must join into a <strong>single connected network</strong>.',
+            hashiHelp4Html:
+                'Solved when every island’s number is satisfied and all islands are connected.',
             clearBoard: 'Clear the board',
             zipHelp1Html:
                 'Drag from the cell marked <strong>1</strong> to draw a path through every white cell.',
@@ -1213,6 +1226,19 @@
                 '四種輸入模式：<span class="inline-icon lu-ico-cycle" data-icon="refresh-cw"></span> 循環、<span class="inline-icon lu-ico-bulb" data-icon="user"></span> 守衛、<span class="inline-icon lu-ico-mark" data-icon="x"></span> 標記、<span class="inline-icon lu-ico-erase" data-icon="eraser"></span> 擦除。點一下套用，或從起點拖曳連續塗畫。',
             lightupHelp4Html:
                 '當每一格地板都被看守、且沒有違反任何規則時即過關。',
+            hashiName: 'Hashi',
+            hashiTagline: '把每座島連起來。',
+            hashiCardBody:
+                '用正確數量的橋連接數字島——不可交叉,且全部連成一網。',
+            hashiBoardAria: 'Hashi 盤面',
+            hashiHelp1Html:
+                '每座<strong>島</strong>上的數字,代表要有幾座<strong>橋</strong>接到它。從一座島往同列或同行、中間無阻隔的另一座島拖曳,即可架橋。',
+            hashiHelp2Html:
+                '每拖一次,這條連線會在 <strong>0 → 1 → 2</strong> 座橋之間循環。橋只能直走,一對島之間最多兩座,且<strong>絕不可交叉</strong>。',
+            hashiHelp3Html:
+                '每座島最後的橋數必須剛好等於它的數字,且所有島要連成<strong>單一連通網路</strong>。',
+            hashiHelp4Html:
+                '當每座島的數字都滿足、且所有島相連時即過關。',
             clearBoard: '清空盤面',
             zipHelp1Html:
                 '從標示 <strong>1</strong> 的格子開始拖曳，畫一條經過每個白色格子的路徑。',

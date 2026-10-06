@@ -1,0 +1,108 @@
+<!doctype html>
+<html lang="en"><head>
+  <meta charset="utf-8" />
+  <title>Hashi — visual check</title>
+  <link rel="stylesheet" href="../css/common.css" />
+  <link rel="stylesheet" href="../css/game.css" />
+  <style>
+    body { margin: 16px; background: #fff; font: 13px ui-monospace, monospace; --game-color: #8a5a2c; }
+    .case { display: inline-block; margin: 8px 18px 8px 0; vertical-align: top; }
+    .cap { color: #333; margin-top: 4px; }
+  </style>
+  <script src="../js/common.js"></script>
+  <script src="../js/generators/hashi.js"></script>
+</head>
+<body>
+  <div id="root">building…</div>
+  <script>
+  (async function () {
+    const PC = window.PuzzleCommon, G = window.PuzzleGenerators.hashi, I = window.PuzzleGenerators.hashiInternals;
+    const N = 9, cs = 44;
+    const cx = (c) => c * cs + cs / 2, cy = (r) => r * cs + cs / 2;
+
+    function bridgeLine(cls, A, B, off, sw) {
+      let dx = 0, dy = 0; if (A.r === B.r) dy = off; else dx = off;
+      return PC.svgEl('line', { class: cls, 'stroke-width': sw, x1: cx(A.c) + dx, y1: cy(A.r) + dy, x2: cx(B.c) + dx, y2: cy(B.r) + dy });
+    }
+    function drawBridge(layer, graph, islands, e, val, cls, sw, off) {
+      const A = islands[graph.edges[e].a], B = islands[graph.edges[e].b];
+      if (val === 1) layer.appendChild(bridgeLine(cls, A, B, 0, sw));
+      else if (val === 2) { layer.appendChild(bridgeLine(cls, A, B, -off, sw)); layer.appendChild(bridgeLine(cls, A, B, off, sw)); }
+    }
+
+    function panel(title, build) {
+      const wrap = document.createElement('div'); wrap.className = 'case';
+      const svg = PC.svgEl('svg', { width: N * cs, height: N * cs, viewBox: `0 0 ${N * cs} ${N * cs}` });
+      svg.appendChild(PC.svgEl('rect', { class: 'hashi-bg', x: 0, y: 0, width: N * cs, height: N * cs }));
+      build(svg);
+      wrap.appendChild(svg);
+      const cap = document.createElement('div'); cap.className = 'cap'; cap.textContent = title; wrap.appendChild(cap);
+      document.getElementById('root').appendChild(wrap);
+    }
+
+    function drawIslands(svg, graph, islands, needs, edgeVal, opts) {
+      opts = opts || {};
+      const rad = cs * 0.34, font = Math.max(11, Math.round(cs * 0.4));
+      for (let v = 0; v < islands.length; v++) {
+        let sum = 0; for (const e of graph.incident[v]) sum += edgeVal[e];
+        const done = sum === needs[v];
+        const bad = opts.badIsles && opts.badIsles.has(v);
+        const won = opts.won;
+        const g = PC.svgEl('g', { class: 'hashi-island' + (done ? ' done' : '') + (bad ? ' bad' : '') + (won ? ' won' : '') });
+        g.appendChild(PC.svgEl('circle', { class: 'hashi-isle-disc', cx: cx(islands[v].c), cy: cy(islands[v].r), r: rad }));
+        const t = PC.svgEl('text', { class: 'hashi-isle-num', x: cx(islands[v].c), y: cy(islands[v].r), 'text-anchor': 'middle', 'dominant-baseline': 'middle', dy: '0.08em', 'font-size': font });
+        t.textContent = String(needs[v]); g.appendChild(t); svg.appendChild(g);
+      }
+    }
+
+    const p = await G(N, 'easy', 11);
+    const islands = p.islands, graph = I.buildGraph(N, islands), needs = islands.map((i) => i.need);
+    const sol = new Int8Array(graph.edges.length);
+    for (const br of p.solution) { const e = graph.edges.findIndex((ed) => (ed.a === br.a && ed.b === br.b) || (ed.a === br.b && ed.b === br.a)); if (e >= 0) sol[e] = br.v; }
+    const sw = Math.max(2, cs * 0.07), off = Math.max(2.2, cs * 0.1);
+
+    document.getElementById('root').textContent = '';
+
+    panel('A · solved (bridges + doubles)', (svg) => {
+      const bl = PC.svgEl('g'); svg.appendChild(bl);
+      for (let e = 0; e < graph.edges.length; e++) if (sol[e] >= 1) drawBridge(bl, graph, islands, e, sol[e], 'hashi-bridge', sw, off);
+      drawIslands(svg, graph, islands, needs, sol);
+    });
+
+    panel('B · won (gold)', (svg) => {
+      const bl = PC.svgEl('g'); svg.appendChild(bl);
+      for (let e = 0; e < graph.edges.length; e++) if (sol[e] >= 1) drawBridge(bl, graph, islands, e, sol[e], 'hashi-bridge won', sw, off);
+      drawIslands(svg, graph, islands, needs, sol, { won: true });
+    });
+
+    panel('C · hint band + ghost', (svg) => {
+      const bl = PC.svgEl('g'); svg.appendChild(bl);
+      // a few bridges placed
+      const partial = sol.slice(); let shown = 0;
+      for (let e = 0; e < graph.edges.length && shown < 3; e++) if (partial[e] >= 1) shown++; else partial[e] = 0;
+      for (let e = 0; e < graph.edges.length; e++) if (partial[e] >= 1 && shown-- > 0) drawBridge(bl, graph, islands, e, partial[e], 'hashi-bridge', sw, off);
+      // hint on the first solution edge
+      const he = graph.edges.findIndex((_, e) => sol[e] >= 1);
+      const A = islands[graph.edges[he].a], B = islands[graph.edges[he].b];
+      svg.appendChild(PC.svgEl('line', { class: 'hashi-hint-band', 'stroke-width': Math.max(sw + 4, cs * 0.18), 'stroke-linecap': 'round', x1: cx(A.c), y1: cy(A.r), x2: cx(B.c), y2: cy(B.r) }));
+      drawBridge(svg, graph, islands, he, sol[he], 'hashi-bridge hashi-hint-ghost', sw, off);
+      drawIslands(svg, graph, islands, needs, new Int8Array(graph.edges.length));
+    });
+
+    panel('D · conflict (cross + over)', (svg) => {
+      const bl = PC.svgEl('g'); svg.appendChild(bl);
+      // find a crossing pair to show as bad
+      let shownBad = false;
+      for (let e = 0; e < graph.edges.length && !shownBad; e++) if (graph.cross[e].length) {
+        const f = graph.cross[e][0];
+        drawBridge(bl, graph, islands, e, 1, 'hashi-bridge bad', sw, off);
+        drawBridge(bl, graph, islands, f, 1, 'hashi-bridge bad', sw, off);
+        shownBad = true;
+      }
+      const badIsles = new Set([0]);
+      drawIslands(svg, graph, islands, needs, new Int8Array(graph.edges.length), { badIsles });
+    });
+  })();
+  </script>
+</body>
+</html>

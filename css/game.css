@@ -1338,6 +1338,40 @@
 .inline-icon.lu-ico-erase { color: #94a3b8; }
 
 /* ----------------------------------------------------------------
+   Hashi (Bridges)
+   ---------------------------------------------------------------- */
+.hashi-bg { fill: #faf6ef; }
+
+/* Bridges — theme brown; a double draws as two parallel lines. */
+.hashi-bridge { stroke: var(--game-color, #8a5a2c); stroke-linecap: round; pointer-events: none; }
+.hashi-bridge.bad { stroke: var(--accent-danger, #dc3545); }
+.hashi-bridge.won { stroke: #d4a017; }
+
+/* Islands — cream disc, brown ring, dark-brown number; filled tint once the
+   island's bridge count matches its number; red when it's over; gold on win. */
+.hashi-island .hashi-isle-disc { fill: #fffdf8; stroke: var(--game-color, #8a5a2c); stroke-width: 2.5; }
+.hashi-island .hashi-isle-num { fill: #3a2a18; font-family: var(--font-body); font-weight: 700; user-select: none; }
+.hashi-island.done .hashi-isle-disc { fill: #eadbc4; }
+.hashi-island.bad .hashi-isle-disc { fill: rgba(220, 53, 69, 0.15); stroke: var(--accent-danger, #dc3545); }
+.hashi-island.bad .hashi-isle-num { fill: var(--accent-danger, #dc3545); }
+.hashi-island.won .hashi-isle-disc { fill: #fde68a; stroke: #d4a017; animation: board-symbol-pop 0.5s ease both; }
+
+/* Drag preview of the bridge about to be built (solid) or removed (dashed). */
+.hashi-pending-line { stroke: var(--game-color, #8a5a2c); stroke-linecap: round; opacity: 0.4; }
+.hashi-pending-line.erase { stroke: #94a3b8; stroke-dasharray: 5 4; opacity: 0.7; }
+
+/* Hint: a highlight band along the forced connection, a ghost of the bridges to
+   build, and rings on conflicting islands. */
+.hashi-hint-band { stroke: var(--game-color, #8a5a2c); opacity: 0.22; }
+.hashi-hint-band.wrong { stroke: var(--accent-danger, #dc3545); opacity: 0.3; }
+.hashi-hint-ghost { opacity: 0.5; }
+.hashi-hint-ring { fill: none; stroke: var(--game-color, #8a5a2c); stroke-width: 3; pointer-events: none; animation: zip-hint-pulse 1.15s ease-in-out infinite; }
+.hashi-hint-ring.wrong { stroke: var(--accent-danger, #dc3545); }
+
+/* Reveal overlay. */
+.hashi-reveal-line { stroke: var(--game-color, #8a5a2c); opacity: 0.35; stroke-linecap: round; }
+
+/* ----------------------------------------------------------------
    Help / footer hints
    ---------------------------------------------------------------- */
 

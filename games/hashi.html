@@ -1,0 +1,124 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Hashi · Puzzle Games</title>
+    <link rel="icon" type="image/svg+xml" href="../favicon.svg">
+    <link rel="stylesheet" href="../css/common.css">
+    <link rel="stylesheet" href="../css/game.css">
+    <style>
+        body { --game-color: #8a5a2c; }
+    </style>
+</head>
+<body>
+    <div class="game-shell">
+        <header class="game-topbar">
+            <a class="back-link" href="../index.html">
+                <span data-icon="arrow-left" aria-hidden="true"></span>
+                <span data-i18n="menu">Menu</span>
+            </a>
+            <div class="game-title">
+                <span class="game-icon" data-icon="route" aria-hidden="true"></span>
+                <span data-i18n="hashiName">Hashi</span>
+            </div>
+            <div class="lang-toggle" id="lang-toggle" role="radiogroup" data-i18n-aria-label="language">
+                <button type="button" data-lang="en" role="radio" aria-checked="true">EN</button>
+                <button type="button" data-lang="zh" role="radio" aria-checked="false">中</button>
+            </div>
+        </header>
+
+        <section class="game-toolbar toolbar-stack-action" data-i18n-aria-label="gameSettings">
+            <div class="toolbar-group">
+                <span class="toolbar-label" data-i18n="difficulty">Difficulty</span>
+                <div class="toolbar-control">
+                    <div class="segmented" id="difficulty-seg" role="radiogroup" data-i18n-aria-label="difficulty">
+                        <button type="button" data-value="easy" role="radio" data-i18n="easy">Easy</button>
+                        <button type="button" data-value="medium" role="radio" class="active" data-i18n="medium">Medium</button>
+                        <button type="button" data-value="hard" role="radio" data-i18n="hard">Hard</button>
+                    </div>
+                </div>
+            </div>
+
+            <div class="toolbar-group">
+                <span class="toolbar-label" data-i18n="boardSize">Board size</span>
+                <div class="size-control">
+                    <input type="range" id="size-slider" min="7" max="15" step="1" value="9" data-i18n-aria-label="boardSize" aria-label="Board size">
+                    <span class="size-readout" id="size-readout">9×9</span>
+                </div>
+            </div>
+
+            <div class="toolbar-action">
+                <button class="btn" id="new-game-btn" type="button">
+                    <span data-icon="dices" aria-hidden="true"></span>
+                    <span data-i18n="newGame">New Game</span>
+                </button>
+                <button class="btn" id="share-btn" type="button" data-i18n-title="shareTitle" title="Copy a link to this puzzle">
+                    <span data-icon="share" aria-hidden="true"></span>
+                    <span data-i18n="share">Share</span>
+                </button>
+            </div>
+        </section>
+
+        <div class="action-row">
+            <button class="btn" id="undo-btn" type="button" data-i18n-title="undoTitle" title="Undo the last move (Ctrl+Z)" disabled>
+                <span data-icon="undo-2" aria-hidden="true"></span>
+                <span data-i18n="undo">Undo</span>
+            </button>
+            <button class="btn" id="reset-btn" type="button" data-i18n-title="clearBoard" title="Clear the board">
+                <span data-icon="rotate-ccw" aria-hidden="true"></span>
+                <span data-i18n="reset">Reset</span>
+            </button>
+            <button class="btn" id="hint-btn" type="button" data-i18n-title="highlightDeducible" title="Highlight a deducible move">
+                <span data-icon="lightbulb" aria-hidden="true"></span>
+                <span data-i18n="hint">Hint</span>
+            </button>
+            <button class="btn toggle" id="reveal-btn" type="button" aria-pressed="false" data-i18n-title="showSolution" title="Show solution overlay">
+                <span data-icon="eye" aria-hidden="true"></span>
+                <span data-i18n="reveal">Reveal</span>
+            </button>
+        </div>
+
+        <div class="status-row" aria-live="polite">
+            <span class="status-item">
+                <span class="timer" id="timer">00:00</span>
+            </span>
+            <span class="status-item violations" id="violations" hidden>
+                <span data-icon="triangle-alert" aria-hidden="true"></span>
+                <span id="violations-text"></span>
+            </span>
+            <span class="status-item win-message" id="win-message" hidden>
+                <span data-icon="sparkles" aria-hidden="true"></span>
+                <span data-i18n="winMessage">You Win!</span>
+            </span>
+        </div>
+
+        <div class="board-wrap">
+            <svg class="board-svg"
+                 id="board"
+                 viewBox="-3 -3 486 486"
+                 xmlns="http://www.w3.org/2000/svg"
+                 role="application"
+                 data-i18n-aria-label="hashiBoardAria"
+                 aria-label="Hashi puzzle board">
+            </svg>
+        </div>
+
+        <div class="hint-banner" id="hint-banner" hidden aria-live="polite"></div>
+
+        <section class="game-footer">
+            <h4 data-i18n="howToPlay">How to play</h4>
+            <ul>
+                <li data-i18n="hashiHelp1Html">Each <strong>island</strong> shows how many <strong>bridges</strong> must touch it. Drag from one island to another in the same row or column (with a clear gap) to build a bridge.</li>
+                <li data-i18n="hashiHelp2Html">Each drag cycles that connection <strong>0 → 1 → 2</strong> bridges. Bridges run straight, at most two between a pair, and may <strong>never cross</strong>.</li>
+                <li data-i18n="hashiHelp3Html">Every island must end with exactly its number of bridges, and all islands must join into a <strong>single connected network</strong>.</li>
+                <li data-i18n="hashiHelp4Html">Solved when every island’s number is satisfied and all islands are connected.</li>
+            </ul>
+        </section>
+    </div>
+
+    <script src="../js/common.js"></script>
+    <script src="../js/generators/hashi.js"></script>
+    <script src="../js/games/hashi.js"></script>
+</body>
+</html>
