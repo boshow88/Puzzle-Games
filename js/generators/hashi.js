@@ -176,7 +176,7 @@
     /** Propagate the three rule families to a fixpoint. Mutates lo/hi.
      *  Returns false on contradiction. `conn` toggles the (pricier) connectivity
      *  rules so a weaker solver can model shallower reasoning. */
-    function propagate(G, needs, lo, hi, conn) {
+    function propagate(G, needs, lo, hi, conn, out) {
         const useConn = conn !== false;
         let changed = true, passes = 0;
         while (changed) {
@@ -214,6 +214,7 @@
                 }
             }
         }
+        if (out) out.passes = passes;
         return true;
     }
 
@@ -401,11 +402,52 @@
     // Generator — grow a connected, non-crossing network, derive numbers
     // -----------------------------------------------------------------
 
+    // Difficulty, measured empirically (see tools/hashi-tierprobe):
+    //   • Easy / Medium are both PURE-PROPAGATION boards (no lookahead). They
+    //     differ by PROPAGATION DEPTH — the number of "draw → update remaining →
+    //     re-deduce" rounds the fixpoint needs. Depth 2 ≈ forced straight from the
+    //     opening (first-order "初階"); deeper boards need the iterated "中階"
+    //     chain. Depth grows with board size, so the two are picked RELATIVELY
+    //     (shallowest vs deepest in the same batch) to separate at every size.
+    //   • Hard genuinely needs "assume → contradiction" lookahead ("大師"); it is
+    //     capped so it never needs a brutal amount. Fewer cycle bridges ⇒ more
+    //     lookahead boards (but lower uniqueness), so Hard runs a low cycleBias.
     const DIFFS = {
-        easy:   { depth: 0, density: 0.14, doubleFrac: 0.30 },
-        medium: { depth: 0, density: 0.17, doubleFrac: 0.45 },
-        hard:   { depth: 1, density: 0.18, doubleFrac: 0.55 },
+        easy:   { density: 0.16, cycleBias: 1.6, doubleFrac: 0.35, mode: 'shallow' },
+        medium: { density: 0.16, cycleBias: 1.6, doubleFrac: 0.45, mode: 'deep' },
+        hard:   { density: 0.17, cycleBias: 0.35, doubleFrac: 0.45, mode: 'lookahead', elimCapMul: 0.8 },
     };
+
+    /** Pure-propagation depth (fixpoint rounds) from empty, or -1 if the board
+     *  isn't fully solved by propagation alone (i.e. it needs lookahead). */
+    function propDepth(G, needs) {
+        const E = G.edges.length;
+        const lo = new Int8Array(E), hi = new Int8Array(E).fill(2);
+        const o = {};
+        if (!propagate(G, needs, lo, hi, true, o)) return -1;
+        for (let e = 0; e < E; e++) if (lo[e] !== hi[e]) return -1;
+        return o.passes;
+    }
+
+    /** Reasoning effort a board needs: run plain (conn-on) propagation, then as
+     *  many depth-1 trial passes as it takes, counting the bound-eliminations the
+     *  trials contribute. { elims:0, solved:true } ⇒ pure-propagation solvable;
+     *  elims>0 ⇒ needs that much assume→contradiction lookahead. */
+    function effort(G, needs) {
+        const E = G.edges.length;
+        const lo = new Int8Array(E), hi = new Int8Array(E).fill(2);
+        if (!propagate(G, needs, lo, hi, true)) return { elims: 0, solved: false };
+        const decided = () => { for (let e = 0; e < E; e++) if (lo[e] !== hi[e]) return false; return true; };
+        let elims = 0, guard = 0;
+        while (!decided()) {
+            if (++guard > E * 4) return { elims, solved: false };
+            const g = trialPass(G, needs, lo, hi, true);
+            if (g <= 0) return { elims, solved: false };
+            elims += g;
+            if (!propagate(G, needs, lo, hi, true)) return { elims, solved: false };
+        }
+        return { elims, solved: true };
+    }
 
     /** Grow a random solution network on an N×N grid. Returns
      *  { islands:[{r,c}], bridges:[{a,b,v}] } with islands connected, bridges
@@ -456,7 +498,10 @@
             const e = G0.edges.findIndex((ed) => (ed.a === br.a && ed.b === br.b) || (ed.a === br.b && ed.b === br.a));
             if (e >= 0) val[e] = br.v;
         }
-        const extraTries = Math.round(G0.edges.length * 0.4);
+        // Cycle-closing bridges inject local ambiguity (degree-2 chains/loops),
+        // which is what forces connectivity / lookahead reasoning. Higher
+        // cycleBias ⇒ harder boards.
+        const extraTries = Math.round(G0.edges.length * (cfg.cycleBias != null ? cfg.cycleBias : 0.4));
         const needOf = (i) => { let s = 0; for (const e of G0.incident[i]) s += val[e]; return s; };
         for (let t = 0; t < extraTries; t++) {
             const e = PC.rng.pickInt(rng, 0, G0.edges.length);
@@ -483,7 +528,10 @@
         if (onProgress) await onProgress(0.03);
 
         const pool = [];
-        for (let t = 0; t < attempts; t++) {
+        // Boards at the exact requested tier can be rarer (esp. Medium/Hard), so
+        // keep trying past the soft cap until a few turn up or the hard cap hits.
+        const hardCap = attempts * 6;
+        for (let t = 0; t < hardCap; t++) {
             const net = growNetwork(N, rng, cfg);
             if (net.islands.length < 4 || net.bridges.length < 3) continue;
             const needs = net.islands.map(() => 0);
@@ -501,17 +549,22 @@
             // uniqueness
             const { count } = countSolutions(G, needs, 2, true);
             if (count !== 1) continue;
-            // difficulty gate: easy/medium must be pure-propagation solvable
-            // (tier 0); hard must be depth-1 solvable (tier 0 or 1) but never
-            // need blind search (tier 2).
-            const tier0 = solvesBy(G, needs, 0, true);
-            const tier = tier0 ? 0 : (solvesBy(G, needs, 1, true) ? 1 : 2);
-            if (cfg.depth === 0 ? tier !== 0 : tier === 2) continue;
-            pool.push({ islands, needs, solVal, G, tier, m: islands.length, bridges: net.bridges.length });
-            if (onProgress && (t & 7) === 0) await onProgress(0.03 + 0.9 * (t + 1) / attempts);
-            // stop early once we have enough of the right flavour
-            if (difficulty === 'hard' && tier === 1 && pool.filter((p) => p.tier === 1).length >= 6) break;
-            if (difficulty !== 'hard' && pool.length >= 10) break;
+            // reasoning effort → difficulty band
+            const ef = effort(G, needs);
+            if (!ef.solved) continue; // needs more than depth-1 lookahead: unfair
+            const needSum = needs.reduce((s, n) => s + n, 0);
+            if (cfg.mode === 'lookahead') {
+                // Hard must need lookahead, but not a brutal amount.
+                const cap = Math.max(4, Math.round(islands.length * cfg.elimCapMul));
+                if (ef.elims < 1 || ef.elims > cap) continue;
+                pool.push({ islands, needs, solVal, G, elims: ef.elims, depth: -1, m: islands.length, needSum, bridges: net.bridges.length });
+            } else {
+                if (ef.elims !== 0) continue; // Easy/Medium: pure-propagation only
+                pool.push({ islands, needs, solVal, G, elims: 0, depth: propDepth(G, needs), m: islands.length, needSum, bridges: net.bridges.length });
+            }
+            if (onProgress && (t & 7) === 0) await onProgress(0.03 + 0.9 * Math.min(1, (t + 1) / attempts));
+            // Easy/Medium need a spread of depths to pick the shallow/deep extreme.
+            if (pool.length >= (cfg.mode === 'lookahead' ? 6 : 18)) break;
         }
 
         if (onProgress) await onProgress(0.96);
@@ -520,17 +573,14 @@
             return fallback(N, difficulty, seed);
         }
 
-        // Select by difficulty.
+        // Select within the band. Easy = the shallowest pure-logic board (forced
+        // straight from the opening); Medium = the deepest pure-logic board (needs
+        // the iterated draw→update→re-deduce chain); Hard = a mid-high-effort
+        // lookahead board.
         let chosen;
-        if (difficulty === 'hard') {
-            const deep = pool.filter((p) => p.tier === 1);
-            const use = (deep.length ? deep : pool).sort((a, b) => a.m - b.m);
-            chosen = use[use.length - 1];
-        } else {
-            // prefer more islands for medium; fewer/shallower for easy
-            pool.sort((a, b) => a.m - b.m);
-            chosen = difficulty === 'easy' ? pool[0] : pool[Math.floor((pool.length - 1) / 2)];
-        }
+        if (cfg.mode === 'shallow') { pool.sort((a, b) => a.depth - b.depth || a.needSum - b.needSum); chosen = pool[0]; }
+        else if (cfg.mode === 'deep') { pool.sort((a, b) => b.depth - a.depth || b.needSum - a.needSum); chosen = pool[0]; }
+        else { pool.sort((a, b) => a.elims - b.elims); chosen = pool[Math.min(pool.length - 1, Math.floor(pool.length * 0.6))]; }
 
         const solution = [];
         for (let e = 0; e < chosen.G.edges.length; e++) if (chosen.solVal[e] >= 1) {
@@ -542,7 +592,7 @@
             game: 'hashi', size: N, difficulty,
             islands: chosen.islands.map((p) => ({ r: p.r, c: p.c, need: p.need })),
             solution,
-            stats: { islands: chosen.m, bridges: chosen.bridges, tier: chosen.tier, poolSize: pool.length },
+            stats: { islands: chosen.m, bridges: chosen.bridges, elims: chosen.elims, depth: chosen.depth, poolSize: pool.length },
         };
     }
 
@@ -559,7 +609,7 @@
             game: 'hashi', size: N, difficulty,
             islands,
             solution: [{ a: 0, b: 1, v: 1 }, { a: 0, b: 2, v: 1 }, { a: 1, b: 3, v: 1 }, { a: 2, b: 3, v: 1 }],
-            stats: { islands: 4, bridges: 4, tier: 0, poolSize: 0, fallback: true },
+            stats: { islands: 4, bridges: 4, elims: 0, poolSize: 0, fallback: true },
         };
     }
 
@@ -568,7 +618,7 @@
     global.PuzzleGenerators.hashi = generate;
     global.PuzzleSolvers.hashi = { buildGraph, propagate, countSolutions, verify, nextStep, nextStepDeep, solvesBy, UNKNOWN };
     global.PuzzleGenerators.hashiInternals = {
-        buildGraph, propagate, countSolutions, solveProp, solvesBy, trialPass, verify,
+        buildGraph, propagate, countSolutions, solveProp, solvesBy, trialPass, effort, propDepth, verify,
         nextStep, nextStepDeep, growNetwork, attemptsFor, possibleConnected, cutEdges, DIFFS, UNKNOWN,
     };
 })(typeof window !== 'undefined' ? window : this);

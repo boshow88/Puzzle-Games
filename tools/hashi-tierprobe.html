@@ -1,0 +1,63 @@
+<!doctype html>
+<html lang="en"><head>
+  <meta charset="utf-8" />
+  <title>Hashi — propagation-depth distribution</title>
+  <script src="../js/common.js"></script>
+  <script src="../js/generators/hashi.js"></script>
+</head>
+<body>
+  <pre id="out">running…</pre>
+  <script>
+  (async function () {
+    const log = [], P = (s) => { log.push(s); console.log(s); };
+    try {
+      const I = window.PuzzleGenerators.hashiInternals;
+      const { buildGraph, propagate, countSolutions, verify, growNetwork, effort } = I;
+
+      // Depth of pure propagation (rounds to fixpoint) for a board that is
+      // fully solved by propagation alone; null if it needs lookahead.
+      function propDepth(G, needs) {
+        const E = G.edges.length;
+        const lo = new Int8Array(E), hi = new Int8Array(E).fill(2);
+        const o = {};
+        if (!propagate(G, needs, lo, hi, true, o)) return null;
+        for (let e = 0; e < E; e++) if (lo[e] !== hi[e]) return null; // needs lookahead
+        return o.passes;
+      }
+
+      function buildOne(N, rng, cfg) {
+        const net = growNetwork(N, rng, cfg);
+        if (net.islands.length < 4 || net.bridges.length < 3) return null;
+        const islands = net.islands.map((p) => ({ r: p.r, c: p.c, need: 0 }));
+        const G = buildGraph(N, islands);
+        const needs = islands.map(() => 0);
+        const solVal = new Int8Array(G.edges.length);
+        for (const br of net.bridges) { const e = G.edges.findIndex((ed) => (ed.a === br.a && ed.b === br.b) || (ed.a === br.b && ed.b === br.a)); if (e >= 0) solVal[e] = br.v; }
+        for (let v = 0; v < islands.length; v++) { let s = 0; for (const e of G.incident[v]) s += solVal[e]; needs[v] = s; }
+        if (needs.some((n) => n === 0)) return null;
+        if (!verify(G, needs, solVal)) return null;
+        if (countSolutions(G, needs, 2, true).count !== 1) return null;
+        return { G, needs };
+      }
+
+      for (const N of [7, 9, 11, 13]) {
+        const cfg = { density: 0.17, doubleFrac: 0.4, cycleBias: 1.6 }; // easy/medium flavour (mostly pure-logic)
+        const hist = {}; let pure = 0, look = 0;
+        for (let seed = 1; seed <= 500 && (pure + look) < 300; seed++) {
+          const b = buildOne(N, window.PuzzleCommon.rng.make((seed * 2654435761) >>> 0), cfg);
+          if (!b) continue;
+          const d = propDepth(b.G, b.needs);
+          if (d == null) { look++; continue; }
+          pure++;
+          hist[d] = (hist[d] || 0) + 1;
+        }
+        const keys = Object.keys(hist).map(Number).sort((a, b) => a - b);
+        P(`N=${N} pure=${pure} needLookahead=${look} | depth: ` + keys.map((k) => `${k}:${hist[k]}`).join('  '));
+      }
+      P('DEPTHPROBE done');
+    } catch (err) { P('DEPTHPROBE ERROR ' + (err && err.stack || err)); }
+    document.getElementById('out').textContent = log.join('\n');
+  })();
+  </script>
+</body>
+</html>
