@@ -644,6 +644,7 @@
 
 /* Inline help-text icons (crown / sun / moon inside "How to play"). */
 .inline-icon.queen { color: #475569; }
+.inline-icon.queen-x { color: #94a3b8; }
 .inline-icon.sun   { color: #f5a623; }
 .inline-icon.moon  { color: #4a6fa5; }
 

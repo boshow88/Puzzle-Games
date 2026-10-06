@@ -827,7 +827,7 @@
                 'Place N queens so that every row, column, color region and 8-neighborhood contains exactly one.',
             queensBoardAria: 'Queens puzzle board',
             queensHelp1Html:
-                'Click a cell to cycle through <strong>empty → × → <span class="inline-icon queen" data-icon="crown"></span></strong> (× is just a personal "no" marker).',
+                'Click a cell to cycle through <strong>empty → <span class="inline-icon queen-x" data-icon="x"></span> → <span class="inline-icon queen" data-icon="crown"></span></strong> (the <span class="inline-icon queen-x" data-icon="x"></span> is just a personal "no" marker).',
             queensHelp2Html:
                 'Every row, every column, and every color region may hold at most one <span class="inline-icon queen" data-icon="crown"></span>, and no two queens may occupy adjacent cells (including diagonal ones).',
             queensHelp3Html:
@@ -1070,7 +1070,7 @@
             queensCardBody: '在每個列、行、色塊區域與 8 鄰域中各放一個皇后。',
             queensBoardAria: 'Queens 盤面',
             queensHelp1Html:
-                '點擊格子在 <strong>空 → × → <span class="inline-icon queen" data-icon="crown"></span></strong> 之間循環（× 為個人「不放這」的標記）。',
+                '點擊格子在 <strong>空 → <span class="inline-icon queen-x" data-icon="x"></span> → <span class="inline-icon queen" data-icon="crown"></span></strong> 之間循環（<span class="inline-icon queen-x" data-icon="x"></span> 為個人「不放這」的標記）。',
             queensHelp2Html:
                 '每個列、每個行、每個色塊區域最多只能有一個 <span class="inline-icon queen" data-icon="crown"></span>，且任兩個皇后不能位於相鄰的格子（含對角）。',
             queensHelp3Html:
