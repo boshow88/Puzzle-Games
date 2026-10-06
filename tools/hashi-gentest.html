@@ -1,0 +1,154 @@
+<!doctype html>
+<html lang="en"><head>
+  <meta charset="utf-8" />
+  <title>Hashi — generator self-test</title>
+  <style>
+    body { font: 13px/1.5 ui-monospace, Consolas, monospace; margin: 16px; }
+    .pass { color: #128a12; } .fail { color: #c0272d; font-weight: 700; }
+    table { border-collapse: collapse; margin: 10px 0; }
+    th, td { border: 1px solid #ccc; padding: 2px 8px; text-align: right; }
+    th:first-child, td:first-child { text-align: left; }
+  </style>
+  <script src="../js/common.js"></script>
+  <script src="../js/generators/hashi.js"></script>
+</head>
+<body>
+  <h1 id="verdict">running…</h1>
+  <div id="tbl"></div>
+  <pre id="out"></pre>
+  <script>
+  (async function () {
+    const out = []; let fails = 0;
+    const P = (s) => { out.push(s); console.log(s); };
+    const fail = (m) => { P('FAIL ' + m); fails++; };
+    try {
+      const G = window.PuzzleGenerators.hashi, I = window.PuzzleGenerators.hashiInternals;
+      const S = window.PuzzleSolvers.hashi;
+
+      // Reconstruct graph + needs + solution edge-values from a generated puzzle.
+      function rebuild(p) {
+        const graph = I.buildGraph(p.size, p.islands);
+        const needs = p.islands.map((is) => is.need);
+        const solVal = new Int8Array(graph.edges.length);
+        for (const br of p.solution) {
+          const e = graph.edges.findIndex((ed) => (ed.a === br.a && ed.b === br.b) || (ed.a === br.b && ed.b === br.a));
+          if (e >= 0) solVal[e] = br.v;
+        }
+        return { graph, needs, solVal };
+      }
+
+      // Independent brute-force solution counter (shares no logic with the solver's
+      // propagation): assign 0..2 to each edge in order, prune crossings + degree
+      // overflow, verify at the leaf. Only for small edge counts.
+      function bruteCount(graph, needs, cap) {
+        const E = graph.edges.length;
+        if (E > 24) return null; // too big to brute
+        const val = new Int8Array(E).fill(0);
+        let count = 0, nodes = 0;
+        // incident edges that appear at or before index e, to know when an island
+        // is "closed" (all its edges assigned).
+        const lastEdgeOf = graph.islands.map(() => -1);
+        for (let v = 0; v < graph.islands.length; v++) for (const e of graph.incident[v]) if (e > lastEdgeOf[v]) lastEdgeOf[v] = e;
+        function rec(e) {
+          if (count >= cap || count < 0) return;
+          if (++nodes > 3e6) { count = -1; return; }
+          if (e === E) { if (S.verify(graph, needs, val)) count++; return; }
+          for (let v = 0; v <= 2; v++) {
+            val[e] = v;
+            let bad = false;
+            if (v >= 1) for (const f of graph.cross[e]) if (f < e && val[f] >= 1) { bad = true; break; }
+            // degree prune: for each island whose last edge is e, its sum must == need
+            if (!bad) {
+              for (const isl of [graph.edges[e].a, graph.edges[e].b]) {
+                let s = 0, remaining = 0;
+                for (const ee of graph.incident[isl]) { if (ee <= e) s += val[ee]; else remaining += 2; }
+                if (s > needs[isl] || s + remaining < needs[isl]) { bad = true; break; }
+              }
+            }
+            if (!bad) rec(e + 1);
+            if (count < 0) return;
+          }
+          val[e] = 0;
+        }
+        rec(0);
+        return count;
+      }
+
+      const SEEDS = [11, 29, 47, 71];
+      const rows = [];
+      for (const N of [7, 9, 11, 13]) {
+        const tierByDiff = {};
+        for (const diff of ['easy', 'medium', 'hard']) {
+          const times = [], tiers = [], islandsN = [];
+          for (const seed of SEEDS) {
+            const t0 = performance.now();
+            let p; try { p = await G(N, diff, seed); } catch (e) { fail(`gen ${N} ${diff} #${seed}: ${e && e.message}`); continue; }
+            times.push(performance.now() - t0);
+            if (!p.islands || p.islands.length < 4) { fail(`${N} ${diff} #${seed}: too few islands`); continue; }
+            if (!p.solution || p.solution.length < 3) { fail(`${N} ${diff} #${seed}: too few bridges`); continue; }
+            const { graph, needs, solVal } = rebuild(p);
+            // needs sane
+            for (let v = 0; v < graph.islands.length; v++) {
+              const capv = graph.incident[v].length * 2;
+              if (needs[v] < 1 || needs[v] > 8 || needs[v] > capv) fail(`${N} ${diff} #${seed}: island ${v} need ${needs[v]} > cap ${capv}`);
+            }
+            // the shipped solution is valid
+            if (!S.verify(graph, needs, solVal)) fail(`${N} ${diff} #${seed}: shipped solution invalid`);
+            // uniqueness (solver)
+            const cs = S.countSolutions(graph, needs, 2, true);
+            if (cs.count !== 1) fail(`${N} ${diff} #${seed}: solver count=${cs.count} (want 1)`);
+            // uniqueness (independent brute, small boards)
+            const bc = bruteCount(graph, needs, 2);
+            if (bc !== null && bc !== 1) fail(`${N} ${diff} #${seed}: brute count=${bc} (want 1)`);
+            // solvable at the difficulty's depth
+            const t0ok = S.solvesBy(graph, needs, 0, true);
+            const t1ok = S.solvesBy(graph, needs, 1, true);
+            if ((diff === 'easy' || diff === 'medium') && !t0ok) fail(`${N} ${diff} #${seed}: not pure-prop solvable`);
+            if (diff === 'hard' && !t1ok) fail(`${N} ${diff} #${seed}: not depth-1 solvable`);
+            // hint-drivability: the hint engine (nextStep, + nextStepDeep for hard)
+            // must march an empty board all the way to the unique solution.
+            {
+              const cur = new Int8Array(graph.edges.length).fill(S.UNKNOWN);
+              let guard2 = 0, stuck = false;
+              for (;;) {
+                let undecided = false;
+                for (let e = 0; e < graph.edges.length; e++) if (cur[e] === S.UNKNOWN) { undecided = true; break; }
+                if (!undecided) break;
+                let step = S.nextStep(graph, needs, cur);
+                if (!step) { const d = S.nextStepDeep(graph, needs, cur); if (d) step = { edge: d.edge, value: d.value }; }
+                if (!step || ++guard2 > graph.edges.length * 4) { stuck = true; break; }
+                cur[step.edge] = step.value;
+              }
+              if (stuck) fail(`${N} ${diff} #${seed}: hints got stuck`);
+              else for (let e = 0; e < graph.edges.length; e++) if (cur[e] !== solVal[e]) { fail(`${N} ${diff} #${seed}: hint-solve ≠ solution`); break; }
+            }
+            tiers.push(p.stats.tier);
+            islandsN.push(graph.islands.length);
+          }
+          const med = (a) => { if (!a.length) return -1; a = a.slice().sort((x, y) => x - y); return a[a.length >> 1]; };
+          tierByDiff[diff] = med(tiers);
+          rows.push({ key: `${N}×${N} ${diff}`, ms: Math.round(times.reduce((x, y) => x + y, 0) / (times.length || 1)), tier: med(tiers), islands: med(islandsN), tiers: tiers.join(',') });
+        }
+        const e = tierByDiff.easy, m = tierByDiff.medium, h = tierByDiff.hard;
+        if (e >= 0 && m >= 0 && h >= 0 && !(h >= m && m >= e)) fail(`${N}: difficulty tier not monotonic (E ${e} / M ${m} / H ${h})`);
+      }
+
+      let html = '<table><tr><th>config</th><th>avg ms</th><th>median tier</th><th>median islands</th><th>tiers</th></tr>';
+      for (const r of rows) html += `<tr><td>${r.key}</td><td>${r.ms}</td><td>${r.tier}</td><td>${r.islands}</td><td>${r.tiers}</td></tr>`;
+      html += '</table>';
+      document.getElementById('tbl').innerHTML = html;
+      document.getElementById('out').textContent = out.join('\n');
+      const v = document.getElementById('verdict');
+      v.textContent = fails === 0 ? 'ALL HASHI CHECKS PASSED (unique + valid + solvable + monotonic)' : (fails + ' CHECK(S) FAILED');
+      v.className = fails === 0 ? 'pass' : 'fail';
+      console.log('GENTEST ' + (fails === 0 ? 'PASS' : 'FAIL') + ' fails=' + fails);
+      for (const r of rows) console.log('ROW ' + r.key + ' | ms ' + r.ms + ' | tier ' + r.tier + ' | islands ' + r.islands + ' | tiers ' + r.tiers);
+    } catch (err) {
+      document.getElementById('verdict').textContent = 'ERROR: ' + (err && err.message);
+      document.getElementById('verdict').className = 'fail';
+      console.log('GENTEST ERROR ' + (err && err.stack || err));
+    }
+  })();
+  </script>
+</body>
+</html>
