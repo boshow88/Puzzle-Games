@@ -413,8 +413,9 @@ reskinned — guards instead of bulbs, pillars instead of walls.)
 4. Each **numbered pillar** has exactly that many guards on its orthogonally
    adjacent floor cells. Unnumbered pillars constrain nothing.
 
-Every generated board is solvable by pure propagation (no guessing), which
-also makes its solution unique.
+Every board has a unique solution. Easy and Medium are solvable by pure
+step-by-step logic; Hard also needs exactly one "assume a cell → hit a
+contradiction → rule it out" step. Easy reveals the most clues, Hard the fewest.
 
 ### Controls
 
@@ -427,7 +428,10 @@ also makes its solution unique.
 - **Tap** a cell to apply the active mode; **drag** to paint, with the first
   cell deciding what the drag lays down.
 - **Hint (💡)**: if the board currently breaks a rule it flags that first;
-  otherwise it surfaces the next forced guard / `✗`. Press again to dismiss.
+  otherwise it surfaces the next forced guard / `✗`. On Hard, when nothing is
+  directly forced, it walks through an "assume → contradiction" step: the
+  assumed guard, the numbered cells it forces, and the pillar / dark cell where
+  a rule breaks. Press again to dismiss.
 - **Reveal (?)**: overlays the solution guards.
 - **Undo (↶ / Ctrl+Z)**: steps back one action at a time (up to 20); Reset
   is undoable too, until you win.
