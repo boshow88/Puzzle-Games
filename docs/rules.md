@@ -1,6 +1,6 @@
 # Game Rules
 
-A central reference for the seven puzzles in this collection. Each game
+A central reference for the eight puzzles in this collection. Each game
 page already shows a short *How to play* footer; this document is the
 long form — the complete rule set and the controls that map to them.
 
@@ -28,10 +28,11 @@ so the rule sections below only mention game-specific deviations.
   hint glyph in the corner of each editable cell; in Zip it draws the
   canonical path under the player's line; in Patches it outlines the
   solution rectangles; in Nonogram it overlays the solved filled cells;
-  in Guards it overlays the solution guards.
+  in Guards it overlays the solution guards; in Hashi it draws the
+  solution bridges.
 - **Timer**: starts on New Game / size / difficulty change; stops on
   win.
-- **Violation feedback** (Queens, Tango, Sudoku, Guards): rule breaks
+- **Violation feedback** (Queens, Tango, Sudoku, Guards, Hashi): rule breaks
   are shown as red marks on the offending cells, held back briefly so
   rapidly cycling a cell doesn't strobe red. Queens/Tango/Sudoku keep
   unrelated conflicts visible and debounce only the ones your last move
@@ -440,3 +441,50 @@ contradiction → rule it out" step. Easy reveals the most clues, Hard the fewes
 
 Every floor cell is watched, no two guards see each other, and every numbered
 pillar is exact.
+
+---
+
+## Hashi
+
+**Goal.** Connect all the numbered **islands** with **bridges** so that each
+island has exactly its number of bridges and every island ends up joined into
+one connected network. (Also known as Hashiwokakero or Bridges.)
+
+### Board
+
+- N×N grid; the size slider steps through a fixed set — **7, 9, 11, 13, 15**.
+- **Islands** are the numbered circles; everything else is open water a bridge
+  may span.
+
+### Rules
+
+1. A **bridge** runs horizontally or vertically between two islands that face
+   each other along a row/column with a clear gap (no island in between).
+2. A pair of islands may be joined by **0, 1 or 2 bridges**.
+3. Bridges are straight and may **never cross** each other (a horizontal and a
+   vertical bridge can't share a cell).
+4. Each island's **total number of bridges equals its number**.
+5. All islands must form a **single connected network** — you can travel from
+   any island to any other over the bridges.
+
+Every board has a unique solution. Easy and Medium are solvable by pure
+step-by-step logic; Hard also needs an "assume a connection → hit a
+contradiction → rule it out" step.
+
+### Controls
+
+- **Drag** from one island toward an orthogonally-adjacent island to build a
+  bridge there; each drag cycles that connection `0 → 1 → 2 → 0`. A faint
+  preview shows what the release will lay down.
+- **Hint (💡)**: if the board breaks a rule it flags that first (crossing
+  bridges, or an island with too many bridges); otherwise it highlights the
+  next forced connection and ghosts the bridge(s) to build. On Hard, when
+  nothing is directly forced, it points out an "assume → dead end" connection.
+- **Reveal (?)**: overlays the solution bridges.
+- **Undo (↶ / Ctrl+Z)**: steps back one action at a time (up to 20); Reset is
+  undoable too, until you win.
+
+### Win
+
+Every island's number is satisfied, no bridges cross, and all islands are
+connected.
