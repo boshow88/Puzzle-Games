@@ -416,41 +416,58 @@
      *  pinned to an exact count. */
     function annotateStep(G, needs, drawn, e, pLo, pHi) {
         const { a, b } = G.edges[e];
-        const value = pLo[e];
-        const atLeast = pLo[e] < pHi[e];
         const far = (v, k) => (G.edges[k].a === v ? G.edges[k].b : G.edges[k].a);
+        // Bridges still owed by island z (its number minus what's drawn to it).
+        const rem = (z) => { let s = 0; for (const k of G.incident[z]) s += drawn[k]; return Math.max(0, needs[z] - s); };
+        // How many MORE bridges the player could still lay on edge k, judging ONLY by
+        // things visible on the board: the ≤2 cap, a 0 if a DRAWN bridge crosses it,
+        // and the leftover capacity of BOTH islands it joins (a full island can take
+        // no more). We do NOT treat a direction as closed merely because propagation
+        // ruled it out via some not-yet-drawn forced bridge — the player can't see
+        // that yet, so a hint leaning on it would feel like it came from nowhere.
+        const addMax = (k) => {
+            if (drawn[k] >= 2) return 0;
+            for (const f of G.cross[k]) if (drawn[f] >= 1) return 0;
+            const ed = G.edges[k];
+            return Math.min(2 - drawn[k], rem(ed.a), rem(ed.b));
+        };
         const groundedAt = (v) => {
             const inc = G.incident[v];
             let cSum = 0; const open = [];
-            for (const k of inc) { cSum += drawn[k]; if (pHi[k] > drawn[k]) open.push(k); }
+            for (const k of inc) { cSum += drawn[k]; if (addMax(k) > 0) open.push(k); }
             if (open.indexOf(e) < 0) return null;
             const remaining = needs[v] - cSum;
-            let otherMax = 0, totalCap = 0;
-            for (const k of open) { const cap = pHi[k] - drawn[k]; totalCap += cap; if (k !== e) otherMax += cap; }
-            if (drawn[e] + Math.max(0, remaining - otherMax) < value) return null; // this island doesn't pin e's minimum
+            let otherAdd = 0, totalAdd = 0;
+            for (const k of open) { const m = addMax(k); totalAdd += m; if (k !== e) otherAdd += m; }
+            const eAddLo = Math.max(0, remaining - otherAdd); // even if every other open direction maxes out
+            if (eAddLo <= 0) return null;                     // this island's number doesn't force e to grow
+            const value = drawn[e] + eAddLo;
+            const atLeast = eAddLo < Math.min(addMax(e), remaining);
             const k = open.length;
             let kind;
             if (k === 1) kind = (cSum === 0 ? 'sole' : 'onlyLeft');
-            else if (remaining === totalCap) kind = (cSum === 0 ? 'saturate' : 'saturateRest');
+            // "Saturate" (N = directions × 2) only when every open direction can truly
+            // take two — otherwise the "× 2" story is false and it's a shortfall case.
+            else if (remaining === 2 * k && open.every((k2) => addMax(k2) === 2)) kind = (cSum === 0 ? 'saturate' : 'saturateRest');
             else kind = 'atleast';
-            const src = { island: v, need: needs[v], have: cSum, open: k, remaining, otherMax, value, atLeast, kind };
+            const src = { island: v, need: needs[v], have: cSum, open: k, remaining, otherMax: otherAdd, add: eAddLo, value, atLeast, kind };
             if (kind === 'saturate' || kind === 'saturateRest') {
-                src.fan = open.map((k2) => ({ edge: k2, value: pHi[k2] }));
+                src.fan = open.map((k2) => ({ edge: k2, value: drawn[k2] + addMax(k2) }));
                 src.isles = open.map((k2) => far(v, k2));
             }
             return src;
         };
-        for (const v of [a, b]) { const s = groundedAt(v); if (s) return { edge: e, value, atLeast: s.atLeast, reason: 'degree', anchor: { islands: [v] }, src: s }; }
+        for (const v of [a, b]) { const s = groundedAt(v); if (s) return { edge: e, value: s.value, atLeast: s.atLeast, reason: 'degree', anchor: { islands: [v] }, src: s }; }
         // Connectivity — removing e's bridge would strand some islands, so it is the
         // only remaining route in: circle THAT stranded group, not the endpoints.
-        if (value >= 1 && drawn[e] === 0) {
+        if (pLo[e] >= 1 && drawn[e] === 0) {
             const hi2 = pHi.slice(); hi2[e] = 0;
             if (!possibleConnected(G, hi2)) {
                 const stranded = strandedIslands(G, hi2);
-                return { edge: e, value, atLeast, reason: 'cut', anchor: { islands: stranded.length ? stranded : [a, b] }, src: { stranded } };
+                return { edge: e, value: pLo[e], atLeast: pLo[e] < pHi[e], reason: 'cut', anchor: { islands: stranded.length ? stranded : [a, b] }, src: { stranded } };
             }
         }
-        return { edge: e, value, atLeast, reason: 'degree', anchor: { islands: [a, b] } };
+        return { edge: e, value: pLo[e], atLeast: pLo[e] < pHi[e], reason: 'degree', anchor: { islands: [a, b] } };
     }
 
     /** Depth-1 refutation hint (for boards that need lookahead), SHORTEST chain:

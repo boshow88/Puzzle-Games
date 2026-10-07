@@ -426,7 +426,7 @@
                 if (s.kind === 'onlyLeft') return `The circled ${s.need} already has ${s.have}; only one direction is left, so the remaining ${s.remaining} must go here.`;
                 if (s.kind === 'saturate') return `The circled ${s.need} can only connect in ${s.open} directions, and ${s.open} × 2 = ${s.need}, so every one of them must take two bridges.`;
                 if (s.kind === 'saturateRest') return `The circled ${s.need} already has ${s.have}; its remaining ${s.remaining} has to fill ${s.open} directions (${s.open} × 2 = ${s.remaining}), so each of them must take two bridges.`;
-                if (s.kind === 'atleast') return `The circled ${s.need}: its other directions can absorb at most ${s.otherMax} more, so the extra ${s.value} has to run through here — take at least ${n2En(s.value)} bridge${s.value === 2 ? 's' : ''}.`;
+                if (s.kind === 'atleast') return `The circled ${s.need}: its other directions can absorb at most ${s.otherMax} more, so the remaining ${s.add} has to run through here — ${actEn(s.value, h.atLeast)}.`;
                 return `The circled ${s.need} already has ${s.have}, which forces this connection to ${actEn(s.value, h.atLeast)}.`;
             },
             cut: (h) => {
@@ -456,7 +456,7 @@
                 if (s.kind === 'onlyLeft') return `圈起來的 ${s.need} 已接 ${s.have} 座，只剩一個方向還沒連，所以剩下的 ${s.remaining} 座只能走這條。`;
                 if (s.kind === 'saturate') return `圈起來的 ${s.need} 只有 ${s.open} 個方向可連，${s.open} × 2 = ${s.need}，所以每個方向都必須架滿兩座橋。`;
                 if (s.kind === 'saturateRest') return `圈起來的 ${s.need} 已接 ${s.have} 座，剩下的 ${s.remaining} 座要填滿 ${s.open} 個方向（${s.open} × 2 = ${s.remaining}），所以這些方向都必須各架兩座橋。`;
-                if (s.kind === 'atleast') return `圈起來的 ${s.need}：其他方向最多只能再接 ${s.otherMax} 座，還差 ${s.value} 座一定得走這條，所以這條${actZh(s.value, true)}。`;
+                if (s.kind === 'atleast') return `圈起來的 ${s.need}：其他方向最多只能再接 ${s.otherMax} 座，還差 ${s.add} 座一定得走這條，所以這條${actZh(s.value, h.atLeast)}。`;
                 return `圈起來的 ${s.need} 已接 ${s.have} 座，推得這條${actZh(s.value, h.atLeast)}。`;
             },
             cut: (h) => {
