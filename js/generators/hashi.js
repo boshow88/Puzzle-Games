@@ -540,9 +540,18 @@
     //     lookahead boards (but lower uniqueness), so Hard runs a low cycleBias.
     const DIFFS = {
         easy:   { density: 0.16, cycleBias: 1.6, doubleFrac: 0.35, mode: 'shallow' },
-        medium: { density: 0.16, cycleBias: 1.6, doubleFrac: 0.45, mode: 'deep' },
+        medium: { density: 0.16, cycleBias: 1.0, doubleFrac: 0.30, mode: 'deep' },
         hard:   { density: 0.17, cycleBias: 0.35, doubleFrac: 0.45, mode: 'lookahead', elimCapMul: 0.8 },
     };
+
+    /** Fraction of islands whose number already maxes out every direction
+     *  (need == 2 × degree) — the "just fill every connection with a double"
+     *  islands. High ⇒ the board feels like trivial double-fill. */
+    function saturatedFraction(G, needs) {
+        let sat = 0;
+        for (let v = 0; v < G.islands.length; v++) if (needs[v] === 2 * G.incident[v].length) sat++;
+        return G.islands.length ? sat / G.islands.length : 0;
+    }
 
     /** Pure-propagation depth (fixpoint rounds) from empty, or -1 if the board
      *  isn't fully solved by propagation alone (i.e. it needs lookahead). */
@@ -708,14 +717,15 @@
             const ef = effort(G, needs);
             if (!ef.solved) continue; // needs more than depth-1 lookahead: unfair
             const needSum = needs.reduce((s, n) => s + n, 0);
+            const satFrac = saturatedFraction(G, needs);
             if (cfg.mode === 'lookahead') {
                 // Hard must need lookahead, but not a brutal amount.
                 const cap = Math.max(4, Math.round(islands.length * cfg.elimCapMul));
                 if (ef.elims < 1 || ef.elims > cap) continue;
-                pool.push({ islands, needs, solVal, G, elims: ef.elims, depth: -1, m: islands.length, needSum, bridges: net.bridges.length });
+                pool.push({ islands, needs, solVal, G, elims: ef.elims, depth: -1, m: islands.length, needSum, satFrac, bridges: net.bridges.length });
             } else {
                 if (ef.elims !== 0) continue; // Easy/Medium: pure-propagation only
-                pool.push({ islands, needs, solVal, G, elims: 0, depth: propDepth(G, needs), m: islands.length, needSum, bridges: net.bridges.length });
+                pool.push({ islands, needs, solVal, G, elims: 0, depth: propDepth(G, needs), m: islands.length, needSum, satFrac, bridges: net.bridges.length });
             }
             if (onProgress && (t & 7) === 0) await onProgress(0.03 + 0.9 * Math.min(1, (t + 1) / attempts));
             // Easy/Medium need a spread of depths to pick the shallow/deep extreme.
@@ -733,9 +743,24 @@
         // the iterated draw→update→re-deduce chain); Hard = a mid-high-effort
         // lookahead board.
         let chosen;
-        if (cfg.mode === 'shallow') { pool.sort((a, b) => a.depth - b.depth || a.needSum - b.needSum); chosen = pool[0]; }
-        else if (cfg.mode === 'deep') { pool.sort((a, b) => b.depth - a.depth || b.needSum - a.needSum); chosen = pool[0]; }
-        else { pool.sort((a, b) => a.elims - b.elims); chosen = pool[Math.min(pool.length - 1, Math.floor(pool.length * 0.6))]; }
+        if (cfg.mode === 'shallow') {
+            // Easy: the gentlest board — shallowest forced-from-the-opening logic.
+            // (No push toward maximal double-fill; a little variety keeps it from
+            // feeling like "just put a 2 on everything".)
+            pool.sort((a, b) => a.depth - b.depth || a.needSum - b.needSum);
+            chosen = pool[0];
+        } else if (cfg.mode === 'deep') {
+            // Medium: still the deep iterated chain (so it's deeper than Easy), but
+            // among the deepest prefer the one that leans on MIXED reasoning rather
+            // than double-fill (fewest saturated islands) so it feels distinct.
+            const maxD = pool.reduce((m, p) => Math.max(m, p.depth), 0);
+            const deep = pool.filter((p) => p.depth >= maxD - 1);
+            deep.sort((a, b) => a.satFrac - b.satFrac || b.depth - a.depth || b.needSum - a.needSum);
+            chosen = deep[0];
+        } else {
+            pool.sort((a, b) => a.elims - b.elims);
+            chosen = pool[Math.min(pool.length - 1, Math.floor(pool.length * 0.6))];
+        }
 
         const solution = [];
         for (let e = 0; e < chosen.G.edges.length; e++) if (chosen.solVal[e] >= 1) {
