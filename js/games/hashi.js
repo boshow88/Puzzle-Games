@@ -186,14 +186,15 @@
         });
     }
 
-    function drawBridge(layer, e, val, cls, sw, offUnit) {
+    function drawBridge(layer, e, val, cls, sw, offUnit, delay) {
         const { a, b } = state.G.edges[e];
         const A = state.islands[a], B = state.islands[b];
+        const add = (ln) => { if (delay) ln.style.animationDelay = delay; layer.appendChild(ln); };
         if (val === 1) {
-            layer.appendChild(bridgeLine(cls, A.r, A.c, B.r, B.c, 0, sw));
+            add(bridgeLine(cls, A.r, A.c, B.r, B.c, 0, sw));
         } else if (val === 2) {
-            layer.appendChild(bridgeLine(cls, A.r, A.c, B.r, B.c, -offUnit, sw));
-            layer.appendChild(bridgeLine(cls, A.r, A.c, B.r, B.c, offUnit, sw));
+            add(bridgeLine(cls, A.r, A.c, B.r, B.c, -offUnit, sw));
+            add(bridgeLine(cls, A.r, A.c, B.r, B.c, offUnit, sw));
         }
     }
     // A faint dotted segment down the middle of a corridor confirmed to be empty.
@@ -221,13 +222,27 @@
 
         const sw = Math.max(2, cs * 0.07);
         const offUnit = Math.max(2.2, cs * 0.1);
+        // On win, both the green colour and the pop radiate outward from the
+        // last-placed bridge: the further away, the longer the delay.
+        let winOrigin = null, winMax = 1;
+        if (won && state.lastEdge >= 0 && state.lastEdge < G.edges.length) {
+            const le = G.edges[state.lastEdge], LA = state.islands[le.a], LB = state.islands[le.b];
+            winOrigin = { x: (cx(LA.c) + cx(LB.c)) / 2, y: (cy(LA.r) + cy(LB.r)) / 2 };
+            for (let v = 0; v < G.islands.length; v++) {
+                const dd = Math.hypot(cx(state.islands[v].c) - winOrigin.x, cy(state.islands[v].r) - winOrigin.y);
+                if (dd > winMax) winMax = dd;
+            }
+        }
+        const winDelay = (x, y) => (winOrigin ? (Math.hypot(x - winOrigin.x, y - winOrigin.y) / winMax * 0.6).toFixed(3) + 's' : undefined);
         // Bridges. A "confirmed" bridge (Mark mode) recolours grey — it reads as
         // settled, so attention stays on the brown, still-tentative connections.
         for (let e = 0; e < G.edges.length; e++) {
             if (state.edgeVal[e] < 1) continue;
             const bad = !won && crossSet.has(e);
             const marked = !won && !bad && state.edgeMark[e];
-            drawBridge(bl, e, state.edgeVal[e], 'hashi-bridge' + (bad ? ' bad' : '') + (won ? ' won' : '') + (marked ? ' marked' : ''), sw, offUnit);
+            let delay;
+            if (won) { const BA = state.islands[G.edges[e].a], BB = state.islands[G.edges[e].b]; delay = winDelay((cx(BA.c) + cx(BB.c)) / 2, (cy(BA.r) + cy(BB.r)) / 2); }
+            drawBridge(bl, e, state.edgeVal[e], 'hashi-bridge' + (bad ? ' bad' : '') + (won ? ' won' : '') + (marked ? ' marked' : ''), sw, offUnit, delay);
         }
         // A corridor confirmed empty shows a faint dotted ghost down its middle.
         if (!won) {
@@ -269,17 +284,6 @@
         // Islands
         const rad = cs * 0.34;
         const font = Math.max(11, Math.round(cs * 0.4));
-        // On win the pop radiates outward from the last-placed bridge: delay each
-        // island's pop by its distance from that bridge's midpoint.
-        let winOrigin = null, winMax = 1;
-        if (won && state.lastEdge >= 0 && state.lastEdge < G.edges.length) {
-            const le = G.edges[state.lastEdge], LA = state.islands[le.a], LB = state.islands[le.b];
-            winOrigin = { x: (cx(LA.c) + cx(LB.c)) / 2, y: (cy(LA.r) + cy(LB.r)) / 2 };
-            for (let v = 0; v < G.islands.length; v++) {
-                const dd = Math.hypot(cx(state.islands[v].c) - winOrigin.x, cy(state.islands[v].r) - winOrigin.y);
-                if (dd > winMax) winMax = dd;
-            }
-        }
         for (let v = 0; v < G.islands.length; v++) {
             const is = state.islands[v];
             const satisfied = islandSum(v) === state.needs[v];
@@ -298,9 +302,9 @@
                 'text-anchor': 'middle', 'dominant-baseline': 'middle', dy: '0.08em', 'font-size': font,
             });
             t.textContent = String(state.needs[v]);
-            if (winOrigin) {
-                const dly = (Math.hypot(cx(is.c) - winOrigin.x, cy(is.r) - winOrigin.y) / winMax * 0.55).toFixed(3) + 's';
-                disc.style.animationDelay = dly; t.style.animationDelay = dly;
+            if (won) {
+                const dly = winDelay(cx(is.c), cy(is.r));
+                if (dly) { disc.style.animationDelay = dly; t.style.animationDelay = dly; }
             }
             g.appendChild(disc);
             g.appendChild(t);

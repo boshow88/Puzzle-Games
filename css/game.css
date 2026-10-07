@@ -1350,7 +1350,10 @@
 /* Bridges — theme brown; a double draws as two parallel lines. */
 .hashi-bridge { stroke: var(--game-color, #8a5a2c); stroke-linecap: round; pointer-events: none; }
 .hashi-bridge.bad { stroke: var(--accent-danger, #dc3545); }
-.hashi-bridge.won { stroke: #16a34a; }
+/* On win each bridge conducts from brown to green (delay set per-bridge inline so
+   the colour radiates out from the last-placed bridge). */
+.hashi-bridge.won { stroke: #16a34a; animation: hashi-win-bridge 0.45s ease both; }
+@keyframes hashi-win-bridge { from { stroke: var(--game-color, #8a5a2c); } to { stroke: #16a34a; } }
 /* "Confirmed" bridge (Mark mode): greyed, reads as settled. */
 .hashi-bridge.marked { stroke: #9ca3af; }
 .hashi-bridge.marked.hashi-hover { opacity: 0.55; }
@@ -1369,12 +1372,20 @@
 .hashi-island.won .hashi-isle-disc { fill: #bbf7d0; stroke: #16a34a; }
 /* Each island pops about ITS OWN centre. The disc/number carry absolute cx/cy,
    so without fill-box the scale would pivot on the SVG origin and the whole set
-   would lurch toward the corner as one blob. */
+   would lurch toward the corner as one blob. The disc also conducts its colour
+   (tan → green) as it pops; delay is set per-island inline so it radiates out. */
 .hashi-island.won .hashi-isle-disc,
 .hashi-island.won .hashi-isle-num {
     transform-box: fill-box;
     transform-origin: center;
-    animation: board-symbol-pop 0.5s ease both;
+}
+.hashi-island.won .hashi-isle-disc { animation: hashi-win-disc 0.5s ease both; }
+.hashi-island.won .hashi-isle-num { animation: board-symbol-pop 0.5s ease both; }
+@keyframes hashi-win-disc {
+    0%   { transform: scale(1);    fill: #eadbc4; stroke: var(--game-color, #8a5a2c); }
+    40%  { transform: scale(1.3);  fill: #bbf7d0; stroke: #16a34a; }
+    68%  { transform: scale(0.96); }
+    100% { transform: scale(1);    fill: #bbf7d0; stroke: #16a34a; }
 }
 /* Drag highlight: the start island, and the target once the pointer crosses the
    midline — both discs brighten. */
