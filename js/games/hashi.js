@@ -203,13 +203,15 @@
     }
     // A faint dotted segment down the middle of a corridor confirmed to be empty.
     // (A confirmed bridge instead recolours grey — see the bridges loop.)
-    function drawEmptyMark(layer, e, preview) {
+    function drawEmptyMark(layer, e, preview, fadeDelay) {
         const { a, b } = state.G.edges[e], A = state.islands[a], B = state.islands[b];
         const ax = cx(A.c), ay = cy(A.r), bx = cx(B.c), by = cy(B.r);
-        layer.appendChild(PC.svgEl('line', {
-            class: 'hashi-mark-empty' + (preview ? ' preview' : ''), 'stroke-width': Math.max(2, state.cs * 0.05),
+        const ln = PC.svgEl('line', {
+            class: 'hashi-mark-empty' + (preview ? ' preview' : '') + (fadeDelay ? ' won-fade' : ''), 'stroke-width': Math.max(2, state.cs * 0.05),
             x1: ax + (bx - ax) * 0.3, y1: ay + (by - ay) * 0.3, x2: ax + (bx - ax) * 0.7, y2: ay + (by - ay) * 0.7,
-        }));
+        });
+        if (fadeDelay) ln.style.animationDelay = fadeDelay;
+        layer.appendChild(ln);
     }
 
     function repaint() {
@@ -243,16 +245,17 @@
         for (let e = 0; e < G.edges.length; e++) {
             if (state.edgeVal[e] < 1) continue;
             const bad = !won && crossSet.has(e);
-            const marked = !won && !bad && state.edgeMark[e];
+            const marked = !bad && state.edgeMark[e]; // keep grey even on win, so it conducts grey→green (no snap through brown)
             let delay;
             if (won) { const BA = state.islands[G.edges[e].a], BB = state.islands[G.edges[e].b]; delay = winDelay((cx(BA.c) + cx(BB.c)) / 2, (cy(BA.r) + cy(BB.r)) / 2); }
             drawBridge(bl, e, state.edgeVal[e], 'hashi-bridge' + (bad ? ' bad' : '') + (won ? ' won' : '') + (marked ? ' marked' : ''), sw, offUnit, delay);
         }
         // A corridor confirmed empty shows a faint dotted ghost down its middle.
-        if (!won) {
-            for (let e = 0; e < G.edges.length; e++) {
-                if (state.edgeMark[e] && state.edgeVal[e] === 0 && !crossingBlocked(e)) drawEmptyMark(bl, e);
-            }
+        // On win it fades out in step with the colour wave (rather than vanishing).
+        for (let e = 0; e < G.edges.length; e++) {
+            if (!(state.edgeMark[e] && state.edgeVal[e] === 0 && !crossingBlocked(e))) continue;
+            if (won) { const EA = state.islands[G.edges[e].a], EB = state.islands[G.edges[e].b]; drawEmptyMark(bl, e, false, winDelay((cx(EA.c) + cx(EB.c)) / 2, (cy(EA.r) + cy(EB.r)) / 2)); }
+            else drawEmptyMark(bl, e);
         }
         // Drag highlight + a preview of the bridge the release will lay down.
         const d = state.dragging;
@@ -292,7 +295,7 @@
             const is = state.islands[v];
             const satisfied = islandSum(v) === state.needs[v];
             const over = !won && overSet.has(v);
-            const marked = !won && state.doneMark[v];
+            const marked = state.doneMark[v]; // keep on win so a done island conducts slate→green (no snap)
             const cls = 'hashi-island'
                 + (satisfied ? ' done' : '')
                 + (marked ? ' marked' : '')
