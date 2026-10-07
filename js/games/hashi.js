@@ -331,6 +331,7 @@
             // (red) when it has too many. Off → the island's own number, always.
             let glyph = String(state.needs[v]), numCls = 'hashi-isle-num';
             if (state.assist && !won) {
+                numCls += ' remaining'; // italic, to signal these are computed remainders
                 const rem = state.needs[v] - islandSum(v);
                 if (rem === 0) { glyph = '0'; numCls += ' met'; }
                 else if (rem < 0) { glyph = '\u2212' + (-rem); numCls += ' over'; }
