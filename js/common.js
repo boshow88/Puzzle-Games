@@ -318,6 +318,8 @@
             + '<circle cx="17.5" cy="17.5" r="3.5"/>',
         check:
             '<path d="M20 6 9 17l-5-5"/>',
+        sigma:
+            '<path d="M18 7V5a1 1 0 0 0-1-1H7l6 8-6 8h10a1 1 0 0 0 1-1v-2"/>',
     };
 
     function icon(name, opts) {
@@ -998,6 +1000,8 @@
             hashiToolBuild: 'Build',
             hashiToolMark: 'Mark',
             hashiMarkNeedsFull: 'That island isn\u2019t full yet \u2014 finish it before marking it done.',
+            hashiAssist: 'Remaining',
+            hashiAssistTitle: 'Show each island\u2019s remaining bridges instead of its number',
             hashiHelp1Html:
                 'Each <strong>island</strong>\u2019s number is how many <strong>bridges</strong> connect to it. Bridges run straight (horizontal or vertical), at most two between a pair, and never cross.',
             hashiHelp2Html:
@@ -1251,6 +1255,8 @@
             hashiToolBuild: '建橋',
             hashiToolMark: '標記',
             hashiMarkNeedsFull: '這座島還沒湊滿，無法標為完成。',
+            hashiAssist: '剩餘',
+            hashiAssistTitle: '島上顯示「還差幾座橋」，而非原本的數字',
             hashiHelp1Html:
                 '每座<strong>島</strong>上的數字，代表要連到它的<strong>橋</strong>數。橋只走直線 (上下或左右)，一對島之間最多兩座，且不可交叉。',
             hashiHelp2Html:

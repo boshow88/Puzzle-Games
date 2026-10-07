@@ -52,6 +52,7 @@
         edgeMark: null,         // Int8Array per-edge "count confirmed" annotation (0/1)
         doneMark: null,         // Int8Array per-island "handled" annotation
         dirEdge: null,          // per island: {U,D,L,R} → edge index
+        assist: true,           // show each island's REMAINING bridge count, not its number
         mode: 'build',          // 'build' (lay bridges) | 'mark' (annotate confirmed)
         hoverEdge: -1,          // corridor under the mouse (hover preview)
         hoverIsland: -1,        // island under the mouse (mark-mode hover preview)
@@ -325,11 +326,21 @@
                 + (active.has(v) ? ' active' : '');
             const g = PC.svgEl('g', { class: cls });
             const disc = PC.svgEl('circle', { class: 'hashi-isle-disc', cx: cx(is.c), cy: cy(is.r), r: rad });
+            // Assist mode shows how many bridges the island still needs: a ✓ when it
+            // is exactly met, the shortfall when more are needed, and −N (red) when
+            // it has too many. Off → the island's own number, always.
+            let glyph = String(state.needs[v]), numCls = 'hashi-isle-num';
+            if (state.assist && !won) {
+                const rem = state.needs[v] - islandSum(v);
+                if (rem === 0) glyph = '\u2713';
+                else if (rem < 0) { glyph = '\u2212' + (-rem); numCls += ' over'; }
+                else glyph = String(rem);
+            }
             const t = PC.svgEl('text', {
-                class: 'hashi-isle-num', x: cx(is.c), y: cy(is.r),
+                class: numCls, x: cx(is.c), y: cy(is.r),
                 'text-anchor': 'middle', 'dominant-baseline': 'middle', dy: '0.08em', 'font-size': font,
             });
-            t.textContent = String(state.needs[v]);
+            t.textContent = glyph;
             if (won) {
                 const dly = islandDelay(v);
                 if (dly) { disc.style.animationDelay = dly; t.style.animationDelay = dly; }
@@ -479,6 +490,13 @@
         state.edgeMark[e] ^= 1;
         repaint();
         updateUndoButton();
+    }
+
+    function setAssist(on) {
+        state.assist = !!on;
+        const btn = document.getElementById('assist-btn');
+        if (btn) { btn.classList.toggle('active', state.assist); btn.setAttribute('aria-pressed', state.assist ? 'true' : 'false'); }
+        repaint();
     }
 
     function setMode(m) {
@@ -841,6 +859,8 @@
             const btn = ev.target.closest('.hashi-tool');
             if (btn && btn.dataset.mode) setMode(btn.dataset.mode);
         });
+        const assistBtn = document.getElementById('assist-btn');
+        if (assistBtn) assistBtn.addEventListener('click', () => setAssist(!state.assist));
 
         board.classList.add('drag-board');
         board.addEventListener('pointerdown', onPointerDown);
