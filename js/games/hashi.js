@@ -52,7 +52,7 @@
         edgeMark: null,         // Int8Array per-edge "count confirmed" annotation (0/1)
         doneMark: null,         // Int8Array per-island "handled" annotation
         dirEdge: null,          // per island: {U,D,L,R} → edge index
-        assist: true,           // show each island's REMAINING bridge count, not its number
+        assist: false,          // show each island's REMAINING bridge count, not its number (default off)
         mode: 'build',          // 'build' (lay bridges) | 'mark' (annotate confirmed)
         hoverEdge: -1,          // corridor under the mouse (hover preview)
         hoverIsland: -1,        // island under the mouse (mark-mode hover preview)
