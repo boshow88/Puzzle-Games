@@ -9,7 +9,7 @@ algorithms, file layout) live elsewhere.
 
 ## Shared conventions
 
-All seven games share the same chrome and the same control vocabulary,
+All eight games share the same chrome and the same control vocabulary,
 so the rule sections below only mention game-specific deviations.
 
 - **Difficulty** (Easy / Medium / Hard): controls how heavily the
