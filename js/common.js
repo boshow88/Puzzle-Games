@@ -999,13 +999,13 @@
             hashiToolMark: 'Mark',
             hashiMarkNeedsFull: 'That island isn\u2019t full yet \u2014 finish it before marking it done.',
             hashiHelp1Html:
-                'A <strong>bridge</strong> is a straight line (horizontal or vertical) joining two <strong>islands</strong>. Each island\u2019s number is how many bridges connect to it. A pair of islands takes at most two bridges, and bridges can\u2019t cross another bridge or an island.',
+                'Each <strong>island</strong>\u2019s number is how many <strong>bridges</strong> connect to it. Bridges run straight (horizontal or vertical), at most two between a pair, and never cross.',
             hashiHelp2Html:
-                'In <strong>Build</strong> mode, <strong>drag</strong> from one island to a neighbour or <strong>click the gap between two</strong>. <strong>Left</strong> cycles up (0 \u2192 1 \u2192 2 \u2192 0), <strong>right</strong> cycles down.',
+                '<strong>Build</strong> mode: <strong>drag</strong> island to island, or <strong>click the gap</strong> between two. Left adds a bridge (0 \u2192 1 \u2192 2 \u2192 0), right reverses.',
             hashiHelp3Html:
-                'Switch to <strong>Mark</strong> mode to grey out what you\u2019re sure of: click a corridor to lock its count (0, 1 or 2), or click a <strong>full</strong> island to mark it done \u2014 which locks all its connections at once. Marks are just reminders and don\u2019t change the puzzle.',
+                '<strong>Mark</strong> mode: click a corridor to confirm its count, or a full island to mark it done (locking its connections). Marks are just aids and don\u2019t affect the puzzle.',
             hashiHelp4Html:
-                'Solved when every island\u2019s number is satisfied and all islands form a <strong>single connected network</strong>.',
+                'Solved when every island\u2019s number is met and all islands form <strong>one connected network</strong>.',
             clearBoard: 'Clear the board',
             zipHelp1Html:
                 'Drag from the cell marked <strong>1</strong> to draw a path through every white cell.',
@@ -1244,7 +1244,7 @@
             hashiName: 'Hashi',
             hashiTagline: '把每座島連起來。',
             hashiCardBody:
-                '用正確數量的橋連接數字島——不可交叉，且全部連成一網。',
+                '用正確數量的橋連接數字島 — 不可交叉，且全部連成一網。',
             hashiBoardAria: 'Hashi 盤面',
             hashiCrossBlocked: '這裡會和現有的橋交叉，不能架。',
             hashiToolsAria: '輸入模式',
@@ -1252,13 +1252,13 @@
             hashiToolMark: '標記',
             hashiMarkNeedsFull: '這座島還沒湊滿，無法標為完成。',
             hashiHelp1Html:
-                '<strong>橋</strong>是連接兩座島的直線 (上下或左右)。每座<strong>島</strong>上的數字，代表共有幾座橋連到它。一對島之間最多兩座橋，且不可跨過其他橋或島。',
+                '每座<strong>島</strong>上的數字，代表要連到它的<strong>橋</strong>數。橋只走直線 (上下或左右)，一對島之間最多兩座，且不可交叉。',
             hashiHelp2Html:
-                '<strong>建橋</strong>模式下：從一座島<strong>拖曳</strong>到相鄰的島，或直接<strong>點兩島之間的橋位</strong>。<strong>左鍵</strong>遞增 (空 → 一 → 兩 → 空)，<strong>右鍵</strong>反向。',
+                '<strong>建橋</strong>模式：從島<strong>拖</strong>到相鄰的島，或<strong>點兩島之間的橋位</strong>。左鍵加橋 (0 → 1 → 2 → 0)，右鍵反向。',
             hashiHelp3Html:
-                '切到<strong>標記</strong>模式把你確定的部分「灰掉」：點橋位鎖定座數 (0、1 或 2 座)，或點<strong>已湊滿</strong>的島標為完成——會一併鎖定它四周所有連線。標記只是提醒，不影響解答。',
+                '<strong>標記</strong>模式：點橋位標為確定，或點已湊滿的島標為完成 (會一併鎖定四周)。標記只是輔助，不影響解答。',
             hashiHelp4Html:
-                '當每座島的數字都滿足、且所有島連成<strong>單一相通的網路</strong>時即過關。',
+                '當每座島的橋數都剛好、且所有島連成<strong>單一相通的網路</strong>時過關。',
             clearBoard: '清空盤面',
             zipHelp1Html:
                 '從標示 <strong>1</strong> 的格子開始拖曳，畫一條經過每個白色格子的路徑。',
