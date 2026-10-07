@@ -452,7 +452,8 @@ one connected network. (Also known as Hashiwokakero or Bridges.)
 
 ### Board
 
-- N×N grid; the size slider steps through a fixed set — **7, 9, 11, 13, 15**.
+- N×N grid; the size slider steps through a fixed set — **7, 9, 11, 13, 15, 17,
+  21 or 25** (default 11).
 - **Islands** are the numbered circles; everything else is open water a bridge
   may span.
 
@@ -473,13 +474,25 @@ contradiction → rule it out" step.
 
 ### Controls
 
-- **Drag** from one island toward an orthogonally-adjacent island to build a
-  bridge there; each drag cycles that connection `0 → 1 → 2 → 0`. A faint
-  preview shows what the release will lay down.
-- **Hint (💡)**: if the board breaks a rule it flags that first (crossing
-  bridges, or an island with too many bridges); otherwise it highlights the
-  next forced connection and ghosts the bridge(s) to build. On Hard, when
-  nothing is directly forced, it points out an "assume → dead end" connection.
+- Two input modes, chosen with the **Build / Mark** toggle below the board.
+- **Build** — lay bridges: **drag** from one island toward an adjacent one, or
+  **click the gap** between two islands. **Left** cycles the connection up
+  (`0 → 1 → 2 → 0`), **right** cycles down. A faint preview (and, with a mouse, a
+  hover preview) shows what the next click lays. A corridor an existing bridge
+  would cross is inert — it can't be clicked or dragged onto.
+- **Mark** — a personal memo (undoable, never changes the puzzle): click a
+  corridor to lock its count as confirmed (it greys out; a confirmed-empty
+  corridor shows a dotted ghost), or click a **full** island to mark it complete,
+  which greys all of its connections at once. Editing a connection clears the
+  completion flag on its islands.
+- **Left (Σ)** toggle (on by default): each island shows how many bridges it
+  still needs — a faint italic count, a faint `0` once met, or `−N` in red if it
+  has too many — instead of its printed number.
+- **Hint (💡)**: flags a broken rule first (a crossing, or an island with too
+  many bridges); otherwise it names the simplest next move in plain technique
+  terms (a single-direction island, a saturated island, "one short of full", …)
+  and ghosts the bridge(s) to lay. When only harder reasoning applies, it walks
+  through an "assume → contradiction" chain with numbered steps.
 - **Reveal (?)**: overlays the solution bridges.
 - **Undo (↶ / Ctrl+Z)**: steps back one action at a time (up to 20); Reset is
   undoable too, until you win.
