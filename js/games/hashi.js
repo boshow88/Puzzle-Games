@@ -195,11 +195,8 @@
             layer.appendChild(bridgeLine(cls, A.r, A.c, B.r, B.c, offUnit, sw));
         }
     }
-    function edgeMid(e) {
-        const { a, b } = state.G.edges[e], A = state.islands[a], B = state.islands[b];
-        return { x: (cx(A.c) + cx(B.c)) / 2, y: (cy(A.r) + cy(B.r)) / 2 };
-    }
     // A faint dotted segment down the middle of a corridor confirmed to be empty.
+    // (A confirmed bridge instead recolours grey — see the bridges loop.)
     function drawEmptyMark(layer, e, preview) {
         const { a, b } = state.G.edges[e], A = state.islands[a], B = state.islands[b];
         const ax = cx(A.c), ay = cy(A.r), bx = cx(B.c), by = cy(B.r);
@@ -207,17 +204,6 @@
             class: 'hashi-mark-empty' + (preview ? ' preview' : ''), 'stroke-width': Math.max(2, state.cs * 0.05),
             x1: ax + (bx - ax) * 0.3, y1: ay + (by - ay) * 0.3, x2: ax + (bx - ax) * 0.7, y2: ay + (by - ay) * 0.7,
         }));
-    }
-    // A small check badge at the corridor midpoint marking its count as confirmed.
-    function drawConfirmBadge(layer, e, preview) {
-        const m = edgeMid(e), r = Math.max(6, state.cs * 0.16), s = r * 0.55;
-        const g = PC.svgEl('g', { class: 'hashi-confirm' + (preview ? ' hashi-confirm-preview' : '') });
-        g.appendChild(PC.svgEl('circle', { class: 'hashi-confirm-disc', cx: m.x, cy: m.y, r }));
-        g.appendChild(PC.svgEl('path', {
-            class: 'hashi-confirm-check',
-            d: `M${m.x - s} ${m.y + s * 0.1} l${s * 0.75} ${s * 0.8} l${s * 1.25} ${-s * 1.5}`,
-        }));
-        layer.appendChild(g);
     }
 
     function repaint() {
@@ -234,19 +220,18 @@
 
         const sw = Math.max(2, cs * 0.07);
         const offUnit = Math.max(2.2, cs * 0.1);
-        // Bridges
+        // Bridges. A "confirmed" bridge (Mark mode) recolours grey — it reads as
+        // settled, so attention stays on the brown, still-tentative connections.
         for (let e = 0; e < G.edges.length; e++) {
             if (state.edgeVal[e] < 1) continue;
             const bad = !won && crossSet.has(e);
-            drawBridge(bl, e, state.edgeVal[e], 'hashi-bridge' + (bad ? ' bad' : '') + (won ? ' won' : ''), sw, offUnit);
+            const marked = !won && !bad && state.edgeMark[e];
+            drawBridge(bl, e, state.edgeVal[e], 'hashi-bridge' + (bad ? ' bad' : '') + (won ? ' won' : '') + (marked ? ' marked' : ''), sw, offUnit);
         }
-        // "Confirmed" marks: a dotted ghost along a corridor the player is sure is
-        // empty, plus a small check badge on any corridor whose count they've locked.
+        // A corridor confirmed empty shows a faint dotted ghost down its middle.
         if (!won) {
             for (let e = 0; e < G.edges.length; e++) {
-                if (!state.edgeMark[e] || crossingBlocked(e)) continue;
-                if (state.edgeVal[e] === 0) drawEmptyMark(bl, e);
-                drawConfirmBadge(bl, e);
+                if (state.edgeMark[e] && state.edgeVal[e] === 0 && !crossingBlocked(e)) drawEmptyMark(bl, e);
             }
         }
         // Drag highlight + a preview of the bridge the release will lay down.
@@ -259,8 +244,9 @@
                 if (nv === 0) drawBridge(bl, e, Math.max(1, cur), 'hashi-pending-line erase hashi-hover', sw, offUnit);
                 else drawBridge(bl, e, nv, 'hashi-pending-line hashi-hover', sw, offUnit);
             } else if (state.mode === 'mark' && state.hoverEdge >= 0 && !state.edgeMark[state.hoverEdge]) {
-                if (state.edgeVal[state.hoverEdge] === 0) drawEmptyMark(bl, state.hoverEdge, true);
-                drawConfirmBadge(bl, state.hoverEdge, true);
+                const e = state.hoverEdge;
+                if (state.edgeVal[e] >= 1) drawBridge(bl, e, state.edgeVal[e], 'hashi-bridge marked hashi-hover', sw, offUnit);
+                else drawEmptyMark(bl, e, true);
             } else if (state.mode === 'mark' && state.hoverIsland >= 0) {
                 const is = state.islands[state.hoverIsland];
                 bl.appendChild(PC.svgEl('circle', { class: 'hashi-hover-isle', cx: cx(is.c), cy: cy(is.r), r: cs * 0.42 }));

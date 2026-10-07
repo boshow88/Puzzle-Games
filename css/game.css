@@ -1349,6 +1349,9 @@
 .hashi-bridge { stroke: var(--game-color, #8a5a2c); stroke-linecap: round; pointer-events: none; }
 .hashi-bridge.bad { stroke: var(--accent-danger, #dc3545); }
 .hashi-bridge.won { stroke: #16a34a; }
+/* "Confirmed" bridge (Mark mode): greyed, reads as settled. */
+.hashi-bridge.marked { stroke: #9ca3af; }
+.hashi-bridge.marked.hashi-hover { opacity: 0.55; }
 
 /* Islands — cream disc, brown ring, dark-brown number; filled tint once the
    island's bridge count matches its number; red when it's over; green on win. */
@@ -1381,15 +1384,10 @@
 /* Mouse-hover preview is fainter than an active drag preview. */
 .hashi-pending-line.hashi-hover { opacity: 0.22; }
 
-/* "Confirmed" annotations (Mark mode): a dotted ghost along a corridor confirmed
-   empty, and a small slate check badge marking any corridor whose count is set. */
+/* A corridor confirmed empty (Mark mode): a faint dotted ghost down its middle. */
 .hashi-mark-empty { stroke: #94a3b8; stroke-dasharray: 2 5; stroke-linecap: round; opacity: 0.7; pointer-events: none; }
 .hashi-mark-empty.preview { opacity: 0.3; }
-.hashi-confirm { pointer-events: none; }
-.hashi-confirm-disc { fill: #eef2f7; stroke: #94a3b8; stroke-width: 1.5; }
-.hashi-confirm-check { fill: none; stroke: #475569; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
-/* Mark-mode hover previews: a faint badge on the corridor / ring on the island. */
-.hashi-confirm-preview { opacity: 0.4; }
+/* Mark-mode hover: a faint ring on the island you'd flag handled. */
 .hashi-hover-isle { fill: none; stroke: #6b7280; stroke-width: 2.5; opacity: 0.5; pointer-events: none; }
 
 /* Mode toggle (Build / Mark). */
