@@ -13,7 +13,6 @@
     const HS = window.PuzzleSolvers.hashi;
     const BOARD = 480;
     const VIOLATION_DELAY_MS = 800;
-    const UNKNOWN = HS.UNKNOWN;
     // Add ?hashi_debug=1 to the URL to log each hint's full reasoning + a board
     // snapshot to the console (handy for reporting a confusing hint).
     const DEBUG = typeof location !== 'undefined' && /[?&]hashi_debug=1\b/.test(location.search);
@@ -405,9 +404,12 @@
     // Hints
     // -----------------------------------------------------------------
     // Action phrasing for a forced edge value (verb form) and an assumed value.
-    const actEn = (v) => (v === 0 ? 'stay empty' : v === 2 ? 'take two bridges' : 'take one bridge');
+    // `atLeast` turns an exact count into a lower bound ("at least one bridge").
+    const n2En = (v) => (v === 2 ? 'two' : 'one');
+    const n2Zh = (v) => (v === 2 ? '兩' : '一');
+    const actEn = (v, atLeast) => (v === 0 ? 'stay empty' : `${atLeast ? 'take at least ' : 'take '}${n2En(v)} bridge${v === 2 ? 's' : ''}`);
     const asmEn = (v) => (v === 0 ? 'no bridge' : v === 2 ? 'two bridges' : 'one bridge');
-    const actZh = (v) => (v === 0 ? '留空' : v === 2 ? '架兩座橋' : '架一座橋');
+    const actZh = (v, atLeast) => (v === 0 ? '留空' : `${atLeast ? '至少' : ''}架${n2Zh(v)}座橋`);
     const asmZh = (v) => (v === 0 ? '不架橋' : v === 2 ? '架兩座橋' : '架一座橋');
     const HINT_TEXTS = {
         en: {
@@ -419,15 +421,18 @@
             wrong: 'The highlighted bridge(s) disagree with the unique solution — remove or re-count them.',
             degree: (h) => {
                 const s = h.src;
-                if (!s) return `The nearby numbers and the bridges already drawn force the highlighted connection to ${actEn(h.value)}.`;
+                if (!s) return `The nearby numbers and the bridges already drawn force the highlighted connection to ${actEn(h.value, h.atLeast)}.`;
                 if (s.kind === 'sole') return `The circled ${s.need} has neighbours in only one direction, so all ${s.need} of its bridges must go along this one connection.`;
                 if (s.kind === 'onlyLeft') return `The circled ${s.need} already has ${s.have}; only one direction is left, so the remaining ${s.remaining} must go here.`;
                 if (s.kind === 'saturate') return `The circled ${s.need} can only connect in ${s.open} directions, and ${s.open} × 2 = ${s.need}, so every one of them must take two bridges.`;
                 if (s.kind === 'saturateRest') return `The circled ${s.need} already has ${s.have}; its remaining ${s.remaining} has to fill ${s.open} directions (${s.open} × 2 = ${s.remaining}), so each of them must take two bridges.`;
-                return `The circled ${s.need} already has ${s.have}, leaving ${s.remaining} for ${s.open} direction(s), which forces this one to ${actEn(s.value)}.`;
+                if (s.kind === 'atleast') return `The circled ${s.need}: its other directions can absorb at most ${s.otherMax} more, so the extra ${s.value} has to run through here — take at least ${n2En(s.value)} bridge${s.value === 2 ? 's' : ''}.`;
+                return `The circled ${s.need} already has ${s.have}, which forces this connection to ${actEn(s.value, h.atLeast)}.`;
             },
-            cross: 'The circled bridge is in the way, so the highlighted connection must stay empty.',
-            cut: (h) => `Without the highlighted bridge the circled island could never connect, so it must ${actEn(h.value)}.`,
+            cut: (h) => {
+                const n = (h.anchor && h.anchor.islands && h.anchor.islands.length) || 0;
+                return `Without a bridge here, ${n > 1 ? `those ${n} circled islands have` : 'the circled island has'} no other way to reach the rest of the network, so this connection must take at least one bridge.`;
+            },
             deep: (h) => {
                 const brk = h.bad && h.bad.kind === 'cross' ? 'two bridges would be forced to cross'
                     : h.bad && h.bad.kind === 'disconnect' ? 'an island could no longer connect'
@@ -446,15 +451,18 @@
             wrong: '醒目的橋與唯一解不符——請移除或重算它們。',
             degree: (h) => {
                 const s = h.src;
-                if (!s) return `綜合鄰近幾座島的數字與已畫的橋，可推出醒目的這條必須${actZh(h.value)}。`;
+                if (!s) return `綜合鄰近幾座島的數字與已畫的橋，可推出醒目的這條${h.atLeast ? '至少還要' : '必須'}${actZh(h.value, false)}。`;
                 if (s.kind === 'sole') return `圈起來的 ${s.need} 只有一個方向有鄰居，所以它的 ${s.need} 座橋只能全部連往這條。`;
                 if (s.kind === 'onlyLeft') return `圈起來的 ${s.need} 已接 ${s.have} 座，只剩一個方向還沒連，所以剩下的 ${s.remaining} 座只能走這條。`;
                 if (s.kind === 'saturate') return `圈起來的 ${s.need} 只有 ${s.open} 個方向可連，${s.open} × 2 = ${s.need}，所以每個方向都必須架滿兩座橋。`;
                 if (s.kind === 'saturateRest') return `圈起來的 ${s.need} 已接 ${s.have} 座，剩下的 ${s.remaining} 座要填滿 ${s.open} 個方向（${s.open} × 2 = ${s.remaining}），所以這些方向都必須各架兩座橋。`;
-                return `圈起來的 ${s.need} 已接 ${s.have} 座，剩 ${s.remaining} 座要分給 ${s.open} 個方向，推得這條必須${actZh(s.value)}。`;
+                if (s.kind === 'atleast') return `圈起來的 ${s.need}：其他方向最多只能再接 ${s.otherMax} 座，還差 ${s.value} 座一定得走這條，所以這條${actZh(s.value, true)}。`;
+                return `圈起來的 ${s.need} 已接 ${s.have} 座，推得這條${actZh(s.value, h.atLeast)}。`;
             },
-            cross: '圈起來的橋擋住了，所以醒目的這條必須留空。',
-            cut: (h) => `少了醒目的這座橋，圈起來的島就連不進來，所以它必須${actZh(h.value)}。`,
+            cut: (h) => {
+                const n = (h.anchor && h.anchor.islands && h.anchor.islands.length) || 0;
+                return `若這條不架橋，圈起來的${n > 1 ? `這 ${n} 座島` : '島'}就沒有別的路能連到其餘的島，所以這條至少要架一座橋。`;
+            },
             deep: (h) => {
                 const brk = h.bad && h.bad.kind === 'cross' ? '會逼出兩橋交叉'
                     : h.bad && h.bad.kind === 'disconnect' ? '會有島連不起來'
@@ -467,13 +475,6 @@
     };
     function hintTexts() { const l = (PC.i18n && PC.i18n.locale) || 'en'; return HINT_TEXTS[l] || HINT_TEXTS.en; }
 
-    function playerCur() {
-        const E = state.G.edges.length;
-        const cur = new Int8Array(E);
-        for (let e = 0; e < E; e++) cur[e] = state.edgeVal[e] >= 1 ? state.edgeVal[e] : UNKNOWN;
-        return cur;
-    }
-
     function computeHint() {
         const v = computeViolations();
         if (v.over.length || v.cross.length) {
@@ -482,22 +483,19 @@
             for (const w of v.over) isles.push(w);
             return { kind: 'conflict', edges, isles, cross: v.cross.length > 0, over: v.over.length > 0 };
         }
-        // wrong: a bridge the player drew that disagrees with the solution
+        // Wrong = an OVER-placed bridge (more than the solution has here). A pair
+        // built only part-way (one bridge where two are needed) is just unfinished,
+        // not wrong, so it isn't flagged.
         const wrong = [];
-        for (let e = 0; e < state.G.edges.length; e++) if (state.edgeVal[e] >= 1 && state.edgeVal[e] !== state.solVal[e]) wrong.push(e);
+        for (let e = 0; e < state.G.edges.length; e++) if (state.edgeVal[e] > state.solVal[e]) wrong.push(e);
         if (wrong.length) return { kind: 'wrong', edges: wrong };
-        const cur = playerCur();
-        const step = HS.nextStep(state.G, state.needs, cur);
-        const deep = HS.nextStepDeep(state.G, state.needs, cur);
-        const asDeduce = (s) => ({ kind: 'deduce', edge: s.edge, value: s.value, reason: s.reason, anchor: s.anchor, src: s.src });
-        const asDeep = (d) => ({ kind: 'deep', edge: d.edge, value: d.value, assume: d.assume, chain: d.chain, bad: d.bad });
-        // Prefer a move the player can actually make (lay ≥1 bridge). A forced
-        // EMPTY isn't actionable — crossings can't be placed anyway and a satisfied
-        // island needs nothing — so only fall back to one if nothing else is forced.
-        if (step && step.value >= 1) return asDeduce(step);
-        if (deep && deep.value >= 1) return asDeep(deep);
-        if (step) return asDeduce(step);
-        if (deep) return asDeep(deep);
+        // Hints read the player's drawn bridges as lower bounds, so half-built pairs
+        // are fine and "add at least one bridge here" moves can surface.
+        const drawn = state.edgeVal;
+        const step = HS.nextStep(state.G, state.needs, drawn);
+        if (step) return { kind: 'deduce', edge: step.edge, value: step.value, atLeast: step.atLeast, reason: step.reason, anchor: step.anchor, src: step.src };
+        const deep = HS.nextStepDeep(state.G, state.needs, drawn);
+        if (deep) return { kind: 'deep', edge: deep.edge, value: deep.value, assume: deep.assume, chain: deep.chain, bad: deep.bad };
         return null;
     }
 
@@ -507,7 +505,7 @@
         const edg = (e) => { const { a, b } = state.G.edges[e]; return isl(a) + '—' + isl(b); };
         const L = ['[HASHI HINT] kind=' + h.kind + (h.reason ? ' reason=' + h.reason : '')];
         if (h.edge != null) L.push('forced: ' + edg(h.edge) + ' = ' + h.value);
-        if (h.src) L.push('src: ' + JSON.stringify(Object.assign({}, h.src, { island: isl(h.src.island), isles: (h.src.isles || []).map(isl) })));
+        if (h.src) L.push('src: ' + JSON.stringify(Object.assign({}, h.src, { island: h.src.island != null ? isl(h.src.island) : undefined, isles: (h.src.isles || []).map(isl), stranded: (h.src.stranded || []).map(isl) })));
         if (h.anchor) L.push('anchor: ' + JSON.stringify({ islands: (h.anchor.islands || []).map(isl), edges: (h.anchor.edges || []).map(edg) }));
         if (h.assume) L.push('assume: ' + edg(h.assume.edge) + ' = ' + h.assume.value);
         if (h.chain) L.push('chain: [' + h.chain.map((s) => edg(s.edge) + '=' + s.value).join(', ') + ']');
@@ -540,7 +538,6 @@
         else if (h.kind === 'wrong') html = t.wrong;
         else if (h.kind === 'none') html = t.none;
         else if (h.kind === 'deep') html = t.deep(h);
-        else if (h.reason === 'cross') html = t.cross;
         else if (h.reason === 'cut') html = t.cut(h);
         else html = t.degree(h);
         state.hintBanner.innerHTML = html;

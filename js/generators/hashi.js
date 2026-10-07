@@ -374,113 +374,111 @@
         return { ok: true, chain };
     }
 
-    /** Next forced edge by pure propagation from the player's state `cur`
-     *  (edge-value array, UNKNOWN=-1 for undrawn, else 0..2). Returns
-     *  { edge, value, reason, anchor, src? } (see annotateStep) or null. */
-    function nextStep(G, needs, cur) {
+    /** Next forced bridge-building move from the player's `drawn` counts (Int array,
+     *  0..2 per edge; 0 = nothing drawn yet). Drawn bridges are treated as LOWER
+     *  BOUNDS — the player may still add a second bridge — so a half-built pair
+     *  never contradicts. Returns the easiest-to-follow edge whose forced minimum
+     *  exceeds what's drawn (i.e. the player must add ≥1 bridge there), annotated
+     *  via annotateStep, or null. A forced-EMPTY edge is never returned (there's
+     *  nothing to place). */
+    function nextStep(G, needs, drawn) {
         const E = G.edges.length;
         const lo = new Int8Array(E), hi = new Int8Array(E).fill(2);
-        for (let e = 0; e < E; e++) if (cur[e] !== UNKNOWN) { lo[e] = cur[e]; hi[e] = cur[e]; }
+        for (let e = 0; e < E; e++) lo[e] = drawn[e];
         if (!propagate(G, needs, lo, hi, true)) return null;
-        // Surface the EASIEST-to-follow forced move, not just the first by index:
-        // rank by how self-evident the reason is (a single island's own number +
-        // drawn bridges first), and prefer an actionable (≥1) bridge over a
-        // forced-empty one.
-        const RANK = { sole: 0, saturate: 1, onlyLeft: 1, saturateRest: 2, cut: 3, share: 4, degree: 5, cross: 6 };
+        // Rank by how self-evident the reason is: a single island's own number +
+        // the bridges already drawn comes first.
+        const RANK = { sole: 0, saturate: 1, onlyLeft: 1, saturateRest: 2, cut: 3, atleast: 3, share: 4, degree: 5 };
         let best = null, bestScore = Infinity;
-        for (let e = 0; e < E; e++) if (lo[e] === hi[e] && cur[e] !== lo[e]) {
-            const step = annotateStep(G, needs, cur, e, lo[e], lo, hi);
+        for (let e = 0; e < E; e++) {
+            if (lo[e] <= drawn[e]) continue; // this edge already has all the bridges it's forced to
+            const step = annotateStep(G, needs, drawn, e, lo, hi);
             const kind = step.reason === 'degree' ? (step.src ? step.src.kind : 'degree') : step.reason;
-            const score = (RANK[kind] != null ? RANK[kind] : 7) * 2 + (step.value >= 1 ? 0 : 1);
+            const score = (RANK[kind] != null ? RANK[kind] : 7);
             if (score < bestScore) { bestScore = score; best = step; }
         }
         return best;
     }
 
-    /** Explain why edge e is forced to `val`: 'cross' (a placed perpendicular
-     *  bridge rules it out), 'cut' (connectivity needs it) or 'degree' (an
-     *  island's number pins it). `anchor` points the UI at the source (the
-     *  crossing bridge, or the island(s)); `src` carries that island's number and
-     *  current bridge count for concrete wording. */
-    function annotateStep(G, needs, cur, e, val, pLo, pHi) {
-        const { a, b } = G.edges[e], E = G.edges.length;
-        const cLo = new Int8Array(E);
-        for (let k = 0; k < E; k++) if (cur[k] !== UNKNOWN) cLo[k] = cur[k];
-        if (val === 0) {
-            for (const f of G.cross[e]) if (cLo[f] >= 1) return { edge: e, value: val, reason: 'cross', anchor: { edges: [f] } };
-        }
-        if (val >= 1) {
-            const hi2 = pHi.slice(); hi2[e] = 0;
-            if (!possibleConnected(G, hi2)) return { edge: e, value: val, reason: 'cut', anchor: { islands: [a, b] } };
-        }
-        // Degree — grounded in the player's OWN drawn bridges + the island's number
-        // + the "≤2 per connection" cap, so every claim is checkable on the board:
-        //   drawnSum = bridges already drawn at v;
-        //   open     = v's still-empty connections that can still carry a bridge
-        //              (hi≥1 — a direction blocked by a crossing doesn't count);
-        //   remaining = need − drawnSum, to be spread over those open directions.
-        // e is pinned by v ALONE iff, treating each OTHER open direction as free
-        // (0..2), e's range collapses to a single value. We never cite another
-        // still-undrawn connection's value as if it were already known.
+    /** Explain why edge e must carry at least `pLo[e]` bridges, grounded in facts
+     *  the player can see: the island numbers, the bridges already drawn, the
+     *  "≤2 per pair" cap and connectivity. For an endpoint v let cSum be the
+     *  bridges already drawn at v and `remaining = need − cSum` the bridges still
+     *  to add; `open` are v's connections that can still grow (hi > drawn). e's
+     *  forced minimum extra = remaining − (what every OTHER open connection could
+     *  still absorb); when that is what pins e, we classify the move:
+     *    • sole        — v reaches in one direction only (all its bridges go there);
+     *    • onlyLeft    — one growable direction left, it takes the rest;
+     *    • saturate(Rest) — every open direction must max out (N = dirs × 2);
+     *    • atleast     — the others can't absorb it all, so e needs ≥ the shortfall.
+     *  Otherwise 'cut' (e is the only remaining route to some islands) or a generic
+     *  fallback. `value` is the forced minimum; `atLeast` is true when it isn't yet
+     *  pinned to an exact count. */
+    function annotateStep(G, needs, drawn, e, pLo, pHi) {
+        const { a, b } = G.edges[e];
+        const value = pLo[e];
+        const atLeast = pLo[e] < pHi[e];
         const far = (v, k) => (G.edges[k].a === v ? G.edges[k].b : G.edges[k].a);
         const groundedAt = (v) => {
             const inc = G.incident[v];
-            let drawnSum = 0; const open = [];
-            for (const k of inc) {
-                if (cur[k] !== UNKNOWN) drawnSum += cur[k];
-                else if (pHi[k] >= 1) open.push(k); // blocked directions (hi==0) aren't options
-            }
+            let cSum = 0; const open = [];
+            for (const k of inc) { cSum += drawn[k]; if (pHi[k] > drawn[k]) open.push(k); }
             if (open.indexOf(e) < 0) return null;
-            const k = open.length, remaining = needs[v] - drawnSum;
-            const eLo = Math.max(0, remaining - 2 * (k - 1)); // others take at most 2 each
-            const eHi = Math.min(2, remaining);               // others can be 0
-            if (eLo !== eHi || eLo !== val) return null;      // not pinned by this island alone
+            const remaining = needs[v] - cSum;
+            let otherMax = 0, totalCap = 0;
+            for (const k of open) { const cap = pHi[k] - drawn[k]; totalCap += cap; if (k !== e) otherMax += cap; }
+            if (drawn[e] + Math.max(0, remaining - otherMax) < value) return null; // this island doesn't pin e's minimum
+            const k = open.length;
             let kind;
-            if (k === 1) kind = drawnSum === 0 ? 'sole' : 'onlyLeft';
-            else if (remaining === 2 * k) kind = drawnSum === 0 ? 'saturate' : 'saturateRest';
-            else kind = 'share';
-            const src = { island: v, need: needs[v], have: drawnSum, open: k, remaining, value: val, kind };
+            if (k === 1) kind = (cSum === 0 ? 'sole' : 'onlyLeft');
+            else if (remaining === totalCap) kind = (cSum === 0 ? 'saturate' : 'saturateRest');
+            else kind = 'atleast';
+            const src = { island: v, need: needs[v], have: cSum, open: k, remaining, otherMax, value, atLeast, kind };
             if (kind === 'saturate' || kind === 'saturateRest') {
-                // decide the whole fan at once: every open direction is two bridges.
-                src.fan = open.map((k2) => ({ edge: k2, value: 2 }));
+                src.fan = open.map((k2) => ({ edge: k2, value: pHi[k2] }));
                 src.isles = open.map((k2) => far(v, k2));
             }
             return src;
         };
-        for (const v of [a, b]) { const s = groundedAt(v); if (s) return { edge: e, value: val, reason: 'degree', anchor: { islands: [v] }, src: s }; }
-        // Fallback — forced by the combined numbers, but not by any single island's
-        // drawn facts alone (it needs a chained argument). Stay honest and generic.
-        return { edge: e, value: val, reason: 'degree', anchor: { islands: [a, b] } };
+        for (const v of [a, b]) { const s = groundedAt(v); if (s) return { edge: e, value, atLeast: s.atLeast, reason: 'degree', anchor: { islands: [v] }, src: s }; }
+        // Connectivity — removing e's bridge would strand some islands, so it is the
+        // only remaining route in: circle THAT stranded group, not the endpoints.
+        if (value >= 1 && drawn[e] === 0) {
+            const hi2 = pHi.slice(); hi2[e] = 0;
+            if (!possibleConnected(G, hi2)) {
+                const stranded = strandedIslands(G, hi2);
+                return { edge: e, value, atLeast, reason: 'cut', anchor: { islands: stranded.length ? stranded : [a, b] }, src: { stranded } };
+            }
+        }
+        return { edge: e, value, atLeast, reason: 'degree', anchor: { islands: [a, b] } };
     }
 
-    /** Depth-1 refutation hint with the SHORTEST chain: the undecided edge whose
-     *  one value leads to a contradiction via the fewest forced steps, so the
-     *  other value is forced. Returns
+    /** Depth-1 refutation hint (for boards that need lookahead), SHORTEST chain:
+     *  find an edge whose current forced minimum is infeasible to hold — i.e.
+     *  assuming it stays as-is leads to a contradiction — so it must grow. Works on
+     *  the player's `drawn` counts as lower bounds. Returns
      *  { edge, value, assume:{edge,value}, chain:[{edge,value}], bad } or null. */
-    function nextStepDeep(G, needs, cur) {
+    function nextStepDeep(G, needs, drawn) {
         const E = G.edges.length;
         const baseLo = new Int8Array(E), baseHi = new Int8Array(E).fill(2);
-        for (let e = 0; e < E; e++) if (cur[e] !== UNKNOWN) { baseLo[e] = cur[e]; baseHi[e] = cur[e]; }
+        for (let e = 0; e < E; e++) baseLo[e] = drawn[e];
         if (!propagate(G, needs, baseLo, baseHi, true)) return null;
         let best = null;
         for (let e = 0; e < E; e++) {
             if (baseLo[e] === baseHi[e]) continue;
-            const feas = []; let badV = -1;
+            const feas = [];
             for (let v = baseLo[e]; v <= baseHi[e]; v++) {
                 const l = baseLo.slice(), h = baseHi.slice(); l[e] = v; h[e] = v;
                 if (propagate(G, needs, l, h, true)) feas.push(v);
-                else if (badV < 0) badV = v;
             }
-            if (feas.length === 1 && badV >= 0) {
-                const l = baseLo.slice(), h = baseHi.slice(); l[e] = badV; h[e] = badV;
+            // smallest feasible value exceeds the current low ⇒ e is forced to grow,
+            // and "e stays at its low" is the refuted assumption.
+            if (feas.length && feas[0] > baseLo[e]) {
+                const assumeVal = baseLo[e];
+                const l = baseLo.slice(), h = baseHi.slice(); l[e] = assumeVal; h[e] = assumeVal;
                 const tr = propagateTraced(G, needs, l, h);
                 const len = tr.chain ? tr.chain.length : 0;
-                const cand = { edge: e, value: feas[0], assume: { edge: e, value: badV }, chain: tr.chain || [], bad: tr.bad || null, len };
-                // prefer an actionable (≥1) conclusion, then the shortest chain.
-                const better = !best
-                    || ((cand.value >= 1 ? 0 : 1) < (best.value >= 1 ? 0 : 1))
-                    || ((cand.value >= 1) === (best.value >= 1) && cand.len < best.len);
-                if (better) best = cand;
+                if (!best || len < best.len) best = { edge: e, value: feas[0], assume: { edge: e, value: assumeVal }, chain: tr.chain || [], bad: tr.bad || null, len };
             }
         }
         return best ? { edge: best.edge, value: best.value, assume: best.assume, chain: best.chain, bad: best.bad } : null;

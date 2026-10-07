@@ -17,7 +17,6 @@
   <script>
   (function () {
     const PC = window.PuzzleCommon, HS = window.PuzzleSolvers.hashi, I = window.PuzzleGenerators.hashiInternals;
-    const UNKNOWN = HS.UNKNOWN;
     let cs = 46, ox = 12, oy = 12, N = 9, islands = null, G = null;
     const cx = (c) => c * cs + cs / 2 + ox, cy = (r) => r * cs + cs / 2 + oy;
 
@@ -45,9 +44,15 @@
         let n = 0; for (const st of hint.chain) if (st.value >= 1) { ghostEdge(st.edge, st.value); stepNum(st.edge, ++n); }
         badMark(hint.bad);
       } else if (hint && hint.kind === 'deduce') {
-        if (hint.anchor) { if (hint.anchor.islands) for (const v of hint.anchor.islands) ringIsland(v, 'hashi-hint-anchor'); if (hint.anchor.edges) for (const e of hint.anchor.edges) bandEdge(e, 'hashi-hint-source'); }
-        bandEdge(hint.edge, 'hashi-hint-band');
-        if (hint.value >= 1) ghostEdge(hint.edge, hint.value);
+        if (hint.src && hint.src.fan) {
+          for (const f of hint.src.fan) { bandEdge(f.edge, 'hashi-hint-band'); ghostEdge(f.edge, f.value); }
+          if (hint.src.isles) for (const w of hint.src.isles) ringIsland(w, 'hashi-hint-context');
+          if (hint.anchor && hint.anchor.islands) for (const v of hint.anchor.islands) ringIsland(v, 'hashi-hint-anchor');
+        } else {
+          if (hint.anchor) { if (hint.anchor.islands) for (const v of hint.anchor.islands) ringIsland(v, 'hashi-hint-anchor'); if (hint.anchor.edges) for (const e of hint.anchor.edges) bandEdge(e, 'hashi-hint-source'); }
+          bandEdge(hint.edge, 'hashi-hint-band');
+          if (hint.value >= 1) ghostEdge(hint.edge, hint.value);
+        }
       }
       // islands on top
       const rad = cs * 0.34, font = Math.max(11, Math.round(cs * 0.4));
@@ -63,37 +68,34 @@
     }
 
     function loadBoard(p) { N = p.size; islands = p.islands; G = I.buildGraph(N, islands); cs = Math.min(46, Math.floor(420 / N)); }
-    function playerCur(edgeVal) { const cur = new Int8Array(G.edges.length); for (let e = 0; e < G.edges.length; e++) cur[e] = edgeVal[e] >= 1 ? edgeVal[e] : UNKNOWN; return cur; }
 
     async function main() {
       document.getElementById('root').textContent = '';
-      // Deduce-anchor panel: find a 'rest'/'cap' degree step (shows the capping
-      // neighbours circled as context).
-      for (let seed = 1; seed <= 120; seed++) {
-        const p = await window.PuzzleGenerators.hashi(9, 'easy', seed); loadBoard(p);
+      // Deduce panel: find an 'atleast' (one-short-of-full) step — the island is
+      // circled, the connection that must take at least one is band+ghosted.
+      for (let seed = 1; seed <= 200; seed++) {
+        const p = await window.PuzzleGenerators.hashi(9, 'hard', seed); loadBoard(p);
         const needs = islands.map((i) => i.need);
-        const ev = new Int8Array(G.edges.length);
-        const cur = new Int8Array(G.edges.length).fill(UNKNOWN);
+        const ev = new Int8Array(G.edges.length); // drawn counts (lower bounds)
         let found = null;
-        for (let t = 0; t < 40; t++) {
-          const s = HS.nextStep(G, needs, cur);
+        for (let t = 0; t < 80; t++) {
+          const s = HS.nextStep(G, needs, ev);
           if (!s) break;
-          if (s.reason === 'degree' && s.src && (s.src.kind === 'rest' || s.src.kind === 'cap')) { found = s; break; }
-          cur[s.edge] = s.value; if (s.value >= 1) ev[s.edge] = s.value;
+          if (s.reason === 'degree' && s.src && s.src.kind === 'atleast') { found = s; break; }
+          ev[s.edge] = s.value;
         }
-        if (found) { render('Deduce (' + found.src.kind + '): dashed ring = source, lighter rings = capping neighbours, band+ghost = forced bridge', ev, { kind: 'deduce', edge: found.edge, value: found.value, reason: found.reason, anchor: found.anchor, src: found.src }); break; }
+        if (found) { render('Deduce (atleast / one-short): dashed ring = island, band+ghost = the connection that must take at least one bridge', ev, { kind: 'deduce', edge: found.edge, value: found.value, atLeast: found.atLeast, reason: found.reason, anchor: found.anchor, src: found.src }); break; }
       }
       // Deep panel: a hard board, play forced moves until stuck, then deep hint.
-      for (let seed = 1; seed <= 40; seed++) {
+      for (let seed = 1; seed <= 60; seed++) {
         const p = await window.PuzzleGenerators.hashi(11, 'hard', seed); loadBoard(p);
         const needs = islands.map((i) => i.need);
-        const ev = new Int8Array(G.edges.length);
-        const cur = new Int8Array(G.edges.length).fill(UNKNOWN); // records 0s too
+        const ev = new Int8Array(G.edges.length); // drawn counts (lower bounds)
         let guard = 0, deep = null;
         for (;;) {
-          const s = HS.nextStep(G, needs, cur);
-          if (s) { cur[s.edge] = s.value; if (s.value >= 1) ev[s.edge] = s.value; if (++guard > 500) break; continue; }
-          deep = HS.nextStepDeep(G, needs, cur);
+          const s = HS.nextStep(G, needs, ev);
+          if (s) { ev[s.edge] = s.value; if (++guard > 500) break; continue; }
+          deep = HS.nextStepDeep(G, needs, ev);
           break;
         }
         if (deep) { console.log('DEEP seed=' + seed + ' kind=' + (deep.bad && deep.bad.kind) + ' chain=' + deep.chain.length + ' assume=' + deep.assume.value + ' forced=' + deep.value); render('Deep (assume→contradiction): dashed-red = refuted assumption, numbered = forced steps, red ring = where it breaks [' + (deep.bad && deep.bad.kind) + ', chain ' + deep.chain.length + ']', ev, { kind: 'deep', edge: deep.edge, value: deep.value, assume: deep.assume, chain: deep.chain, bad: deep.bad }); break; }

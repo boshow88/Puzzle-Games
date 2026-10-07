@@ -117,19 +117,21 @@
             // hint-drivability: the hint engine (nextStep, + nextStepDeep for hard)
             // must march an empty board all the way to the unique solution.
             {
-              const cur = new Int8Array(graph.edges.length).fill(S.UNKNOWN);
+              // Drawn counts (0..2) grow under the hints; drawn bridges act as lower
+              // bounds, so "add at least one" moves settle to the exact count later.
+              const drawn = new Int8Array(graph.edges.length);
               let guard2 = 0, stuck = false;
               for (;;) {
-                let undecided = false;
-                for (let e = 0; e < graph.edges.length; e++) if (cur[e] === S.UNKNOWN) { undecided = true; break; }
-                if (!undecided) break;
-                let step = S.nextStep(graph, needs, cur);
-                if (!step) { const d = S.nextStepDeep(graph, needs, cur); if (d) step = { edge: d.edge, value: d.value }; }
-                if (!step || ++guard2 > graph.edges.length * 4) { stuck = true; break; }
-                cur[step.edge] = step.value;
+                let done = true;
+                for (let e = 0; e < graph.edges.length; e++) if (drawn[e] !== solVal[e]) { done = false; break; }
+                if (done) break;
+                let step = S.nextStep(graph, needs, drawn);
+                if (!step) { const d = S.nextStepDeep(graph, needs, drawn); if (d) step = { edge: d.edge, value: d.value }; }
+                if (!step || ++guard2 > graph.edges.length * 8) { stuck = true; break; }
+                drawn[step.edge] = step.value; // forced minimum, ≥ what's drawn
               }
               if (stuck) fail(`${N} ${diff} #${seed}: hints got stuck`);
-              else for (let e = 0; e < graph.edges.length; e++) if (cur[e] !== solVal[e]) { fail(`${N} ${diff} #${seed}: hint-solve ≠ solution`); break; }
+              else for (let e = 0; e < graph.edges.length; e++) if (drawn[e] !== solVal[e]) { fail(`${N} ${diff} #${seed}: hint-solve ≠ solution`); break; }
             }
             tiers.push(p.stats.elims);
             if (typeof p.stats.depth === 'number' && p.stats.depth >= 0) depths.push(p.stats.depth);
