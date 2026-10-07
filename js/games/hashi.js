@@ -14,6 +14,9 @@
     const BOARD = 480;
     const VIOLATION_DELAY_MS = 800;
     const UNKNOWN = HS.UNKNOWN;
+    // Add ?hashi_debug=1 to the URL to log each hint's full reasoning + a board
+    // snapshot to the console (handy for reporting a confusing hint).
+    const DEBUG = typeof location !== 'undefined' && /[?&]hashi_debug=1\b/.test(location.search);
 
     const SIZE_STEPS = [7, 9, 11, 13, 15];
     const MIN_SIZE = 7, MAX_SIZE = 15;
@@ -478,10 +481,28 @@
         return null;
     }
 
+    // Console dump of a hint's full reasoning + a reproducible board snapshot.
+    function logHint(h) {
+        const isl = (v) => `#${v}(r${state.islands[v].r}c${state.islands[v].c}=${state.needs[v]})`;
+        const edg = (e) => { const { a, b } = state.G.edges[e]; return isl(a) + '—' + isl(b); };
+        const L = ['[HASHI HINT] kind=' + h.kind + (h.reason ? ' reason=' + h.reason : '')];
+        if (h.edge != null) L.push('forced: ' + edg(h.edge) + ' = ' + h.value);
+        if (h.src) L.push('src: ' + JSON.stringify(Object.assign({}, h.src, { island: isl(h.src.island), isles: (h.src.isles || []).map(isl) })));
+        if (h.anchor) L.push('anchor: ' + JSON.stringify({ islands: (h.anchor.islands || []).map(isl), edges: (h.anchor.edges || []).map(edg) }));
+        if (h.assume) L.push('assume: ' + edg(h.assume.edge) + ' = ' + h.assume.value);
+        if (h.chain) L.push('chain: [' + h.chain.map((s) => edg(s.edge) + '=' + s.value).join(', ') + ']');
+        if (h.bad) { const b = h.bad; L.push('breaks: ' + b.kind + (b.island != null ? ' @' + isl(b.island) : '') + (b.islands ? ' @' + b.islands.map(isl).join(',') : '') + (b.edges ? ' @' + b.edges.map(edg).join(',') : '') + (b.edge != null ? ' @' + edg(b.edge) : '')); }
+        const drawn = [];
+        for (let e = 0; e < state.G.edges.length; e++) if (state.edgeVal[e] >= 1) drawn.push([state.G.edges[e].a, state.G.edges[e].b, state.edgeVal[e]]);
+        L.push('board: ' + JSON.stringify({ size: state.N, islands: state.islands.map((i) => [i.r, i.c, i.need]), drawn }));
+        console.log(L.join('\n  '));
+    }
+
     function showHint() {
         if (!state.puzzle || state.won) return;
         if (state.hint) { clearHint(); return; }
         const h = computeHint();
+        if (DEBUG && h) logHint(h);
         if (!h) { state.hint = { kind: 'none' }; renderHintBanner(); return; }
         state.hint = h; renderHintBanner(); repaintHint();
     }

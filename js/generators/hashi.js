@@ -382,14 +382,19 @@
         const lo = new Int8Array(E), hi = new Int8Array(E).fill(2);
         for (let e = 0; e < E; e++) if (cur[e] !== UNKNOWN) { lo[e] = cur[e]; hi[e] = cur[e]; }
         if (!propagate(G, needs, lo, hi, true)) return null;
-        // Prefer an actionable (≥1 bridge) forced edge; only surface a forced-empty
-        // connection when nothing buildable is left (the player can't draw a 0).
-        let zero = -1;
+        // Surface the EASIEST-to-follow forced move, not just the first by index:
+        // rank by how self-evident the reason is (only/saturate need no neighbour
+        // info; rest/cap/cross/cut do, cut most), and prefer an actionable (≥1)
+        // bridge over a forced-empty one.
+        const RANK = { only: 0, saturate: 1, cross: 3, rest: 4, cap: 5, degree: 4, cut: 6 };
+        let best = null, bestScore = Infinity;
         for (let e = 0; e < E; e++) if (lo[e] === hi[e] && cur[e] !== lo[e]) {
-            if (lo[e] >= 1) return annotateStep(G, needs, cur, e, lo[e], lo, hi);
-            if (zero < 0) zero = e;
+            const step = annotateStep(G, needs, cur, e, lo[e], lo, hi);
+            const kind = step.reason === 'degree' ? (step.src ? step.src.kind : 'degree') : step.reason;
+            const score = (RANK[kind] != null ? RANK[kind] : 7) * 2 + (step.value >= 1 ? 0 : 1);
+            if (score < bestScore) { bestScore = score; best = step; }
         }
-        return zero >= 0 ? annotateStep(G, needs, cur, zero, 0, lo, hi) : null;
+        return best;
     }
 
     /** Explain why edge e is forced to `val`: 'cross' (a placed perpendicular
