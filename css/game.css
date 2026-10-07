@@ -1340,7 +1340,9 @@
 /* ----------------------------------------------------------------
    Hashi (Bridges)
    ---------------------------------------------------------------- */
-.hashi-bg { fill: #faf6ef; }
+/* Transparent (so the board carries no tint of its own) but still a hit target,
+   so clicks on an empty corridor register. */
+.hashi-bg { fill: transparent; }
 /* Faint lattice through the island centres — islands read as sitting on grid
    intersections, making row/column relationships easy to see. */
 .hashi-grid-line { stroke: rgba(138, 90, 44, 0.14); stroke-width: 1; pointer-events: none; }

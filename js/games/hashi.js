@@ -17,8 +17,8 @@
     // snapshot to the console (handy for reporting a confusing hint).
     const DEBUG = typeof location !== 'undefined' && /[?&]hashi_debug=1\b/.test(location.search);
 
-    const SIZE_STEPS = [7, 9, 11, 13, 15];
-    const MIN_SIZE = 7, MAX_SIZE = 15;
+    const SIZE_STEPS = [7, 9, 11, 13, 15, 17, 21, 25];
+    const MIN_SIZE = 7, MAX_SIZE = 25;
     const VALID_DIFFS = new Set(['easy', 'medium', 'hard']);
 
     function readUrlInitial() {
@@ -55,6 +55,7 @@
         mode: 'build',          // 'build' (lay bridges) | 'mark' (annotate confirmed)
         hoverEdge: -1,          // corridor under the mouse (hover preview)
         hoverIsland: -1,        // island under the mouse (mark-mode hover preview)
+        lastEdge: -1,           // most recently edited edge (win animation radiates from it)
         won: false,
         hint: null, hintBanner: null,
         dragging: null,         // { pointerId, from, pending }
@@ -268,6 +269,17 @@
         // Islands
         const rad = cs * 0.34;
         const font = Math.max(11, Math.round(cs * 0.4));
+        // On win the pop radiates outward from the last-placed bridge: delay each
+        // island's pop by its distance from that bridge's midpoint.
+        let winOrigin = null, winMax = 1;
+        if (won && state.lastEdge >= 0 && state.lastEdge < G.edges.length) {
+            const le = G.edges[state.lastEdge], LA = state.islands[le.a], LB = state.islands[le.b];
+            winOrigin = { x: (cx(LA.c) + cx(LB.c)) / 2, y: (cy(LA.r) + cy(LB.r)) / 2 };
+            for (let v = 0; v < G.islands.length; v++) {
+                const dd = Math.hypot(cx(state.islands[v].c) - winOrigin.x, cy(state.islands[v].r) - winOrigin.y);
+                if (dd > winMax) winMax = dd;
+            }
+        }
         for (let v = 0; v < G.islands.length; v++) {
             const is = state.islands[v];
             const satisfied = islandSum(v) === state.needs[v];
@@ -280,12 +292,17 @@
                 + (won ? ' won' : '')
                 + (active.has(v) ? ' active' : '');
             const g = PC.svgEl('g', { class: cls });
-            g.appendChild(PC.svgEl('circle', { class: 'hashi-isle-disc', cx: cx(is.c), cy: cy(is.r), r: rad }));
+            const disc = PC.svgEl('circle', { class: 'hashi-isle-disc', cx: cx(is.c), cy: cy(is.r), r: rad });
             const t = PC.svgEl('text', {
                 class: 'hashi-isle-num', x: cx(is.c), y: cy(is.r),
                 'text-anchor': 'middle', 'dominant-baseline': 'middle', dy: '0.08em', 'font-size': font,
             });
             t.textContent = String(state.needs[v]);
+            if (winOrigin) {
+                const dly = (Math.hypot(cx(is.c) - winOrigin.x, cy(is.r) - winOrigin.y) / winMax * 0.55).toFixed(3) + 's';
+                disc.style.animationDelay = dly; t.style.animationDelay = dly;
+            }
+            g.appendChild(disc);
             g.appendChild(t);
             il.appendChild(g);
         }
@@ -395,8 +412,9 @@
         state.dragging = null;
         const mark = state.mode === 'mark';
         if (d.mode === 'bridge') { if (mark) toggleEdgeMark(d.edge); else cycleEdge(d.edge, d.button); return; }
-        if (d.pending >= 0) { if (mark) toggleEdgeMark(d.pending); else cycleEdge(d.pending, d.button); } // dragged island → island
-        else if (!d.moved && mark) toggleDone(d.from);      // tapping an island flags it handled — Mark mode only
+        if (d.pending >= 0) { if (mark) toggleEdgeMark(d.pending); else cycleEdge(d.pending, d.button); return; } // dragged island → island
+        if (!d.moved && mark) { toggleDone(d.from); return; } // tapping an island flags it handled — Mark mode only
+        repaint(); // no action (e.g. an island tap in Build mode) — clear the active highlight
     }
 
     // A bridge here would cross one that's already on the board (two bridges may
@@ -414,6 +432,7 @@
         pushUndo();
         state.edgeVal[e] = nv;
         state.edgeMark[e] = 0; // changing the count drops any prior "confirmed" mark
+        state.lastEdge = e;    // the win pop radiates out from here
         const { a, b } = state.G.edges[e];
         state.doneMark[a] = 0; state.doneMark[b] = 0; // editing a connection un-completes its islands
         afterChange();
@@ -761,7 +780,7 @@
         shell = PC.shell.create({
             gameId: 'hashi',
             difficulty: { default: urlInitial ? urlInitial.difficulty : 'medium' },
-            size: { kind: 'slider', values: SIZE_STEPS, min: MIN_SIZE, max: MAX_SIZE, default: urlInitial ? urlInitial.size : 9 },
+            size: { kind: 'slider', values: SIZE_STEPS, min: MIN_SIZE, max: MAX_SIZE, default: urlInitial ? urlInitial.size : 11 },
             onNewGame: startNewGame,
             onReset: resetBoard,
             onReveal: onReveal,
