@@ -247,8 +247,9 @@
                 const e = state.hoverEdge;
                 if (state.edgeVal[e] >= 1) drawBridge(bl, e, state.edgeVal[e], 'hashi-bridge marked hashi-hover', sw, offUnit);
                 else drawEmptyMark(bl, e, true);
-            } else if (state.mode === 'mark' && state.hoverIsland >= 0) {
-                const is = state.islands[state.hoverIsland];
+            } else if (state.mode === 'mark' && state.hoverIsland >= 0
+                && (state.doneMark[state.hoverIsland] || islandSum(state.hoverIsland) === state.needs[state.hoverIsland])) {
+                const is = state.islands[state.hoverIsland]; // only full (or already-done) islands are markable
                 bl.appendChild(PC.svgEl('circle', { class: 'hashi-hover-isle', cx: cx(is.c), cy: cy(is.r), r: cs * 0.42 }));
             }
         }
@@ -413,6 +414,8 @@
         pushUndo();
         state.edgeVal[e] = nv;
         state.edgeMark[e] = 0; // changing the count drops any prior "confirmed" mark
+        const { a, b } = state.G.edges[e];
+        state.doneMark[a] = 0; state.doneMark[b] = 0; // editing a connection un-completes its islands
         afterChange();
     }
 
@@ -439,13 +442,25 @@
         setHover(-1);
     }
 
-    // A personal "I've finished this island" flag. It doesn't affect the puzzle,
-    // but it is undoable (snapshots carry doneMark too).
+    // Flag an island "complete". It doesn't affect the puzzle (undoable memo), but
+    // it's only allowed once the island's number is satisfied — and marking it then
+    // confirms (greys) every one of its connections in one go. Tapping it again
+    // clears just the island flag.
     function toggleDone(v) {
+        if (state.doneMark[v]) {
+            pushUndo();
+            state.doneMark[v] = 0;
+            repaint(); updateUndoButton();
+            return;
+        }
+        if (islandSum(v) !== state.needs[v]) {
+            if (PC.toast) PC.toast.show(PC.i18n.t('hashiMarkNeedsFull'));
+            return;
+        }
         pushUndo();
-        state.doneMark[v] ^= 1;
-        repaint();
-        updateUndoButton();
+        state.doneMark[v] = 1;
+        for (const e of state.G.incident[v]) if (!crossingBlocked(e)) state.edgeMark[e] = 1; // lock all its connections
+        repaint(); updateUndoButton();
     }
 
     function afterChange() {
