@@ -1011,6 +1011,8 @@
                 '<strong>Build</strong> mode: <strong>drag</strong> island to island, or <strong>click the gap</strong> between two. Left adds a bridge (0 \u2192 1 \u2192 2 \u2192 0), right reverses.',
             hashiHelp3Html:
                 '<strong>Mark</strong> mode: click a corridor to confirm its count, or a full island to mark it done (locking its connections). Marks are just aids and don\u2019t affect the puzzle.',
+            hashiHelpLeftHtml:
+                '<strong>Left (\u03A3)</strong>: show each island\u2019s remaining bridges.',
             hashiHelp4Html:
                 'Solved when every island\u2019s number is met and all islands form <strong>one connected network</strong>.',
             clearBoard: 'Clear the board',
@@ -1266,6 +1268,8 @@
                 '<strong>建橋</strong>模式：從島<strong>拖</strong>到相鄰的島，或<strong>點兩島之間的橋位</strong>。左鍵加橋 (0 → 1 → 2 → 0)，右鍵反向。',
             hashiHelp3Html:
                 '<strong>標記</strong>模式：點橋位標為確定，或點已湊滿的島標為完成 (會一併鎖定四周)。標記只是輔助，不影響解答。',
+            hashiHelpLeftHtml:
+                '<strong>剩餘 (\u03A3)</strong>：島上改顯示「還差幾座橋」。',
             hashiHelp4Html:
                 '當每座島的橋數都剛好、且所有島連成<strong>單一相通的網路</strong>時過關。',
             clearBoard: '清空盤面',
