@@ -1419,22 +1419,30 @@
 /* Mark-mode hover: a faint ring on the island you'd flag handled. */
 .hashi-hover-isle { fill: none; stroke: #6b7280; stroke-width: 2.5; opacity: 0.5; pointer-events: none; }
 
-/* Mode toggle (Build / Mark). */
-.hashi-tools {
-    display: grid;
-    grid-template-columns: repeat(2, 1fr);
-    gap: var(--space-sm);
+/* Bottom controls: the Build/Mark mode group + the Remaining toggle, one row. */
+.hashi-controls {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    align-items: stretch;
+    gap: var(--space-md);
     width: 100%;
-    max-width: 320px;
+    max-width: 480px;
     margin: var(--space-md) auto 0;
 }
+.hashi-tools {
+    display: flex;
+    gap: var(--space-sm);
+}
+/* The Remaining toggle sits a touch apart from the mode pair. */
+.hashi-tool.assist-toggle { margin-left: var(--space-xs); }
 .hashi-tool {
     appearance: none;
     display: inline-flex;
     align-items: center;
     justify-content: center;
     gap: var(--space-xs);
-    padding: 9px 0;
+    padding: 9px 16px;
     border: 1px solid var(--border-strong);
     background: var(--bg-secondary);
     color: var(--text-secondary);

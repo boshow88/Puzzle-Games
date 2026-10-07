@@ -77,10 +77,6 @@
                 <span data-icon="eye" aria-hidden="true"></span>
                 <span data-i18n="reveal">Reveal</span>
             </button>
-            <button class="btn toggle active" id="assist-btn" type="button" aria-pressed="true" data-i18n-title="hashiAssistTitle" title="Show each island's remaining bridges">
-                <span data-icon="sigma" aria-hidden="true"></span>
-                <span data-i18n="hashiAssist">Remaining</span>
-            </button>
         </div>
 
         <div class="status-row" aria-live="polite">
@@ -108,14 +104,20 @@
             </svg>
         </div>
 
-        <div class="hashi-tools" id="hashi-tools" role="radiogroup" data-i18n-aria-label="hashiToolsAria" aria-label="Input mode">
-            <button type="button" class="hashi-tool active" data-mode="build" role="radio" aria-checked="true">
-                <span data-icon="waypoints" aria-hidden="true"></span>
-                <span data-i18n="hashiToolBuild">Build</span>
-            </button>
-            <button type="button" class="hashi-tool" data-mode="mark" role="radio" aria-checked="false">
-                <span data-icon="check" aria-hidden="true"></span>
-                <span data-i18n="hashiToolMark">Mark</span>
+        <div class="hashi-controls">
+            <div class="hashi-tools" id="hashi-tools" role="radiogroup" data-i18n-aria-label="hashiToolsAria" aria-label="Input mode">
+                <button type="button" class="hashi-tool active" data-mode="build" role="radio" aria-checked="true">
+                    <span data-icon="waypoints" aria-hidden="true"></span>
+                    <span data-i18n="hashiToolBuild">Build</span>
+                </button>
+                <button type="button" class="hashi-tool" data-mode="mark" role="radio" aria-checked="false">
+                    <span data-icon="check" aria-hidden="true"></span>
+                    <span data-i18n="hashiToolMark">Mark</span>
+                </button>
+            </div>
+            <button type="button" class="hashi-tool assist-toggle active" id="assist-btn" aria-pressed="true" data-i18n-title="hashiAssistTitle" title="Show each island's remaining bridges">
+                <span data-icon="sigma" aria-hidden="true"></span>
+                <span data-i18n="hashiAssist">Remaining</span>
             </button>
         </div>
 
