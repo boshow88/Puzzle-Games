@@ -1384,9 +1384,13 @@
 /* "Confirmed" annotations (Mark mode): a dotted ghost along a corridor confirmed
    empty, and a small slate check badge marking any corridor whose count is set. */
 .hashi-mark-empty { stroke: #94a3b8; stroke-dasharray: 2 5; stroke-linecap: round; opacity: 0.7; pointer-events: none; }
+.hashi-mark-empty.preview { opacity: 0.3; }
 .hashi-confirm { pointer-events: none; }
 .hashi-confirm-disc { fill: #eef2f7; stroke: #94a3b8; stroke-width: 1.5; }
 .hashi-confirm-check { fill: none; stroke: #475569; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+/* Mark-mode hover previews: a faint badge on the corridor / ring on the island. */
+.hashi-confirm-preview { opacity: 0.4; }
+.hashi-hover-isle { fill: none; stroke: #6b7280; stroke-width: 2.5; opacity: 0.5; pointer-events: none; }
 
 /* Mode toggle (Build / Mark). */
 .hashi-tools {

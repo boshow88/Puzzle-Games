@@ -53,7 +53,8 @@
         doneMark: null,         // Int8Array per-island "handled" annotation
         dirEdge: null,          // per island: {U,D,L,R} → edge index
         mode: 'build',          // 'build' (lay bridges) | 'mark' (annotate confirmed)
-        hoverEdge: -1,          // corridor under the mouse (build-mode preview)
+        hoverEdge: -1,          // corridor under the mouse (hover preview)
+        hoverIsland: -1,        // island under the mouse (mark-mode hover preview)
         won: false,
         hint: null, hintBanner: null,
         dragging: null,         // { pointerId, from, pending }
@@ -199,18 +200,18 @@
         return { x: (cx(A.c) + cx(B.c)) / 2, y: (cy(A.r) + cy(B.r)) / 2 };
     }
     // A faint dotted segment down the middle of a corridor confirmed to be empty.
-    function drawEmptyMark(layer, e) {
+    function drawEmptyMark(layer, e, preview) {
         const { a, b } = state.G.edges[e], A = state.islands[a], B = state.islands[b];
         const ax = cx(A.c), ay = cy(A.r), bx = cx(B.c), by = cy(B.r);
         layer.appendChild(PC.svgEl('line', {
-            class: 'hashi-mark-empty', 'stroke-width': Math.max(2, state.cs * 0.05),
+            class: 'hashi-mark-empty' + (preview ? ' preview' : ''), 'stroke-width': Math.max(2, state.cs * 0.05),
             x1: ax + (bx - ax) * 0.3, y1: ay + (by - ay) * 0.3, x2: ax + (bx - ax) * 0.7, y2: ay + (by - ay) * 0.7,
         }));
     }
     // A small check badge at the corridor midpoint marking its count as confirmed.
-    function drawConfirmBadge(layer, e) {
+    function drawConfirmBadge(layer, e, preview) {
         const m = edgeMid(e), r = Math.max(6, state.cs * 0.16), s = r * 0.55;
-        const g = PC.svgEl('g', { class: 'hashi-confirm' });
+        const g = PC.svgEl('g', { class: 'hashi-confirm' + (preview ? ' hashi-confirm-preview' : '') });
         g.appendChild(PC.svgEl('circle', { class: 'hashi-confirm-disc', cx: m.x, cy: m.y, r }));
         g.appendChild(PC.svgEl('path', {
             class: 'hashi-confirm-check',
@@ -250,11 +251,20 @@
         }
         // Drag highlight + a preview of the bridge the release will lay down.
         const d = state.dragging;
-        // Build-mode hover preview: a faint ghost of what a left-click would place.
-        if (!d && !won && state.mode === 'build' && state.hoverEdge >= 0) {
-            const e = state.hoverEdge, cur = state.edgeVal[e], nv = (cur + 1) % 3;
-            if (nv === 0) drawBridge(bl, e, Math.max(1, cur), 'hashi-pending-line erase hashi-hover', sw, offUnit);
-            else drawBridge(bl, e, nv, 'hashi-pending-line hashi-hover', sw, offUnit);
+        // Hover preview (mouse). Build: ghost the bridge a click would place. Mark:
+        // a faint confirm badge on the corridor, or a ring on the island, you'd set.
+        if (!d && !won) {
+            if (state.mode === 'build' && state.hoverEdge >= 0) {
+                const e = state.hoverEdge, cur = state.edgeVal[e], nv = (cur + 1) % 3;
+                if (nv === 0) drawBridge(bl, e, Math.max(1, cur), 'hashi-pending-line erase hashi-hover', sw, offUnit);
+                else drawBridge(bl, e, nv, 'hashi-pending-line hashi-hover', sw, offUnit);
+            } else if (state.mode === 'mark' && state.hoverEdge >= 0 && !state.edgeMark[state.hoverEdge]) {
+                if (state.edgeVal[state.hoverEdge] === 0) drawEmptyMark(bl, state.hoverEdge, true);
+                drawConfirmBadge(bl, state.hoverEdge, true);
+            } else if (state.mode === 'mark' && state.hoverIsland >= 0) {
+                const is = state.islands[state.hoverIsland];
+                bl.appendChild(PC.svgEl('circle', { class: 'hashi-hover-isle', cx: cx(is.c), cy: cy(is.r), r: cs * 0.42 }));
+            }
         }
         const active = new Set();
         if (d && d.mode === 'island' && !won) {
@@ -365,7 +375,11 @@
         state.dragging = drag;
         if (drag.mode === 'island') repaint(); // light up the start island
     }
-    function setHover(e) { if (e === state.hoverEdge) return; state.hoverEdge = e; repaint(); }
+    function setHover(edge, isle) {
+        edge = edge == null ? -1 : edge; isle = isle == null ? -1 : isle;
+        if (edge === state.hoverEdge && isle === state.hoverIsland) return;
+        state.hoverEdge = edge; state.hoverIsland = isle; repaint();
+    }
     function onPointerMove(ev) {
         const d = state.dragging;
         if (d) {
@@ -376,11 +390,16 @@
             if (pend !== d.pending) { d.pending = pend; repaint(); }
             return;
         }
-        // Hover preview — mouse only (touch has no hover), build mode only.
+        // Hover preview — mouse only (touch has no hover).
         if (ev.pointerType && ev.pointerType !== 'mouse') return;
-        if (!state.puzzle || state.won || state.mode !== 'build') { setHover(-1); return; }
+        if (!state.puzzle || state.won) { setHover(-1, -1); return; }
         const pt = eventToPoint(ev);
-        setHover(pt ? edgeAtPoint(pt) : -1); // edgeAtPoint already skips blocked corridors + island ends
+        if (!pt) { setHover(-1, -1); return; }
+        if (state.mode === 'build') { setHover(edgeAtPoint(pt), -1); return; } // bridge preview
+        // Mark mode: previewing a corridor to confirm, or an island to flag handled.
+        const isl = nearestIsland(pt);
+        if (isl >= 0) setHover(-1, isl);
+        else setHover(edgeAtPoint(pt), -1);
     }
     function onPointerEnd(ev) {
         const d = state.dragging;
@@ -390,7 +409,7 @@
         const mark = state.mode === 'mark';
         if (d.mode === 'bridge') { if (mark) toggleEdgeMark(d.edge); else cycleEdge(d.edge, d.button); return; }
         if (d.pending >= 0) { if (mark) toggleEdgeMark(d.pending); else cycleEdge(d.pending, d.button); } // dragged island → island
-        else if (!d.moved) toggleDone(d.from);              // tapped an island (not a drag that went nowhere)
+        else if (!d.moved && mark) toggleDone(d.from);      // tapping an island flags it handled — Mark mode only
     }
 
     // A bridge here would cross one that's already on the board (two bridges may
