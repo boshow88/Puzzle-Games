@@ -228,33 +228,54 @@
 
         const sw = Math.max(2, cs * 0.07);
         const offUnit = Math.max(2.2, cs * 0.1);
-        // On win, both the green colour and the pop radiate outward from the
-        // last-placed bridge: the further away, the longer the delay.
-        let winOrigin = null, winMax = 1;
+        // On win the green colour + pop flow THROUGH the bridge network from the
+        // last-placed bridge — a breadth-first spread by hop count along the drawn
+        // bridges (so it travels along the connections, not as a straight-line ripple).
+        let winLevel = null, winMaxL = 0;
         if (won && state.lastEdge >= 0 && state.lastEdge < G.edges.length) {
-            const le = G.edges[state.lastEdge], LA = state.islands[le.a], LB = state.islands[le.b];
-            winOrigin = { x: (cx(LA.c) + cx(LB.c)) / 2, y: (cy(LA.r) + cy(LB.r)) / 2 };
-            for (let v = 0; v < G.islands.length; v++) {
-                const dd = Math.hypot(cx(state.islands[v].c) - winOrigin.x, cy(state.islands[v].r) - winOrigin.y);
-                if (dd > winMax) winMax = dd;
+            const m = G.islands.length;
+            winLevel = new Int32Array(m).fill(-1);
+            const le = G.edges[state.lastEdge], q = [le.a, le.b];
+            winLevel[le.a] = 0; winLevel[le.b] = 0;
+            for (let h = 0; h < q.length; h++) {
+                const u = q[h];
+                for (const e of G.incident[u]) {
+                    if (state.edgeVal[e] < 1) continue; // travel only along actual bridges
+                    const w = G.edges[e].a === u ? G.edges[e].b : G.edges[e].a;
+                    if (winLevel[w] === -1) { winLevel[w] = winLevel[u] + 1; q.push(w); }
+                }
             }
+            for (let v = 0; v < m; v++) if (winLevel[v] > winMaxL) winMaxL = winLevel[v];
         }
-        const winDelay = (x, y) => (winOrigin ? (Math.hypot(x - winOrigin.x, y - winOrigin.y) / winMax * 0.6).toFixed(3) + 's' : undefined);
+        const SPREAD = 0.8;
+        const islandDelay = (v) => {
+            if (!winLevel) return undefined;
+            if (winMaxL <= 0 || winLevel[v] < 0) return '0s';
+            return (winLevel[v] / winMaxL * SPREAD).toFixed(3) + 's';
+        };
+        const edgeDelay = (e) => {
+            if (!winLevel) return undefined;
+            if (winMaxL <= 0) return '0s';
+            const { a, b } = G.edges[e];
+            const la = winLevel[a] >= 0 ? winLevel[a] : winLevel[b];
+            const lb = winLevel[b] >= 0 ? winLevel[b] : winLevel[a];
+            if (la < 0 && lb < 0) return '0s';
+            return ((Math.min(la, lb) + 0.5) / winMaxL * SPREAD).toFixed(3) + 's';
+        };
         // Bridges. A "confirmed" bridge (Mark mode) recolours grey — it reads as
         // settled, so attention stays on the brown, still-tentative connections.
         for (let e = 0; e < G.edges.length; e++) {
             if (state.edgeVal[e] < 1) continue;
             const bad = !won && crossSet.has(e);
             const marked = !bad && state.edgeMark[e]; // keep grey even on win, so it conducts grey→green (no snap through brown)
-            let delay;
-            if (won) { const BA = state.islands[G.edges[e].a], BB = state.islands[G.edges[e].b]; delay = winDelay((cx(BA.c) + cx(BB.c)) / 2, (cy(BA.r) + cy(BB.r)) / 2); }
+            const delay = won ? edgeDelay(e) : undefined;
             drawBridge(bl, e, state.edgeVal[e], 'hashi-bridge' + (bad ? ' bad' : '') + (won ? ' won' : '') + (marked ? ' marked' : ''), sw, offUnit, delay);
         }
         // A corridor confirmed empty shows a faint dotted ghost down its middle.
         // On win it fades out in step with the colour wave (rather than vanishing).
         for (let e = 0; e < G.edges.length; e++) {
             if (!(state.edgeMark[e] && state.edgeVal[e] === 0 && !crossingBlocked(e))) continue;
-            if (won) { const EA = state.islands[G.edges[e].a], EB = state.islands[G.edges[e].b]; drawEmptyMark(bl, e, false, winDelay((cx(EA.c) + cx(EB.c)) / 2, (cy(EA.r) + cy(EB.r)) / 2)); }
+            if (won) drawEmptyMark(bl, e, false, edgeDelay(e));
             else drawEmptyMark(bl, e);
         }
         // Drag highlight + a preview of the bridge the release will lay down.
@@ -310,7 +331,7 @@
             });
             t.textContent = String(state.needs[v]);
             if (won) {
-                const dly = winDelay(cx(is.c), cy(is.r));
+                const dly = islandDelay(v);
                 if (dly) { disc.style.animationDelay = dly; t.style.animationDelay = dly; }
             }
             g.appendChild(disc);
