@@ -1479,7 +1479,7 @@
 .hashi-bridge.hashi-hint-determined { opacity: 0.3; stroke-dasharray: 5 4; }
 /* Walk-through (assume → contradiction): the refuted assumption is dashed red,
    each forced step carries a white-haloed number, and the break is ringed red. */
-.hashi-hint-assume { stroke: var(--accent-danger, #dc3545); opacity: 0.5; stroke-dasharray: 6 4; }
+.hashi-hint-assume { stroke: var(--accent-danger, #dc3545); opacity: 0.7; stroke-dasharray: 5 7; stroke-linecap: butt; }
 .hashi-hint-step { fill: #3a2a18; font-family: var(--font-body); font-weight: 700; paint-order: stroke; stroke: #fff; stroke-width: 3px; stroke-linejoin: round; pointer-events: none; }
 
 /* Reveal overlay. */

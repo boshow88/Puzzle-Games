@@ -773,9 +773,13 @@
         }
         if (h.kind === 'wrong') { for (const e of h.edges) bandEdge(e, 'hashi-hint-band wrong'); return; }
         if (h.kind === 'deep') {
-            // the refuted assumption (dashed red + red ghost), the forced numbered
-            // steps it triggers, and where the rule finally breaks.
-            bandEdge(h.edge, 'hashi-hint-assume');
+            // the refuted assumption (a thin, clearly-dashed red line), the forced
+            // numbered steps it triggers, and where the rule finally breaks.
+            const ae = state.G.edges[h.edge], AA = state.islands[ae.a], AB = state.islands[ae.b];
+            layer.appendChild(PC.svgEl('line', {
+                class: 'hashi-hint-assume hashi-hint-mark', 'stroke-width': Math.max(sw, cs * 0.08),
+                x1: cx(AA.c), y1: cy(AA.r), x2: cx(AB.c), y2: cy(AB.r),
+            }));
             if (h.assume.value >= 1) ghostEdge(h.edge, h.assume.value, 'hashi-bridge bad hashi-hint-ghost');
             let n = 0;
             if (h.chain) for (const st of h.chain) if (st.value >= 1) { ghostEdge(st.edge, st.value); stepNum(st.edge, ++n); }

@@ -520,7 +520,10 @@
         lo[e] = 0; hi[e] = 0; // assume this corridor stays empty
         const tr = propagateTraced(G, needs, lo, hi);
         if (tr.ok) return null;
-        return { chain: tr.chain || [], bad: tr.bad || null };
+        // Only surface steps that ADD bridges beyond what the player already drew —
+        // re-confirming bridges in regions they've finished just reads as noise.
+        const chain = (tr.chain || []).filter((st) => st.value > drawn[st.edge]);
+        return { chain, bad: tr.bad || null };
     }
 
     /** Verify a player's full edge-value array solves the puzzle. */

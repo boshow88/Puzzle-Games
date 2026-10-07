@@ -39,7 +39,7 @@
       const stepNum = (e, n) => { const A = islands[G.edges[e].a], B = islands[G.edges[e].b]; const t = PC.svgEl('text', { class: 'hashi-hint-step', x: (cx(A.c) + cx(B.c)) / 2, y: (cy(A.r) + cy(B.r)) / 2, 'text-anchor': 'middle', 'dominant-baseline': 'middle', 'font-size': Math.max(10, Math.round(cs * 0.3)) }); t.textContent = String(n); svg.appendChild(t); };
       const badMark = (bad) => { if (!bad) return; if (bad.kind === 'degree') ringIsland(bad.island, 'hashi-hint-ring wrong'); else if (bad.kind === 'cross') for (const e of bad.edges) bandEdge(e, 'hashi-hint-band wrong'); else if (bad.kind === 'disconnect') { if (bad.islands) for (const v of bad.islands) ringIsland(v, 'hashi-hint-ring wrong'); if (typeof bad.edge === 'number') bandEdge(bad.edge, 'hashi-hint-band wrong'); } };
       if (hint && hint.kind === 'deep') {
-        bandEdge(hint.edge, 'hashi-hint-assume');
+        { const ae = G.edges[hint.edge], AA = islands[ae.a], AB = islands[ae.b]; svg.appendChild(PC.svgEl('line', { class: 'hashi-hint-assume', 'stroke-width': Math.max(sw, cs * 0.08), x1: cx(AA.c), y1: cy(AA.r), x2: cx(AB.c), y2: cy(AB.r) })); }
         if (hint.assume.value >= 1) ghostEdge(hint.edge, hint.assume.value, 'hashi-bridge bad hashi-hint-ghost');
         let n = 0; for (const st of hint.chain) if (st.value >= 1) { ghostEdge(st.edge, st.value); stepNum(st.edge, ++n); }
         badMark(hint.bad);
