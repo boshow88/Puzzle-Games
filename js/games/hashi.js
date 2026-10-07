@@ -209,6 +209,7 @@
         const ax = cx(A.c), ay = cy(A.r), bx = cx(B.c), by = cy(B.r);
         const ln = PC.svgEl('line', {
             class: 'hashi-mark-empty' + (preview ? ' preview' : '') + (fadeDelay ? ' won-fade' : ''), 'stroke-width': Math.max(2, state.cs * 0.05),
+            'stroke-dasharray': (state.cs * 0.06).toFixed(2) + ' ' + (state.cs * 0.11).toFixed(2),
             x1: ax + (bx - ax) * 0.3, y1: ay + (by - ay) * 0.3, x2: ax + (bx - ax) * 0.7, y2: ay + (by - ay) * 0.7,
         });
         if (fadeDelay) ln.style.animationDelay = fadeDelay;
@@ -735,13 +736,22 @@
         const h = state.hint; if (!h || h.kind === 'none') return;
         const { cs } = state;
         const sw = Math.max(2, cs * 0.07), offUnit = Math.max(2.2, cs * 0.1);
+        // Hint overlays scale with the cell so big boards don't get chunky rings /
+        // bands, or dashes that drift too far apart relative to the small cells.
+        const ringSw = Math.max(1.5, cs * 0.06);
+        const bandSw = Math.max(3, cs * 0.16);
+        const dash = (on, off) => (cs * on).toFixed(2) + ' ' + (cs * off).toFixed(2);
         const ringIsland = (v, cls) => {
             const is = state.islands[v];
-            layer.appendChild(PC.svgEl('circle', { class: cls + ' hashi-hint-mark', cx: cx(is.c), cy: cy(is.r), r: cs * 0.44 }));
+            const a = { class: cls + ' hashi-hint-mark', cx: cx(is.c), cy: cy(is.r), r: cs * 0.44, 'stroke-width': ringSw };
+            if (cls.indexOf('anchor') >= 0) a['stroke-dasharray'] = dash(0.11, 0.08);
+            layer.appendChild(PC.svgEl('circle', a));
         };
         const bandEdge = (e, cls) => {
             const { a, b } = state.G.edges[e], A = state.islands[a], B = state.islands[b];
-            layer.appendChild(PC.svgEl('line', { class: cls + ' hashi-hint-mark', 'stroke-width': Math.max(sw + 4, cs * 0.18), 'stroke-linecap': 'round', x1: cx(A.c), y1: cy(A.r), x2: cx(B.c), y2: cy(B.r) }));
+            const o = { class: cls + ' hashi-hint-mark', 'stroke-width': bandSw, 'stroke-linecap': 'round', x1: cx(A.c), y1: cy(A.r), x2: cx(B.c), y2: cy(B.r) };
+            if (cls.indexOf('source') >= 0) o['stroke-dasharray'] = dash(0.14, 0.1);
+            layer.appendChild(PC.svgEl('line', o));
         };
         const ghostEdge = (e, value, cls) => {
             const g = PC.svgEl('g', { class: 'hashi-hint-mark' });
@@ -752,7 +762,8 @@
             const { a, b } = state.G.edges[e], A = state.islands[a], B = state.islands[b];
             const t = PC.svgEl('text', {
                 class: 'hashi-hint-step hashi-hint-mark', x: (cx(A.c) + cx(B.c)) / 2, y: (cy(A.r) + cy(B.r)) / 2,
-                'text-anchor': 'middle', 'dominant-baseline': 'middle', 'font-size': Math.max(10, Math.round(cs * 0.3)),
+                'text-anchor': 'middle', 'dominant-baseline': 'middle', 'font-size': Math.max(9, Math.round(cs * 0.3)),
+                'stroke-width': Math.max(2, cs * 0.06),
             });
             t.textContent = String(n); layer.appendChild(t);
         };
@@ -778,6 +789,7 @@
             const ae = state.G.edges[h.edge], AA = state.islands[ae.a], AB = state.islands[ae.b];
             layer.appendChild(PC.svgEl('line', {
                 class: 'hashi-hint-assume hashi-hint-mark', 'stroke-width': Math.max(sw, cs * 0.08),
+                'stroke-dasharray': dash(0.12, 0.14),
                 x1: cx(AA.c), y1: cy(AA.r), x2: cx(AB.c), y2: cy(AB.r),
             }));
             if (h.assume.value >= 1) ghostEdge(h.edge, h.assume.value, 'hashi-bridge bad hashi-hint-ghost');
