@@ -318,6 +318,9 @@
             + '<circle cx="17.5" cy="17.5" r="3.5"/>',
         check:
             '<path d="M20 6 9 17l-5-5"/>',
+        lock:
+            '<rect width="18" height="11" x="3" y="11" rx="2" ry="2"/>'
+            + '<path d="M7 11V7a5 5 0 0 1 10 0v4"/>',
         sigma:
             '<path d="M18 7V5a1 1 0 0 0-1-1H7l6 8-6 8h10a1 1 0 0 0 1-1v-2"/>',
     };
@@ -1000,7 +1003,7 @@
             hashiToolBuild: 'Build',
             hashiToolMark: 'Mark',
             hashiMarkNeedsFull: 'That island isn\u2019t full yet \u2014 finish it before marking it done.',
-            hashiAssist: 'Remaining',
+            hashiAssist: 'Left',
             hashiAssistTitle: 'Show each island\u2019s remaining bridges instead of its number',
             hashiHelp1Html:
                 'Each <strong>island</strong>\u2019s number is how many <strong>bridges</strong> connect to it. Bridges run straight (horizontal or vertical), at most two between a pair, and never cross.',
