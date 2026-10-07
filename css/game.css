@@ -1384,6 +1384,9 @@
 /* The capping neighbours that justify a 'rest'/'cap' deduction — a lighter,
    static ring so they read as supporting context, not the main answer. */
 .hashi-hint-context { fill: none; stroke: var(--game-color, #8a5a2c); stroke-width: 2; opacity: 0.5; pointer-events: none; }
+/* An already-determined neighbouring connection shown faint to justify an
+   'exact' deduction (e.g. "that link is forced to 2, so this one is 1"). */
+.hashi-bridge.hashi-hint-determined { opacity: 0.3; stroke-dasharray: 5 4; }
 /* Walk-through (assume → contradiction): the refuted assumption is dashed red,
    each forced step carries a white-haloed number, and the break is ringed red. */
 .hashi-hint-assume { stroke: var(--accent-danger, #dc3545); opacity: 0.5; stroke-dasharray: 6 4; }

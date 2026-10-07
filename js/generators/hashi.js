@@ -417,32 +417,33 @@
         // PROPAGATED bounds of its OTHER connections, and say by how much ('rest'
         // = others max out below the need, so e covers the leftover; 'cap' = others
         // already take enough, so e is capped; 'only' = e is the sole connection).
-        for (const v of [a, b]) {
-            const farOf = (k) => (G.edges[k].a === v ? G.edges[k].b : G.edges[k].a);
-            // Account for the bridges the PLAYER has actually drawn ('have'); the
-            // other still-undrawn outlets are 'free'. This keeps the reason tied to
-            // what's visible on the board rather than hidden propagated bounds.
-            let have = 0; const free = [];
-            for (const k of G.incident[v]) { if (k === e) continue; if (cur[k] === UNKNOWN) free.push(k); else have += cur[k]; }
-            const remaining = needs[v] - have;
-            if (free.length === 0) {
-                const kind = have === 0 ? 'only' : 'onlyLeft';
-                return { edge: e, value: val, reason: 'degree', anchor: { islands: [v] }, src: { island: v, need: needs[v], kind, have, value: val } };
-            }
-            let freeHi = 0, freeLo = 0;
-            for (const k of free) { freeHi += pHi[k]; freeLo += pLo[k]; }
-            if (val >= 1 && remaining - freeHi === val) {
-                // 'saturate' = even the free outlets at full 2 aren't enough (count
-                // the neighbours); 'rest' = some free outlet is capped below 2 by
-                // its neighbour, which we circle so the shortfall is visible.
-                if (free.every((k) => pHi[k] === 2)) return { edge: e, value: val, reason: 'degree', anchor: { islands: [v] }, src: { island: v, need: needs[v], kind: 'saturate', have, remaining, free: free.length, value: val } };
-                return { edge: e, value: val, reason: 'degree', anchor: { islands: [v] }, src: { island: v, need: needs[v], kind: 'rest', have, freeMax: freeHi, edges: free, isles: free.map(farOf), value: val } };
-            }
-            if (remaining - freeLo === val) {
-                const used = free.filter((k) => pLo[k] >= 1);
-                return { edge: e, value: val, reason: 'degree', anchor: { islands: [v] }, src: { island: v, need: needs[v], kind: 'cap', have, edges: used, isles: used.map(farOf), value: val } };
-            }
-        }
+        const farOf = (v, k) => (G.edges[k].a === v ? G.edges[k].b : G.edges[k].a);
+        // Pass 1 — an endpoint that FULLY determines e: all its other links are
+        // already decided, so e = need − (their total) EXACTLY (not just a bound).
+        const exactAt = (v) => {
+            const inc = G.incident[v], others = inc.filter((k) => k !== e);
+            if (others.length === 0) return { island: v, need: needs[v], kind: 'only', value: val };
+            if (others.some((k) => pLo[k] < pHi[k])) return null; // some link still open
+            let detSum = 0; for (const k of others) detSum += pLo[k];
+            if (needs[v] === 2 * inc.length) return { island: v, need: needs[v], kind: 'saturate', deg: inc.length, value: val };
+            if (others.every((k) => cur[k] !== UNKNOWN)) return { island: v, need: needs[v], kind: 'onlyLeft', have: detSum, value: val };
+            const undrawn = others.filter((k) => cur[k] === UNKNOWN); // determined but not yet drawn → show them
+            return { island: v, need: needs[v], kind: 'exact', detSum, value: val, show: undrawn.map((k) => ({ edge: k, value: pLo[k] })), isles: undrawn.map((k) => farOf(v, k)) };
+        };
+        for (const v of [a, b]) { const s = exactAt(v); if (s) return { edge: e, value: val, reason: 'degree', anchor: { islands: [v] }, src: s }; }
+        // Pass 2 — no endpoint fully pins it; fall back to an honest bound from an
+        // endpoint with still-open links (lower = 'rest', upper = 'cap').
+        const boundAt = (v) => {
+            const others = G.incident[v].filter((k) => k !== e);
+            const open = others.filter((k) => pLo[k] < pHi[k]);
+            if (open.length === 0) return null;
+            let detSum = 0; for (const k of others) if (pLo[k] === pHi[k]) detSum += pLo[k];
+            let openHi = 0, openLo = 0; for (const k of open) { openHi += pHi[k]; openLo += pLo[k]; }
+            if (val >= 1 && needs[v] - detSum - openHi === val) return { island: v, need: needs[v], kind: 'rest', value: val, openMax: openHi, edges: open, isles: open.map((k) => farOf(v, k)) };
+            if (needs[v] - detSum - openLo === val) { const used = open.filter((k) => pLo[k] >= 1); return { island: v, need: needs[v], kind: 'cap', value: val, edges: used, isles: used.map((k) => farOf(v, k)) }; }
+            return null;
+        };
+        for (const v of [a, b]) { const s = boundAt(v); if (s) return { edge: e, value: val, reason: 'degree', anchor: { islands: [v] }, src: s }; }
         return { edge: e, value: val, reason: 'degree', anchor: { islands: [a, b] } };
     }
 
@@ -756,6 +757,6 @@
     global.PuzzleSolvers.hashi = { buildGraph, propagate, countSolutions, verify, nextStep, nextStepDeep, solvesBy, UNKNOWN };
     global.PuzzleGenerators.hashiInternals = {
         buildGraph, propagate, countSolutions, solveProp, solvesBy, trialPass, effort, propDepth, verify,
-        nextStep, nextStepDeep, growNetwork, attemptsFor, possibleConnected, cutEdges, DIFFS, UNKNOWN,
+        nextStep, nextStepDeep, annotateStep, propagateTraced, growNetwork, attemptsFor, possibleConnected, cutEdges, DIFFS, UNKNOWN,
     };
 })(typeof window !== 'undefined' ? window : this);

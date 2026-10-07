@@ -409,8 +409,9 @@
                 if (!s) return `The circled island’s number forces the highlighted connection to ${actEn(h.value)}.`;
                 if (s.kind === 'only') return `The circled ${s.need} has only this one connection, so it must ${actEn(s.value)}.`;
                 if (s.kind === 'onlyLeft') return `The circled ${s.need} already has ${s.have}; this is its only connection left, so the remaining ${s.value} must go here.`;
-                if (s.kind === 'saturate') return `The circled ${s.need} still needs ${s.remaining}, but its other ${s.free} connection${s.free === 1 ? '' : 's'} can’t hold that much even when full, so this one must ${actEn(s.value)}.`;
-                if (s.kind === 'rest') return `The circled ${s.need}: its other open connections (circled) can add at most ${s.freeMax} more, so the rest must come from here — ${actEn(s.value)}.`;
+                if (s.kind === 'saturate') return `The circled ${s.need} has only ${s.deg} neighbours, so every connection must be two bridges — including this one.`;
+                if (s.kind === 'exact') return `The circled ${s.need}: its other connections are already fixed at ${s.detSum} total (shown faint), so this one must be ${s.value} (${s.need}−${s.detSum}).`;
+                if (s.kind === 'rest') return `The circled ${s.need}: its other open connections (circled) can add at most ${s.openMax} more, so the rest must come from here — ${actEn(s.value)}.`;
                 if (s.value === 0) return `The circled ${s.need} is about to be filled by its other connections, so this one must stay empty.`;
                 return `The circled ${s.need}: its other connections already commit enough, so this one must ${actEn(s.value)}.`;
             },
@@ -437,8 +438,9 @@
                 if (!s) return `圈起來那座島的數字逼出：醒目的這條必須${actZh(h.value)}。`;
                 if (s.kind === 'only') return `圈起來的 ${s.need} 只有這一條連線，所以它必須${actZh(s.value)}。`;
                 if (s.kind === 'onlyLeft') return `圈起來的 ${s.need} 已接 ${s.have} 座，只剩這一條連線還沒連，所以剩下的 ${s.value} 座只能走這條。`;
-                if (s.kind === 'saturate') return `圈起來的 ${s.need} 還差 ${s.remaining} 座，其他 ${s.free} 條連線就算都接滿也不夠，所以這條必須${actZh(s.value)}。`;
-                if (s.kind === 'rest') return `圈起來的 ${s.need}：其他還沒連的連線（圈起來的鄰居）最多只能再給 ${s.freeMax} 座，剩下的只能走這條，所以必須${actZh(s.value)}。`;
+                if (s.kind === 'saturate') return `圈起來的 ${s.need} 只有 ${s.deg} 個鄰居，要湊滿 ${s.need} 就得每條都架兩座，所以這條架兩座。`;
+                if (s.kind === 'exact') return `圈起來的 ${s.need}：其他連線已被確定為共 ${s.detSum} 座（淡色顯示），所以這條只能是 ${s.value} 座（${s.need}−${s.detSum}）。`;
+                if (s.kind === 'rest') return `圈起來的 ${s.need}：其他還沒定的連線（圈起來的鄰居）最多只能再給 ${s.openMax} 座，剩下的只能走這條，所以必須${actZh(s.value)}。`;
                 if (s.value === 0) return `圈起來的 ${s.need} 其他連線即將接滿，所以這條必須留空。`;
                 return `圈起來的 ${s.need}：其他連線已占掉剩餘額度，所以這條必須${actZh(s.value)}。`;
             },
@@ -588,6 +590,7 @@
         // deduce: anchor the source, show the capping neighbours/connections that
         // justify it (so "others can only hold N" is visible), then band + ghost
         // the forced connection.
+        if (h.src && h.src.show) for (const s of h.src.show) ghostEdge(s.edge, s.value, 'hashi-bridge hashi-hint-determined');
         if (h.src && h.src.edges) for (const k of h.src.edges) bandEdge(k, 'hashi-hint-source');
         if (h.src && h.src.isles) for (const w of h.src.isles) ringIsland(w, 'hashi-hint-context');
         if (h.anchor) {
