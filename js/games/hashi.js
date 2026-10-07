@@ -221,8 +221,7 @@
                 active.add(ed.a); active.add(ed.b);
                 const cur = state.edgeVal[d.pending];
                 const nv = d.button === 2 ? (cur + 2) % 3 : (cur + 1) % 3;
-                if (nv >= 1 && crossingBlocked(d.pending)) drawBridge(bl, d.pending, nv, 'hashi-pending-line blocked', sw, offUnit);
-                else if (nv === 0) drawBridge(bl, d.pending, Math.max(1, cur), 'hashi-pending-line erase', sw, offUnit);
+                if (nv === 0) drawBridge(bl, d.pending, Math.max(1, cur), 'hashi-pending-line erase', sw, offUnit);
                 else drawBridge(bl, d.pending, nv, 'hashi-pending-line', sw, offUnit);
             }
         }
@@ -276,6 +275,7 @@
     function edgeAtPoint(pt) {
         let best = -1, bestD = state.cs * 0.4;
         for (let e = 0; e < state.G.edges.length; e++) {
+            if (crossingBlocked(e)) continue; // a corridor an existing bridge crosses isn't a real option
             const { a, b } = state.G.edges[e];
             const A = state.islands[a], B = state.islands[b];
             const ax = cx(A.c), ay = cy(A.r), bx = cx(B.c), by = cy(B.r);
@@ -298,6 +298,7 @@
         const dir = Math.abs(dx) > Math.abs(dy) ? (dx > 0 ? 'R' : 'L') : (dy > 0 ? 'D' : 'U');
         const e = state.dirEdge[from][dir];
         if (e === undefined) return -1;
+        if (crossingBlocked(e)) return -1; // dragging toward a crossed-out corridor does nothing
         const ed = state.G.edges[e], nb = ed.a === from ? ed.b : ed.a;
         const vx = cx(state.islands[nb].c) - ax, vy = cy(state.islands[nb].r) - ay, L2 = (vx * vx + vy * vy) || 1;
         const t = (dx * vx + dy * vy) / L2;
@@ -312,7 +313,7 @@
         const button = btn === 2 ? 2 : 0;
         let drag = null;
         const from = nearestIsland(pt);
-        if (from >= 0) drag = { pointerId: ev.pointerId, button, from, pending: -1, mode: 'island' };
+        if (from >= 0) drag = { pointerId: ev.pointerId, button, from, pending: -1, mode: 'island', moved: false, sx: pt.x, sy: pt.y };
         else { const e = edgeAtPoint(pt); if (e >= 0) drag = { pointerId: ev.pointerId, button, edge: e, mode: 'bridge' }; }
         if (!drag) return;
         ev.preventDefault();
@@ -325,6 +326,7 @@
         const d = state.dragging;
         if (!d || ev.pointerId !== d.pointerId || d.mode !== 'island') return;
         const pt = eventToPoint(ev); if (!pt) return;
+        if (!d.moved && Math.hypot(pt.x - d.sx, pt.y - d.sy) > state.cs * 0.25) d.moved = true;
         const pend = pendingFromDrag(d.from, pt);
         if (pend !== d.pending) { d.pending = pend; repaint(); }
     }
@@ -335,7 +337,7 @@
         state.dragging = null;
         if (d.mode === 'bridge') { cycleEdge(d.edge, d.button); return; }
         if (d.pending >= 0) cycleEdge(d.pending, d.button); // dragged island → island
-        else toggleDone(d.from);                            // tapped an island
+        else if (!d.moved) toggleDone(d.from);              // tapped an island (not a drag that went nowhere)
     }
 
     // A bridge here would cross one that's already on the board (two bridges may
@@ -349,10 +351,7 @@
     function cycleEdge(e, button) {
         const v = state.edgeVal[e];
         const nv = button === 2 ? (v + 2) % 3 : (v + 1) % 3;
-        if (nv >= 1 && crossingBlocked(e)) {
-            if (PC.toast) PC.toast.show(PC.i18n.t('hashiCrossBlocked'));
-            return; // never lay a bridge across an existing one
-        }
+        if (nv >= 1 && crossingBlocked(e)) return; // safety: crossed-out corridors are inert
         pushUndo();
         state.edgeVal[e] = nv;
         afterChange();

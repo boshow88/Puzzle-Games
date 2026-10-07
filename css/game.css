@@ -1359,7 +1359,7 @@
    amber "count satisfied" tint and the red error state (which override it). */
 .hashi-island.marked .hashi-isle-disc { fill: #dfeadf; stroke: #94b394; }
 .hashi-island.marked .hashi-isle-num { fill: #5f8a5f; }
-.hashi-island.bad .hashi-isle-disc { fill: rgba(220, 53, 69, 0.15); stroke: var(--accent-danger, #dc3545); }
+.hashi-island.bad .hashi-isle-disc { fill: #f8dcdc; stroke: var(--accent-danger, #dc3545); }
 .hashi-island.bad .hashi-isle-num { fill: var(--accent-danger, #dc3545); }
 .hashi-island.won .hashi-isle-disc { fill: #fde68a; stroke: #d4a017; }
 /* Each island pops about ITS OWN centre. The disc/number carry absolute cx/cy,
@@ -1378,7 +1378,6 @@
 /* Drag preview of the bridge about to be built (solid) or removed (dashed). */
 .hashi-pending-line { stroke: var(--game-color, #8a5a2c); stroke-linecap: round; opacity: 0.4; }
 .hashi-pending-line.erase { stroke: #94a3b8; stroke-dasharray: 5 4; opacity: 0.7; }
-.hashi-pending-line.blocked { stroke: #e5484d; stroke-dasharray: 3 5; opacity: 0.6; }
 
 /* Hint: a highlight band along the forced connection, a ghost of the bridges to
    build, and rings on conflicting islands. */
