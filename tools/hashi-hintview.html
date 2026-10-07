@@ -71,8 +71,8 @@
 
     async function main() {
       document.getElementById('root').textContent = '';
-      // Deduce panel: find an 'atleast' (one-short-of-full) step — the island is
-      // circled, the connection that must take at least one is band+ghosted.
+      // Deduce panel: find an 'eachOne' (one-short-of-full) step — the island is
+      // circled and EVERY direction is band+ghosted (each must take at least one).
       for (let seed = 1; seed <= 200; seed++) {
         const p = await window.PuzzleGenerators.hashi(9, 'hard', seed); loadBoard(p);
         const needs = islands.map((i) => i.need);
@@ -81,10 +81,10 @@
         for (let t = 0; t < 80; t++) {
           const s = HS.nextStep(G, needs, ev);
           if (!s) break;
-          if (s.reason === 'degree' && s.src && s.src.kind === 'atleast') { found = s; break; }
+          if (s.reason === 'degree' && s.src && s.src.kind === 'eachOne') { found = s; break; }
           ev[s.edge] = s.value;
         }
-        if (found) { render('Deduce (atleast / one-short): dashed ring = island, band+ghost = the connection that must take at least one bridge', ev, { kind: 'deduce', edge: found.edge, value: found.value, atLeast: found.atLeast, reason: found.reason, anchor: found.anchor, src: found.src }); break; }
+        if (found) { render('Deduce (eachOne / one-short-of-full): dashed ring = island, every direction band+ghosted = each must take at least one bridge', ev, { kind: 'deduce', edge: found.edge, value: found.value, atLeast: found.atLeast, reason: found.reason, anchor: found.anchor, src: found.src }); break; }
       }
       // Deep panel: a hard board, play forced moves until stuck, then deep hint.
       for (let seed = 1; seed <= 60; seed++) {

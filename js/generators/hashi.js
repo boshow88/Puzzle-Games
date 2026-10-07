@@ -388,7 +388,7 @@
         if (!propagate(G, needs, lo, hi, true)) return null;
         // Rank by how self-evident the reason is: a single island's own number +
         // the bridges already drawn comes first.
-        const RANK = { sole: 0, saturate: 1, onlyLeft: 1, saturateRest: 2, cut: 3, atleast: 3, share: 4, degree: 5 };
+        const RANK = { sole: 0, saturate: 1, onlyLeft: 1, saturateRest: 2, eachOne: 3, cut: 3, atleast: 4, share: 5, degree: 6 };
         let best = null, bestScore = Infinity;
         for (let e = 0; e < E; e++) {
             if (lo[e] <= drawn[e]) continue; // this edge already has all the bridges it's forced to
@@ -444,15 +444,22 @@
             const value = drawn[e] + eAddLo;
             const atLeast = eAddLo < Math.min(addMax(e), remaining);
             const k = open.length;
+            const allTwo = open.every((k2) => addMax(k2) === 2);
             let kind;
             if (k === 1) kind = (cSum === 0 ? 'sole' : 'onlyLeft');
             // "Saturate" (N = directions × 2) only when every open direction can truly
             // take two — otherwise the "× 2" story is false and it's a shortfall case.
-            else if (remaining === 2 * k && open.every((k2) => addMax(k2) === 2)) kind = (cSum === 0 ? 'saturate' : 'saturateRest');
+            else if (remaining === 2 * k && allTwo) kind = (cSum === 0 ? 'saturate' : 'saturateRest');
+            // One-short-of-full (N = directions × 2 − 1): leaving any direction empty
+            // can't reach the number, so EVERY direction must take at least one bridge.
+            else if (remaining === 2 * k - 1 && allTwo) kind = 'eachOne';
             else kind = 'atleast';
             const src = { island: v, need: needs[v], have: cSum, open: k, remaining, otherMax: otherAdd, add: eAddLo, value, atLeast, kind };
             if (kind === 'saturate' || kind === 'saturateRest') {
                 src.fan = open.map((k2) => ({ edge: k2, value: drawn[k2] + addMax(k2) }));
+                src.isles = open.map((k2) => far(v, k2));
+            } else if (kind === 'eachOne') {
+                src.fan = open.map((k2) => ({ edge: k2, value: drawn[k2] + 1 })); // at least one per direction
                 src.isles = open.map((k2) => far(v, k2));
             }
             return src;
