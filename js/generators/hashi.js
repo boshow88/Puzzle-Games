@@ -508,6 +508,21 @@
         return best ? { edge: best.edge, value: best.value, assume: best.assume, chain: best.chain, bad: best.bad } : null;
     }
 
+    /** Walk-through for an edge forced by connectivity: assume it stays empty and
+     *  trace the forced consequences until the rule breaks (an island is stranded,
+     *  or a count can't be met). Returns { chain:[{edge,value}], bad } — chain has
+     *  the intermediate forced steps to follow (empty if the break is immediate) —
+     *  or null if assuming it empty is actually fine. */
+    function refuteEmpty(G, needs, drawn, e) {
+        const E = G.edges.length;
+        const lo = new Int8Array(E), hi = new Int8Array(E).fill(2);
+        for (let k = 0; k < E; k++) lo[k] = drawn[k];
+        lo[e] = 0; hi[e] = 0; // assume this corridor stays empty
+        const tr = propagateTraced(G, needs, lo, hi);
+        if (tr.ok) return null;
+        return { chain: tr.chain || [], bad: tr.bad || null };
+    }
+
     /** Verify a player's full edge-value array solves the puzzle. */
     function verify(G, needs, vals) {
         const E = G.edges.length;
@@ -812,7 +827,7 @@
     if (!global.PuzzleGenerators) global.PuzzleGenerators = {};
     if (!global.PuzzleSolvers) global.PuzzleSolvers = {};
     global.PuzzleGenerators.hashi = generate;
-    global.PuzzleSolvers.hashi = { buildGraph, propagate, countSolutions, verify, nextStep, nextStepDeep, solvesBy, UNKNOWN };
+    global.PuzzleSolvers.hashi = { buildGraph, propagate, countSolutions, verify, nextStep, nextStepDeep, refuteEmpty, solvesBy, UNKNOWN };
     global.PuzzleGenerators.hashiInternals = {
         buildGraph, propagate, countSolutions, solveProp, solvesBy, trialPass, effort, propDepth, verify,
         nextStep, nextStepDeep, annotateStep, propagateTraced, growNetwork, attemptsFor, possibleConnected, cutEdges, DIFFS, UNKNOWN,
