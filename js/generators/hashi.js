@@ -539,9 +539,9 @@
     //     capped so it never needs a brutal amount. Fewer cycle bridges ⇒ more
     //     lookahead boards (but lower uniqueness), so Hard runs a low cycleBias.
     const DIFFS = {
-        easy:   { density: 0.16, cycleBias: 1.6, doubleFrac: 0.35, mode: 'shallow' },
-        medium: { density: 0.16, cycleBias: 1.0, doubleFrac: 0.30, mode: 'deep' },
-        hard:   { density: 0.17, cycleBias: 0.35, doubleFrac: 0.45, mode: 'lookahead', elimCapMul: 0.8 },
+        easy:   { density: 0.24, cycleBias: 1.6, doubleFrac: 0.35, mode: 'shallow' },
+        medium: { density: 0.24, cycleBias: 1.0, doubleFrac: 0.30, mode: 'deep' },
+        hard:   { density: 0.24, cycleBias: 0.35, doubleFrac: 0.45, mode: 'lookahead', elimCapMul: 0.8 },
     };
 
     /** Fraction of islands whose number already maxes out every direction
