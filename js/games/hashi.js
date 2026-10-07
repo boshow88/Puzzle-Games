@@ -468,6 +468,9 @@
         repaint();
         if (!state.won && rulesSatisfied()) {
             state.won = true;
+            // Drop any hover so a later mouse-move's hover-clear can't repaint the
+            // board and restart the win pop (which looked like a second bounce).
+            state.hoverEdge = -1; state.hoverIsland = -1;
             shell.markSolved();
             clearViolations();
             clearHint();
