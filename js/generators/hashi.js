@@ -386,10 +386,10 @@
         // connection when nothing buildable is left (the player can't draw a 0).
         let zero = -1;
         for (let e = 0; e < E; e++) if (lo[e] === hi[e] && cur[e] !== lo[e]) {
-            if (lo[e] >= 1) return annotateStep(G, needs, cur, e, lo[e], hi);
+            if (lo[e] >= 1) return annotateStep(G, needs, cur, e, lo[e], lo, hi);
             if (zero < 0) zero = e;
         }
-        return zero >= 0 ? annotateStep(G, needs, cur, zero, 0, hi) : null;
+        return zero >= 0 ? annotateStep(G, needs, cur, zero, 0, lo, hi) : null;
     }
 
     /** Explain why edge e is forced to `val`: 'cross' (a placed perpendicular
@@ -397,10 +397,10 @@
      *  island's number pins it). `anchor` points the UI at the source (the
      *  crossing bridge, or the island(s)); `src` carries that island's number and
      *  current bridge count for concrete wording. */
-    function annotateStep(G, needs, cur, e, val, pHi) {
+    function annotateStep(G, needs, cur, e, val, pLo, pHi) {
         const { a, b } = G.edges[e], E = G.edges.length;
-        const cLo = new Int8Array(E), cHi = new Int8Array(E).fill(2);
-        for (let k = 0; k < E; k++) if (cur[k] !== UNKNOWN) { cLo[k] = cur[k]; cHi[k] = cur[k]; }
+        const cLo = new Int8Array(E);
+        for (let k = 0; k < E; k++) if (cur[k] !== UNKNOWN) cLo[k] = cur[k];
         if (val === 0) {
             for (const f of G.cross[e]) if (cLo[f] >= 1) return { edge: e, value: val, reason: 'cross', anchor: { edges: [f] } };
         }
@@ -408,13 +408,28 @@
             const hi2 = pHi.slice(); hi2[e] = 0;
             if (!possibleConnected(G, hi2)) return { edge: e, value: val, reason: 'cut', anchor: { islands: [a, b] } };
         }
+        // Degree: attribute to the endpoint island whose number pins e, using the
+        // PROPAGATED bounds of its OTHER connections, and say by how much ('rest'
+        // = others max out below the need, so e covers the leftover; 'cap' = others
+        // already take enough, so e is capped; 'only' = e is the sole connection).
         for (const v of [a, b]) {
-            let sumLo = 0, sumHi = 0, have = 0;
-            for (const k of G.incident[v]) { sumLo += cLo[k]; sumHi += cHi[k]; have += cLo[k]; }
-            const forceLo = needs[v] - (sumHi - cHi[e]);
-            const forceHi = needs[v] - (sumLo - cLo[e]);
-            if ((val > 0 && forceLo >= val) || (val === 0 && forceHi <= 0)) {
-                return { edge: e, value: val, reason: 'degree', anchor: { islands: [v] }, src: { island: v, need: needs[v], have } };
+            const others = G.incident[v].filter((k) => k !== e);
+            if (others.length === 0) return { edge: e, value: val, reason: 'degree', anchor: { islands: [v] }, src: { island: v, need: needs[v], kind: 'only', value: val } };
+            let sumHiO = 0, sumLoO = 0;
+            for (const k of others) { sumHiO += pHi[k]; sumLoO += pLo[k]; }
+            const farOf = (k) => (G.edges[k].a === v ? G.edges[k].b : G.edges[k].a);
+            if (val >= 1 && needs[v] - sumHiO === val) {
+                // 'saturate' = even maxing every other outlet (all still 2) isn't
+                // enough, so e takes the remainder (verifiable by counting
+                // neighbours); 'rest' = some outlets are capped below 2 by their
+                // neighbours, which we circle so the shortfall is visible.
+                const capped = others.some((k) => pHi[k] < 2);
+                if (!capped) return { edge: e, value: val, reason: 'degree', anchor: { islands: [v] }, src: { island: v, need: needs[v], kind: 'saturate', value: val, deg: G.incident[v].length, othersMax: sumHiO } };
+                return { edge: e, value: val, reason: 'degree', anchor: { islands: [v] }, src: { island: v, need: needs[v], kind: 'rest', value: val, othersMax: sumHiO, edges: others, isles: others.map(farOf) } };
+            }
+            if (needs[v] - sumLoO === val) {
+                const used = others.filter((k) => pLo[k] >= 1);
+                return { edge: e, value: val, reason: 'degree', anchor: { islands: [v] }, src: { island: v, need: needs[v], kind: 'cap', value: val, othersMin: sumLoO, edges: used, isles: used.map(farOf) } };
             }
         }
         return { edge: e, value: val, reason: 'degree', anchor: { islands: [a, b] } };

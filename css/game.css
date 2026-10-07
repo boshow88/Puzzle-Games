@@ -1381,6 +1381,9 @@
    or the placed crossing bridge that rules it out (dashed band). */
 .hashi-hint-anchor { fill: none; stroke: var(--game-color, #8a5a2c); stroke-width: 2.5; stroke-dasharray: 4 3; pointer-events: none; animation: zip-hint-pulse 1.15s ease-in-out infinite; }
 .hashi-hint-source { stroke: var(--game-color, #8a5a2c); opacity: 0.45; stroke-dasharray: 6 4; }
+/* The capping neighbours that justify a 'rest'/'cap' deduction — a lighter,
+   static ring so they read as supporting context, not the main answer. */
+.hashi-hint-context { fill: none; stroke: var(--game-color, #8a5a2c); stroke-width: 2; opacity: 0.5; pointer-events: none; }
 /* Walk-through (assume → contradiction): the refuted assumption is dashed red,
    each forced step carries a white-haloed number, and the break is ringed red. */
 .hashi-hint-assume { stroke: var(--accent-danger, #dc3545); opacity: 0.5; stroke-dasharray: 6 4; }

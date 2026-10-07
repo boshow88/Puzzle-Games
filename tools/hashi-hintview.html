@@ -67,12 +67,21 @@
 
     async function main() {
       document.getElementById('root').textContent = '';
-      // Deduce-anchor panel: an easy board, first forced step from empty.
-      {
-        const p = await window.PuzzleGenerators.hashi(9, 'easy', 7); loadBoard(p);
+      // Deduce-anchor panel: find a 'rest'/'cap' degree step (shows the capping
+      // neighbours circled as context).
+      for (let seed = 1; seed <= 120; seed++) {
+        const p = await window.PuzzleGenerators.hashi(9, 'easy', seed); loadBoard(p);
+        const needs = islands.map((i) => i.need);
         const ev = new Int8Array(G.edges.length);
-        const step = HS.nextStep(G, islands.map((i) => i.need), playerCur(ev));
-        render('Deduce: dashed ring = source island, band+ghost = forced bridge (' + (step && step.reason) + ')', ev, step ? { kind: 'deduce', edge: step.edge, value: step.value, reason: step.reason, anchor: step.anchor, src: step.src } : null);
+        const cur = new Int8Array(G.edges.length).fill(UNKNOWN);
+        let found = null;
+        for (let t = 0; t < 40; t++) {
+          const s = HS.nextStep(G, needs, cur);
+          if (!s) break;
+          if (s.reason === 'degree' && s.src && (s.src.kind === 'rest' || s.src.kind === 'cap')) { found = s; break; }
+          cur[s.edge] = s.value; if (s.value >= 1) ev[s.edge] = s.value;
+        }
+        if (found) { render('Deduce (' + found.src.kind + '): dashed ring = source, lighter rings = capping neighbours, band+ghost = forced bridge', ev, { kind: 'deduce', edge: found.edge, value: found.value, reason: found.reason, anchor: found.anchor, src: found.src }); break; }
       }
       // Deep panel: a hard board, play forced moves until stuck, then deep hint.
       for (let seed = 1; seed <= 40; seed++) {

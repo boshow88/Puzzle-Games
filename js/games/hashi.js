@@ -401,9 +401,15 @@
                     ? 'The highlighted bridges cross each other — bridges may never cross.'
                     : 'The highlighted island has more bridges than its number allows.',
             wrong: 'The highlighted bridge(s) disagree with the unique solution — remove or re-count them.',
-            degree: (h) => (h.src
-                ? `The circled ${h.src.need} already has ${h.src.have} bridge${h.src.have === 1 ? '' : 's'}, so the highlighted connection must ${actEn(h.value)}.`
-                : `The circled island’s number forces the highlighted connection to ${actEn(h.value)}.`),
+            degree: (h) => {
+                const s = h.src;
+                if (!s) return `The circled island’s number forces the highlighted connection to ${actEn(h.value)}.`;
+                if (s.kind === 'only') return `The circled ${s.need} has only this one connection, so it must ${actEn(s.value)}.`;
+                if (s.kind === 'saturate') return `The circled ${s.need} has just ${s.deg} neighbours — even filled they only hold ${s.othersMax} elsewhere, so this one must ${actEn(s.value)}.`;
+                if (s.kind === 'rest') return `The circled ${s.need}: its other neighbours (also circled) can hold at most ${s.othersMax} more, so the rest must come from here — ${actEn(s.value)}.`;
+                if (s.value === 0) return `The circled ${s.need} is already full from its other connections (circled), so this one must stay empty.`;
+                return `The circled ${s.need}: its other connections (circled) already take ${s.othersMin}, so this one can be at most ${s.value} — ${actEn(s.value)}.`;
+            },
             cross: 'The circled bridge is in the way, so the highlighted connection must stay empty.',
             cut: (h) => `Without the highlighted bridge the circled island could never connect, so it must ${actEn(h.value)}.`,
             deep: (h) => {
@@ -422,9 +428,15 @@
                     ? '醒目的橋互相交叉了——橋絕不能交叉。'
                     : '醒目的島橋數超過它的數字了。',
             wrong: '醒目的橋與唯一解不符——請移除或重算它們。',
-            degree: (h) => (h.src
-                ? `圈起來的 ${h.src.need} 已經接了 ${h.src.have} 座橋，所以醒目的這條必須${actZh(h.value)}。`
-                : `圈起來那座島的數字逼出：醒目的這條必須${actZh(h.value)}。`),
+            degree: (h) => {
+                const s = h.src;
+                if (!s) return `圈起來那座島的數字逼出：醒目的這條必須${actZh(h.value)}。`;
+                if (s.kind === 'only') return `圈起來的 ${s.need} 只有這一條連線，所以它必須${actZh(s.value)}。`;
+                if (s.kind === 'saturate') return `圈起來的 ${s.need} 只有 ${s.deg} 個鄰居，其他邊全接滿也只有 ${s.othersMax} 座，所以這條必須${actZh(s.value)}。`;
+                if (s.kind === 'rest') return `圈起來的 ${s.need}：它其他的鄰居（也圈起來了）合計最多只能再吃 ${s.othersMax} 座，剩下的只能走這條，所以必須${actZh(s.value)}。`;
+                if (s.value === 0) return `圈起來的 ${s.need} 已被其他連線（圈起來的）接滿，所以這條必須留空。`;
+                return `圈起來的 ${s.need}：其他連線（圈起來的）已占掉 ${s.othersMin} 座，所以這條最多 ${s.value} 座，必須${actZh(s.value)}。`;
+            },
             cross: '圈起來的橋擋住了，所以醒目的這條必須留空。',
             cut: (h) => `少了醒目的這座橋，圈起來的島就連不進來，所以它必須${actZh(h.value)}。`,
             deep: (h) => {
@@ -550,8 +562,11 @@
             badMark(h.bad);
             return;
         }
-        // deduce: anchor the source (island ring / crossing bridge), then band +
-        // ghost the forced connection.
+        // deduce: anchor the source, show the capping neighbours/connections that
+        // justify it (so "others can only hold N" is visible), then band + ghost
+        // the forced connection.
+        if (h.src && h.src.edges) for (const k of h.src.edges) bandEdge(k, 'hashi-hint-source');
+        if (h.src && h.src.isles) for (const w of h.src.isles) ringIsland(w, 'hashi-hint-context');
         if (h.anchor) {
             if (h.anchor.islands) for (const v of h.anchor.islands) ringIsland(v, 'hashi-hint-anchor');
             if (h.anchor.edges) for (const e of h.anchor.edges) bandEdge(e, 'hashi-hint-source');
