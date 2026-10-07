@@ -408,10 +408,11 @@
                 const s = h.src;
                 if (!s) return `The circled island’s number forces the highlighted connection to ${actEn(h.value)}.`;
                 if (s.kind === 'only') return `The circled ${s.need} has only this one connection, so it must ${actEn(s.value)}.`;
-                if (s.kind === 'saturate') return `The circled ${s.need} has just ${s.deg} neighbours — even filled they only hold ${s.othersMax} elsewhere, so this one must ${actEn(s.value)}.`;
-                if (s.kind === 'rest') return `The circled ${s.need}: its other neighbours (also circled) can hold at most ${s.othersMax} more, so the rest must come from here — ${actEn(s.value)}.`;
-                if (s.value === 0) return `The circled ${s.need} is already full from its other connections (circled), so this one must stay empty.`;
-                return `The circled ${s.need}: its other connections (circled) already take ${s.othersMin}, so this one can be at most ${s.value} — ${actEn(s.value)}.`;
+                if (s.kind === 'onlyLeft') return `The circled ${s.need} already has ${s.have}; this is its only connection left, so the remaining ${s.value} must go here.`;
+                if (s.kind === 'saturate') return `The circled ${s.need} still needs ${s.remaining}, but its other ${s.free} connection${s.free === 1 ? '' : 's'} can’t hold that much even when full, so this one must ${actEn(s.value)}.`;
+                if (s.kind === 'rest') return `The circled ${s.need}: its other open connections (circled) can add at most ${s.freeMax} more, so the rest must come from here — ${actEn(s.value)}.`;
+                if (s.value === 0) return `The circled ${s.need} is about to be filled by its other connections, so this one must stay empty.`;
+                return `The circled ${s.need}: its other connections already commit enough, so this one must ${actEn(s.value)}.`;
             },
             cross: 'The circled bridge is in the way, so the highlighted connection must stay empty.',
             cut: (h) => `Without the highlighted bridge the circled island could never connect, so it must ${actEn(h.value)}.`,
@@ -435,10 +436,11 @@
                 const s = h.src;
                 if (!s) return `圈起來那座島的數字逼出：醒目的這條必須${actZh(h.value)}。`;
                 if (s.kind === 'only') return `圈起來的 ${s.need} 只有這一條連線，所以它必須${actZh(s.value)}。`;
-                if (s.kind === 'saturate') return `圈起來的 ${s.need} 只有 ${s.deg} 個鄰居，其他邊全接滿也只有 ${s.othersMax} 座，所以這條必須${actZh(s.value)}。`;
-                if (s.kind === 'rest') return `圈起來的 ${s.need}：它其他的鄰居（也圈起來了）合計最多只能再吃 ${s.othersMax} 座，剩下的只能走這條，所以必須${actZh(s.value)}。`;
-                if (s.value === 0) return `圈起來的 ${s.need} 已被其他連線（圈起來的）接滿，所以這條必須留空。`;
-                return `圈起來的 ${s.need}：其他連線（圈起來的）已占掉 ${s.othersMin} 座，所以這條最多 ${s.value} 座，必須${actZh(s.value)}。`;
+                if (s.kind === 'onlyLeft') return `圈起來的 ${s.need} 已接 ${s.have} 座，只剩這一條連線還沒連，所以剩下的 ${s.value} 座只能走這條。`;
+                if (s.kind === 'saturate') return `圈起來的 ${s.need} 還差 ${s.remaining} 座，其他 ${s.free} 條連線就算都接滿也不夠，所以這條必須${actZh(s.value)}。`;
+                if (s.kind === 'rest') return `圈起來的 ${s.need}：其他還沒連的連線（圈起來的鄰居）最多只能再給 ${s.freeMax} 座，剩下的只能走這條，所以必須${actZh(s.value)}。`;
+                if (s.value === 0) return `圈起來的 ${s.need} 其他連線即將接滿，所以這條必須留空。`;
+                return `圈起來的 ${s.need}：其他連線已占掉剩餘額度，所以這條必須${actZh(s.value)}。`;
             },
             cross: '圈起來的橋擋住了，所以醒目的這條必須留空。',
             cut: (h) => `少了醒目的這座橋，圈起來的島就連不進來，所以它必須${actZh(h.value)}。`,

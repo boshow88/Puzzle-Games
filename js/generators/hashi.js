@@ -386,7 +386,7 @@
         // rank by how self-evident the reason is (only/saturate need no neighbour
         // info; rest/cap/cross/cut do, cut most), and prefer an actionable (≥1)
         // bridge over a forced-empty one.
-        const RANK = { only: 0, saturate: 1, cross: 3, rest: 4, cap: 5, degree: 4, cut: 6 };
+        const RANK = { only: 0, onlyLeft: 1, saturate: 2, cross: 3, rest: 4, cap: 5, degree: 4, cut: 6 };
         let best = null, bestScore = Infinity;
         for (let e = 0; e < E; e++) if (lo[e] === hi[e] && cur[e] !== lo[e]) {
             const step = annotateStep(G, needs, cur, e, lo[e], lo, hi);
@@ -418,23 +418,29 @@
         // = others max out below the need, so e covers the leftover; 'cap' = others
         // already take enough, so e is capped; 'only' = e is the sole connection).
         for (const v of [a, b]) {
-            const others = G.incident[v].filter((k) => k !== e);
-            if (others.length === 0) return { edge: e, value: val, reason: 'degree', anchor: { islands: [v] }, src: { island: v, need: needs[v], kind: 'only', value: val } };
-            let sumHiO = 0, sumLoO = 0;
-            for (const k of others) { sumHiO += pHi[k]; sumLoO += pLo[k]; }
             const farOf = (k) => (G.edges[k].a === v ? G.edges[k].b : G.edges[k].a);
-            if (val >= 1 && needs[v] - sumHiO === val) {
-                // 'saturate' = even maxing every other outlet (all still 2) isn't
-                // enough, so e takes the remainder (verifiable by counting
-                // neighbours); 'rest' = some outlets are capped below 2 by their
-                // neighbours, which we circle so the shortfall is visible.
-                const capped = others.some((k) => pHi[k] < 2);
-                if (!capped) return { edge: e, value: val, reason: 'degree', anchor: { islands: [v] }, src: { island: v, need: needs[v], kind: 'saturate', value: val, deg: G.incident[v].length, othersMax: sumHiO } };
-                return { edge: e, value: val, reason: 'degree', anchor: { islands: [v] }, src: { island: v, need: needs[v], kind: 'rest', value: val, othersMax: sumHiO, edges: others, isles: others.map(farOf) } };
+            // Account for the bridges the PLAYER has actually drawn ('have'); the
+            // other still-undrawn outlets are 'free'. This keeps the reason tied to
+            // what's visible on the board rather than hidden propagated bounds.
+            let have = 0; const free = [];
+            for (const k of G.incident[v]) { if (k === e) continue; if (cur[k] === UNKNOWN) free.push(k); else have += cur[k]; }
+            const remaining = needs[v] - have;
+            if (free.length === 0) {
+                const kind = have === 0 ? 'only' : 'onlyLeft';
+                return { edge: e, value: val, reason: 'degree', anchor: { islands: [v] }, src: { island: v, need: needs[v], kind, have, value: val } };
             }
-            if (needs[v] - sumLoO === val) {
-                const used = others.filter((k) => pLo[k] >= 1);
-                return { edge: e, value: val, reason: 'degree', anchor: { islands: [v] }, src: { island: v, need: needs[v], kind: 'cap', value: val, othersMin: sumLoO, edges: used, isles: used.map(farOf) } };
+            let freeHi = 0, freeLo = 0;
+            for (const k of free) { freeHi += pHi[k]; freeLo += pLo[k]; }
+            if (val >= 1 && remaining - freeHi === val) {
+                // 'saturate' = even the free outlets at full 2 aren't enough (count
+                // the neighbours); 'rest' = some free outlet is capped below 2 by
+                // its neighbour, which we circle so the shortfall is visible.
+                if (free.every((k) => pHi[k] === 2)) return { edge: e, value: val, reason: 'degree', anchor: { islands: [v] }, src: { island: v, need: needs[v], kind: 'saturate', have, remaining, free: free.length, value: val } };
+                return { edge: e, value: val, reason: 'degree', anchor: { islands: [v] }, src: { island: v, need: needs[v], kind: 'rest', have, freeMax: freeHi, edges: free, isles: free.map(farOf), value: val } };
+            }
+            if (remaining - freeLo === val) {
+                const used = free.filter((k) => pLo[k] >= 1);
+                return { edge: e, value: val, reason: 'degree', anchor: { islands: [v] }, src: { island: v, need: needs[v], kind: 'cap', have, edges: used, isles: used.map(farOf), value: val } };
             }
         }
         return { edge: e, value: val, reason: 'degree', anchor: { islands: [a, b] } };
