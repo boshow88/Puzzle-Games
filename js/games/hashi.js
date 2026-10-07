@@ -49,8 +49,11 @@
         needs: null,            // Int16Array of island numbers
         solVal: null,           // Int8Array solution bridge count per edge
         edgeVal: null,          // Int8Array player bridge count per edge (0..2)
+        edgeMark: null,         // Int8Array per-edge "count confirmed" annotation (0/1)
         doneMark: null,         // Int8Array per-island "handled" annotation
         dirEdge: null,          // per island: {U,D,L,R} → edge index
+        mode: 'build',          // 'build' (lay bridges) | 'mark' (annotate confirmed)
+        hoverEdge: -1,          // corridor under the mouse (build-mode preview)
         won: false,
         hint: null, hintBanner: null,
         dragging: null,         // { pointerId, from, pending }
@@ -77,6 +80,7 @@
             if (e >= 0) state.solVal[e] = br.v;
         }
         state.edgeVal = new Int8Array(E);
+        state.edgeMark = new Int8Array(E);                    // player's "count confirmed" flags
         state.doneMark = new Int8Array(state.islands.length); // player's "handled" flags
         // Per-island direction → edge map for drag resolution.
         state.dirEdge = state.islands.map(() => ({}));
@@ -190,6 +194,30 @@
             layer.appendChild(bridgeLine(cls, A.r, A.c, B.r, B.c, offUnit, sw));
         }
     }
+    function edgeMid(e) {
+        const { a, b } = state.G.edges[e], A = state.islands[a], B = state.islands[b];
+        return { x: (cx(A.c) + cx(B.c)) / 2, y: (cy(A.r) + cy(B.r)) / 2 };
+    }
+    // A faint dotted segment down the middle of a corridor confirmed to be empty.
+    function drawEmptyMark(layer, e) {
+        const { a, b } = state.G.edges[e], A = state.islands[a], B = state.islands[b];
+        const ax = cx(A.c), ay = cy(A.r), bx = cx(B.c), by = cy(B.r);
+        layer.appendChild(PC.svgEl('line', {
+            class: 'hashi-mark-empty', 'stroke-width': Math.max(2, state.cs * 0.05),
+            x1: ax + (bx - ax) * 0.3, y1: ay + (by - ay) * 0.3, x2: ax + (bx - ax) * 0.7, y2: ay + (by - ay) * 0.7,
+        }));
+    }
+    // A small check badge at the corridor midpoint marking its count as confirmed.
+    function drawConfirmBadge(layer, e) {
+        const m = edgeMid(e), r = Math.max(6, state.cs * 0.16), s = r * 0.55;
+        const g = PC.svgEl('g', { class: 'hashi-confirm' });
+        g.appendChild(PC.svgEl('circle', { class: 'hashi-confirm-disc', cx: m.x, cy: m.y, r }));
+        g.appendChild(PC.svgEl('path', {
+            class: 'hashi-confirm-check',
+            d: `M${m.x - s} ${m.y + s * 0.1} l${s * 0.75} ${s * 0.8} l${s * 1.25} ${-s * 1.5}`,
+        }));
+        layer.appendChild(g);
+    }
 
     function repaint() {
         const { G, cs, won } = state;
@@ -211,8 +239,23 @@
             const bad = !won && crossSet.has(e);
             drawBridge(bl, e, state.edgeVal[e], 'hashi-bridge' + (bad ? ' bad' : '') + (won ? ' won' : ''), sw, offUnit);
         }
+        // "Confirmed" marks: a dotted ghost along a corridor the player is sure is
+        // empty, plus a small check badge on any corridor whose count they've locked.
+        if (!won) {
+            for (let e = 0; e < G.edges.length; e++) {
+                if (!state.edgeMark[e] || crossingBlocked(e)) continue;
+                if (state.edgeVal[e] === 0) drawEmptyMark(bl, e);
+                drawConfirmBadge(bl, e);
+            }
+        }
         // Drag highlight + a preview of the bridge the release will lay down.
         const d = state.dragging;
+        // Build-mode hover preview: a faint ghost of what a left-click would place.
+        if (!d && !won && state.mode === 'build' && state.hoverEdge >= 0) {
+            const e = state.hoverEdge, cur = state.edgeVal[e], nv = (cur + 1) % 3;
+            if (nv === 0) drawBridge(bl, e, Math.max(1, cur), 'hashi-pending-line erase hashi-hover', sw, offUnit);
+            else drawBridge(bl, e, nv, 'hashi-pending-line hashi-hover', sw, offUnit);
+        }
         const active = new Set();
         if (d && d.mode === 'island' && !won) {
             active.add(d.from);
@@ -322,21 +365,31 @@
         state.dragging = drag;
         if (drag.mode === 'island') repaint(); // light up the start island
     }
+    function setHover(e) { if (e === state.hoverEdge) return; state.hoverEdge = e; repaint(); }
     function onPointerMove(ev) {
         const d = state.dragging;
-        if (!d || ev.pointerId !== d.pointerId || d.mode !== 'island') return;
-        const pt = eventToPoint(ev); if (!pt) return;
-        if (!d.moved && Math.hypot(pt.x - d.sx, pt.y - d.sy) > state.cs * 0.25) d.moved = true;
-        const pend = pendingFromDrag(d.from, pt);
-        if (pend !== d.pending) { d.pending = pend; repaint(); }
+        if (d) {
+            if (ev.pointerId !== d.pointerId || d.mode !== 'island') return;
+            const pt = eventToPoint(ev); if (!pt) return;
+            if (!d.moved && Math.hypot(pt.x - d.sx, pt.y - d.sy) > state.cs * 0.25) d.moved = true;
+            const pend = pendingFromDrag(d.from, pt);
+            if (pend !== d.pending) { d.pending = pend; repaint(); }
+            return;
+        }
+        // Hover preview — mouse only (touch has no hover), build mode only.
+        if (ev.pointerType && ev.pointerType !== 'mouse') return;
+        if (!state.puzzle || state.won || state.mode !== 'build') { setHover(-1); return; }
+        const pt = eventToPoint(ev);
+        setHover(pt ? edgeAtPoint(pt) : -1); // edgeAtPoint already skips blocked corridors + island ends
     }
     function onPointerEnd(ev) {
         const d = state.dragging;
         if (!d || ev.pointerId !== d.pointerId) return;
         try { board.releasePointerCapture(ev.pointerId); } catch (_) { /* ignore */ }
         state.dragging = null;
-        if (d.mode === 'bridge') { cycleEdge(d.edge, d.button); return; }
-        if (d.pending >= 0) cycleEdge(d.pending, d.button); // dragged island → island
+        const mark = state.mode === 'mark';
+        if (d.mode === 'bridge') { if (mark) toggleEdgeMark(d.edge); else cycleEdge(d.edge, d.button); return; }
+        if (d.pending >= 0) { if (mark) toggleEdgeMark(d.pending); else cycleEdge(d.pending, d.button); } // dragged island → island
         else if (!d.moved) toggleDone(d.from);              // tapped an island (not a drag that went nowhere)
     }
 
@@ -354,7 +407,31 @@
         if (nv >= 1 && crossingBlocked(e)) return; // safety: crossed-out corridors are inert
         pushUndo();
         state.edgeVal[e] = nv;
+        state.edgeMark[e] = 0; // changing the count drops any prior "confirmed" mark
         afterChange();
+    }
+
+    // Toggle the "I'm sure of this corridor's count" annotation (0/1/2). Like the
+    // island done-flag it's a personal memo — undoable, and it never affects the
+    // puzzle. Corridors an existing bridge crosses can't be marked.
+    function toggleEdgeMark(e) {
+        if (crossingBlocked(e)) return;
+        pushUndo();
+        state.edgeMark[e] ^= 1;
+        repaint();
+        updateUndoButton();
+    }
+
+    function setMode(m) {
+        if (m !== 'build' && m !== 'mark') return;
+        state.mode = m;
+        const tools = document.getElementById('hashi-tools');
+        if (tools) for (const b of tools.querySelectorAll('.hashi-tool')) {
+            const on = b.dataset.mode === m;
+            b.classList.toggle('active', on);
+            b.setAttribute('aria-checked', on ? 'true' : 'false');
+        }
+        setHover(-1);
     }
 
     // A personal "I've finished this island" flag. It doesn't affect the puzzle,
@@ -385,10 +462,11 @@
     // -----------------------------------------------------------------
     // Undo
     // -----------------------------------------------------------------
-    function snapshotState() { return { edgeVal: state.edgeVal.slice(), doneMark: state.doneMark.slice() }; }
+    function snapshotState() { return { edgeVal: state.edgeVal.slice(), edgeMark: state.edgeMark.slice(), doneMark: state.doneMark.slice() }; }
     function restoreSnapshot(snap) {
         const wasWon = state.won;
         state.edgeVal = snap.edgeVal.slice();
+        if (snap.edgeMark) state.edgeMark = snap.edgeMark.slice();
         if (snap.doneMark) state.doneMark = snap.doneMark.slice();
         state.dragging = null; state.won = false;
         if (wasWon) shell.clearWin();
@@ -638,6 +716,7 @@
         if (!state.puzzle) return;
         if (state.won) { if (undoHistory) undoHistory.clear(); } else pushUndo();
         state.edgeVal = new Int8Array(state.G.edges.length);
+        state.edgeMark = new Int8Array(state.G.edges.length);
         state.doneMark = new Int8Array(state.islands.length);
         state.won = false; clearViolations(); clearHint(); repaint(); updateStatusRow(); updateUndoButton();
     }
@@ -675,11 +754,18 @@
         const hintBtn = document.getElementById('hint-btn');
         if (hintBtn) hintBtn.addEventListener('click', showHint);
 
+        const tools = document.getElementById('hashi-tools');
+        if (tools) tools.addEventListener('click', (ev) => {
+            const btn = ev.target.closest('.hashi-tool');
+            if (btn && btn.dataset.mode) setMode(btn.dataset.mode);
+        });
+
         board.classList.add('drag-board');
         board.addEventListener('pointerdown', onPointerDown);
         board.addEventListener('pointermove', onPointerMove);
         board.addEventListener('pointerup', onPointerEnd);
         board.addEventListener('pointercancel', onPointerEnd);
+        board.addEventListener('pointerleave', () => setHover(-1));
         board.addEventListener('contextmenu', (ev) => ev.preventDefault());
 
         if (PC.i18n && typeof PC.i18n.subscribe === 'function') {

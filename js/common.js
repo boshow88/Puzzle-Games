@@ -316,6 +316,8 @@
             '<path d="M8.3 10a.7.7 0 0 1-.626-1.079L11.4 3a.7.7 0 0 1 1.199 0l3.726 5.921A.7.7 0 0 1 15.7 10Z"/>'
             + '<rect width="7" height="7" x="3" y="14" rx="1"/>'
             + '<circle cx="17.5" cy="17.5" r="3.5"/>',
+        check:
+            '<path d="M20 6 9 17l-5-5"/>',
     };
 
     function icon(name, opts) {
@@ -992,12 +994,15 @@
                 'Link the numbered islands with the right number of bridges — no crossings, all connected.',
             hashiBoardAria: 'Hashi puzzle board',
             hashiCrossBlocked: 'A bridge there would cross an existing one.',
+            hashiToolsAria: 'Input mode',
+            hashiToolBuild: 'Build',
+            hashiToolMark: 'Mark',
             hashiHelp1Html:
                 'A <strong>bridge</strong> is a straight line (horizontal or vertical) joining two <strong>islands</strong>. Each island\u2019s number is how many bridges connect to it. A pair of islands takes at most two bridges, and bridges can\u2019t cross another bridge or an island.',
             hashiHelp2Html:
-                'Build a bridge: <strong>drag</strong> from one island to a neighbour, or <strong>click the gap between two islands</strong>. <strong>Left</strong> cycles up (0 \u2192 1 \u2192 2 \u2192 0), <strong>right</strong> cycles down (0 \u2192 2 \u2192 1 \u2192 0).',
+                'In <strong>Build</strong> mode, <strong>drag</strong> from one island to a neighbour or <strong>click the gap between two</strong>. <strong>Left</strong> cycles up (0 \u2192 1 \u2192 2 \u2192 0), <strong>right</strong> cycles down.',
             hashiHelp3Html:
-                'Click an island to mark it <strong>done</strong> (just for tracking).',
+                'Switch to <strong>Mark</strong> mode to note what you\u2019re sure of \u2014 click a corridor to lock its count (0, 1 or 2) or click an island to flag it handled. Marks are just reminders and don\u2019t change the puzzle.',
             hashiHelp4Html:
                 'Solved when every island\u2019s number is satisfied and all islands form a <strong>single connected network</strong>.',
             clearBoard: 'Clear the board',
@@ -1241,12 +1246,15 @@
                 '用正確數量的橋連接數字島——不可交叉，且全部連成一網。',
             hashiBoardAria: 'Hashi 盤面',
             hashiCrossBlocked: '這裡會和現有的橋交叉，不能架。',
+            hashiToolsAria: '輸入模式',
+            hashiToolBuild: '建橋',
+            hashiToolMark: '標記',
             hashiHelp1Html:
                 '<strong>橋</strong>是連接兩座島的直線 (上下或左右)。每座<strong>島</strong>上的數字，代表共有幾座橋連到它。一對島之間最多兩座橋，且不可跨過其他橋或島。',
             hashiHelp2Html:
-                '架橋：從一座島<strong>拖曳</strong>到相鄰的島。或直接<strong>點兩島之間的橋位</strong>。<strong>左鍵</strong>遞增 (空 → 一 → 兩 → 空)，<strong>右鍵</strong>反向 (空 → 兩 → 一 → 空)。',
+                '<strong>建橋</strong>模式下：從一座島<strong>拖曳</strong>到相鄰的島，或直接<strong>點兩島之間的橋位</strong>。<strong>左鍵</strong>遞增 (空 → 一 → 兩 → 空)，<strong>右鍵</strong>反向。',
             hashiHelp3Html:
-                '點擊可把島標記為「<strong>已完成</strong>」(僅追蹤)。',
+                '切到<strong>標記</strong>模式可記下你已確定的部分——點橋位鎖定它的座數 (0、1 或 2 座)，或點島把它標為已完成。標記只是提醒，不影響解答。',
             hashiHelp4Html:
                 '當每座島的數字都滿足、且所有島連成<strong>單一相通的網路</strong>時即過關。',
             clearBoard: '清空盤面',

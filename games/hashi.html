@@ -104,14 +104,25 @@
             </svg>
         </div>
 
+        <div class="hashi-tools" id="hashi-tools" role="radiogroup" data-i18n-aria-label="hashiToolsAria" aria-label="Input mode">
+            <button type="button" class="hashi-tool active" data-mode="build" role="radio" aria-checked="true">
+                <span data-icon="waypoints" aria-hidden="true"></span>
+                <span data-i18n="hashiToolBuild">Build</span>
+            </button>
+            <button type="button" class="hashi-tool" data-mode="mark" role="radio" aria-checked="false">
+                <span data-icon="check" aria-hidden="true"></span>
+                <span data-i18n="hashiToolMark">Mark</span>
+            </button>
+        </div>
+
         <div class="hint-banner" id="hint-banner" hidden aria-live="polite"></div>
 
         <section class="game-footer">
             <h4 data-i18n="howToPlay">How to play</h4>
             <ul>
                 <li data-i18n="hashiHelp1Html">A <strong>bridge</strong> is a straight line (horizontal or vertical) joining two <strong>islands</strong>. Each island’s number is how many bridges connect to it. A pair of islands takes at most two bridges, and bridges can’t cross another bridge or an island.</li>
-                <li data-i18n="hashiHelp2Html">Build a bridge: <strong>drag</strong> from one island to a neighbour, or <strong>click the gap between two islands</strong>. <strong>Left</strong> cycles up (0 → 1 → 2 → 0), <strong>right</strong> cycles down (0 → 2 → 1 → 0).</li>
-                <li data-i18n="hashiHelp3Html">Click an island to mark it <strong>done</strong> (just for tracking).</li>
+                <li data-i18n="hashiHelp2Html">In <strong>Build</strong> mode, <strong>drag</strong> from one island to a neighbour or <strong>click the gap between two</strong>. <strong>Left</strong> cycles up (0 → 1 → 2 → 0), <strong>right</strong> cycles down.</li>
+                <li data-i18n="hashiHelp3Html">Switch to <strong>Mark</strong> mode to note what you’re sure of — click a corridor to lock its count (0, 1 or 2) or click an island to flag it handled. Marks are just reminders and don’t change the puzzle.</li>
                 <li data-i18n="hashiHelp4Html">Solved when every island’s number is satisfied and all islands form a <strong>single connected network</strong>.</li>
             </ul>
         </section>

@@ -1348,20 +1348,20 @@
 /* Bridges — theme brown; a double draws as two parallel lines. */
 .hashi-bridge { stroke: var(--game-color, #8a5a2c); stroke-linecap: round; pointer-events: none; }
 .hashi-bridge.bad { stroke: var(--accent-danger, #dc3545); }
-.hashi-bridge.won { stroke: #d4a017; }
+.hashi-bridge.won { stroke: #16a34a; }
 
 /* Islands — cream disc, brown ring, dark-brown number; filled tint once the
-   island's bridge count matches its number; red when it's over; gold on win. */
+   island's bridge count matches its number; red when it's over; green on win. */
 .hashi-island .hashi-isle-disc { fill: #fffdf8; stroke: var(--game-color, #8a5a2c); stroke-width: 2.5; }
 .hashi-island .hashi-isle-num { fill: #3a2a18; font-family: var(--font-body); font-weight: 700; user-select: none; }
 .hashi-island.done .hashi-isle-disc { fill: #eadbc4; }
-/* Player's "done/handled" annotation — a muted green tint, distinct from the
-   amber "count satisfied" tint and the red error state (which override it). */
-.hashi-island.marked .hashi-isle-disc { fill: #dfeadf; stroke: #94b394; }
-.hashi-island.marked .hashi-isle-num { fill: #5f8a5f; }
+/* Player's "handled" annotation — a calm slate tint (green is reserved for the
+   win state), distinct from the warm "count satisfied" tint and the red error. */
+.hashi-island.marked .hashi-isle-disc { fill: #e5e9f2; stroke: #6b7280; }
+.hashi-island.marked .hashi-isle-num { fill: #475569; }
 .hashi-island.bad .hashi-isle-disc { fill: #f8dcdc; stroke: var(--accent-danger, #dc3545); }
 .hashi-island.bad .hashi-isle-num { fill: var(--accent-danger, #dc3545); }
-.hashi-island.won .hashi-isle-disc { fill: #fde68a; stroke: #d4a017; }
+.hashi-island.won .hashi-isle-disc { fill: #bbf7d0; stroke: #16a34a; }
 /* Each island pops about ITS OWN centre. The disc/number carry absolute cx/cy,
    so without fill-box the scale would pivot on the SVG origin and the whole set
    would lurch toward the corner as one blob. */
@@ -1378,6 +1378,45 @@
 /* Drag preview of the bridge about to be built (solid) or removed (dashed). */
 .hashi-pending-line { stroke: var(--game-color, #8a5a2c); stroke-linecap: round; opacity: 0.4; }
 .hashi-pending-line.erase { stroke: #94a3b8; stroke-dasharray: 5 4; opacity: 0.7; }
+/* Mouse-hover preview is fainter than an active drag preview. */
+.hashi-pending-line.hashi-hover { opacity: 0.22; }
+
+/* "Confirmed" annotations (Mark mode): a dotted ghost along a corridor confirmed
+   empty, and a small slate check badge marking any corridor whose count is set. */
+.hashi-mark-empty { stroke: #94a3b8; stroke-dasharray: 2 5; stroke-linecap: round; opacity: 0.7; pointer-events: none; }
+.hashi-confirm { pointer-events: none; }
+.hashi-confirm-disc { fill: #eef2f7; stroke: #94a3b8; stroke-width: 1.5; }
+.hashi-confirm-check { fill: none; stroke: #475569; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+
+/* Mode toggle (Build / Mark). */
+.hashi-tools {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: var(--space-sm);
+    width: 100%;
+    max-width: 320px;
+    margin: var(--space-md) auto 0;
+}
+.hashi-tool {
+    appearance: none;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: var(--space-xs);
+    padding: 9px 0;
+    border: 1px solid var(--border-strong);
+    background: var(--bg-secondary);
+    color: var(--text-secondary);
+    font-size: 0.95rem;
+    font-weight: 600;
+    border-radius: var(--radius-md);
+    cursor: pointer;
+    transition: background var(--transition-fast), border-color var(--transition-fast),
+        color var(--transition-fast), transform var(--transition-fast);
+}
+.hashi-tool:hover { background: var(--bg-hover); border-color: var(--text-muted); }
+.hashi-tool:active { transform: translateY(1px); }
+.hashi-tool.active { background: var(--game-color, var(--accent-primary)); border-color: var(--game-color, var(--accent-primary)); color: var(--text-on-accent); }
 
 /* Hint: a highlight band along the forced connection, a ghost of the bridges to
    build, and rings on conflicting islands. */
