@@ -665,11 +665,13 @@
         // are fine and "add at least one bridge here" moves can surface.
         const drawn = state.edgeVal;
         const step = HS.nextStep(state.G, state.needs, drawn);
-        // A big connectivity (cut) strand is hard to verify at a glance ("those N
-        // islands have no other route"). Show it instead as an assume→contradiction
-        // walk-through with numbered steps, so there's an order to follow. Small,
-        // obvious strands keep the one-line cut.
-        if (step && step.reason === 'cut' && step.anchor && step.anchor.islands && step.anchor.islands.length > 2 && HS.refuteEmpty) {
+        // A connectivity (cut) hint — "these islands have no other route" — hides
+        // its reasoning (the other routes were ruled out by not-yet-drawn forced
+        // bridges). A genuinely obvious single-exit island is grounded as a degree
+        // hint instead, so ANY cut here is worth showing as an assume→contradiction
+        // walk-through: assume the corridor stays empty, trace the forced steps, and
+        // mark where it breaks.
+        if (step && step.reason === 'cut' && HS.refuteEmpty) {
             const ref = HS.refuteEmpty(state.G, state.needs, drawn, step.edge);
             if (ref) return { kind: 'deep', edge: step.edge, value: step.value, assume: { edge: step.edge, value: 0 }, chain: ref.chain, bad: ref.bad };
         }
