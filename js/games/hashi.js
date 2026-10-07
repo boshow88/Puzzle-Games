@@ -575,8 +575,8 @@
                 if (!s) return `The nearby numbers and the bridges already drawn force the highlighted connection to ${actEn(h.value, h.atLeast)}.`;
                 if (s.kind === 'sole') return `The circled ${s.need} has neighbours in only one direction, so all ${s.need} of its bridges must go along this one connection.`;
                 if (s.kind === 'onlyLeft') return `The circled ${s.need} already has ${s.have}; only one direction is left, so the remaining ${s.remaining} must go here.`;
-                if (s.kind === 'saturate') return `The circled ${s.need} can only connect in ${s.open} directions, and ${s.open} × 2 = ${s.need}, so every one of them must take two bridges.`;
-                if (s.kind === 'saturateRest') return `The circled ${s.need} already has ${s.have}; its remaining ${s.remaining} has to fill ${s.open} directions (${s.open} × 2 = ${s.remaining}), so each of them must take two bridges.`;
+                if (s.kind === 'saturate') return `The circled ${s.need} exactly fills all ${s.open} of its directions, so each one must take two bridges.`;
+                if (s.kind === 'saturateRest') return `The circled ${s.need} already has ${s.have}; its remaining ${s.remaining} has to fill ${s.open} directions, so each of them takes two bridges.`;
                 if (s.kind === 'eachOne') return `The circled ${s.need} has ${s.open} open directions: leaving any of them empty caps the island at ${s.need - 1} bridges, short of ${s.need}, so every direction must take at least one bridge.`;
                 if (s.kind === 'atleast') return `The circled ${s.need}: its other directions can absorb at most ${s.otherMax} more, so the remaining ${s.add} has to run through here — ${actEn(s.value, h.atLeast)}.`;
                 return `The circled ${s.need} already has ${s.have}, which forces this connection to ${actEn(s.value, h.atLeast)}.`;
@@ -606,8 +606,8 @@
                 if (!s) return `綜合鄰近幾座島的數字與已畫的橋，可推出醒目的這條${h.atLeast ? '至少還要' : '必須'}${actZh(h.value, false)}。`;
                 if (s.kind === 'sole') return `圈起來的 ${s.need} 只有一個方向有鄰居，所以它的 ${s.need} 座橋只能全部連往這條。`;
                 if (s.kind === 'onlyLeft') return `圈起來的 ${s.need} 已接 ${s.have} 座，只剩一個方向還沒連，所以剩下的 ${s.remaining} 座只能走這條。`;
-                if (s.kind === 'saturate') return `圈起來的 ${s.need} 只有 ${s.open} 個方向可連，${s.open} × 2 = ${s.need}，所以每個方向都必須架滿兩座橋。`;
-                if (s.kind === 'saturateRest') return `圈起來的 ${s.need} 已接 ${s.have} 座，剩下的 ${s.remaining} 座要填滿 ${s.open} 個方向（${s.open} × 2 = ${s.remaining}），所以這些方向都必須各架兩座橋。`;
+                if (s.kind === 'saturate') return `圈起來的 ${s.need} 剛好要填滿它全部 ${s.open} 個方向，所以每個方向都必須各架兩座橋。`;
+                if (s.kind === 'saturateRest') return `圈起來的 ${s.need} 已接 ${s.have} 座，剩下的 ${s.remaining} 座要填滿 ${s.open} 個方向，所以每個方向都必須各架兩座橋。`;
                 if (s.kind === 'eachOne') return `圈起來的 ${s.need} 有 ${s.open} 個可連方向：只要任一個空著，全島最多只能連到 ${s.need - 1} 座，湊不滿 ${s.need}，所以每個方向都至少要有一座橋。`;
                 if (s.kind === 'atleast') return `圈起來的 ${s.need}：其他方向最多只能再接 ${s.otherMax} 座，還差 ${s.add} 座一定得走這條，所以這條${actZh(s.value, h.atLeast)}。`;
                 return `圈起來的 ${s.need} 已接 ${s.have} 座，推得這條${actZh(s.value, h.atLeast)}。`;
