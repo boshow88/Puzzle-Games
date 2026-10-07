@@ -1369,6 +1369,7 @@
 /* Drag preview of the bridge about to be built (solid) or removed (dashed). */
 .hashi-pending-line { stroke: var(--game-color, #8a5a2c); stroke-linecap: round; opacity: 0.4; }
 .hashi-pending-line.erase { stroke: #94a3b8; stroke-dasharray: 5 4; opacity: 0.7; }
+.hashi-pending-line.blocked { stroke: #e5484d; stroke-dasharray: 3 5; opacity: 0.6; }
 
 /* Hint: a highlight band along the forced connection, a ghost of the bridges to
    build, and rings on conflicting islands. */

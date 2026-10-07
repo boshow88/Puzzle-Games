@@ -222,7 +222,8 @@
                 active.add(ed.a); active.add(ed.b);
                 const cur = state.edgeVal[d.pending];
                 const nv = d.button === 2 ? (cur + 2) % 3 : (cur + 1) % 3;
-                if (nv === 0) drawBridge(bl, d.pending, Math.max(1, cur), 'hashi-pending-line erase', sw, offUnit);
+                if (nv >= 1 && crossingBlocked(d.pending)) drawBridge(bl, d.pending, nv, 'hashi-pending-line blocked', sw, offUnit);
+                else if (nv === 0) drawBridge(bl, d.pending, Math.max(1, cur), 'hashi-pending-line erase', sw, offUnit);
                 else drawBridge(bl, d.pending, nv, 'hashi-pending-line', sw, offUnit);
             }
         }
@@ -338,11 +339,23 @@
         else toggleDone(d.from);                            // tapped an island
     }
 
+    // A bridge here would cross one that's already on the board (two bridges may
+    // never cross), so placing it is simply refused rather than flagged after.
+    function crossingBlocked(e) {
+        for (const f of state.G.cross[e]) if (state.edgeVal[f] >= 1) return true;
+        return false;
+    }
+
     // Left cycles up (0→1→2→0); right cycles down (0→2→1→0).
     function cycleEdge(e, button) {
-        pushUndo();
         const v = state.edgeVal[e];
-        state.edgeVal[e] = button === 2 ? (v + 2) % 3 : (v + 1) % 3;
+        const nv = button === 2 ? (v + 2) % 3 : (v + 1) % 3;
+        if (nv >= 1 && crossingBlocked(e)) {
+            if (PC.toast) PC.toast.show(PC.i18n.t('hashiCrossBlocked'));
+            return; // never lay a bridge across an existing one
+        }
+        pushUndo();
+        state.edgeVal[e] = nv;
         afterChange();
     }
 
@@ -406,14 +419,12 @@
             wrong: 'The highlighted bridge(s) disagree with the unique solution — remove or re-count them.',
             degree: (h) => {
                 const s = h.src;
-                if (!s) return `The circled island’s number forces the highlighted connection to ${actEn(h.value)}.`;
-                if (s.kind === 'only') return `The circled ${s.need} has only this one connection, so it must ${actEn(s.value)}.`;
-                if (s.kind === 'onlyLeft') return `The circled ${s.need} already has ${s.have}; this is its only connection left, so the remaining ${s.value} must go here.`;
-                if (s.kind === 'saturate') return `The circled ${s.need} has only ${s.deg} neighbours, so every connection must be two bridges — including this one.`;
-                if (s.kind === 'exact') return `The circled ${s.need}: its other connections are already fixed at ${s.detSum} total (shown faint), so this one must be ${s.value} (${s.need}−${s.detSum}).`;
-                if (s.kind === 'rest') return `The circled ${s.need}: its other open connections (circled) can add at most ${s.openMax} more, so the rest must come from here — ${actEn(s.value)}.`;
-                if (s.value === 0) return `The circled ${s.need} is about to be filled by its other connections, so this one must stay empty.`;
-                return `The circled ${s.need}: its other connections already commit enough, so this one must ${actEn(s.value)}.`;
+                if (!s) return `The nearby numbers and the bridges already drawn force the highlighted connection to ${actEn(h.value)}.`;
+                if (s.kind === 'sole') return `The circled ${s.need} has neighbours in only one direction, so all ${s.need} of its bridges must go along this one connection.`;
+                if (s.kind === 'onlyLeft') return `The circled ${s.need} already has ${s.have}; only one direction is left, so the remaining ${s.remaining} must go here.`;
+                if (s.kind === 'saturate') return `The circled ${s.need} can only connect in ${s.open} directions, and ${s.open} × 2 = ${s.need}, so every one of them must take two bridges.`;
+                if (s.kind === 'saturateRest') return `The circled ${s.need} already has ${s.have}; its remaining ${s.remaining} has to fill ${s.open} directions (${s.open} × 2 = ${s.remaining}), so each of them must take two bridges.`;
+                return `The circled ${s.need} already has ${s.have}, leaving ${s.remaining} for ${s.open} direction(s), which forces this one to ${actEn(s.value)}.`;
             },
             cross: 'The circled bridge is in the way, so the highlighted connection must stay empty.',
             cut: (h) => `Without the highlighted bridge the circled island could never connect, so it must ${actEn(h.value)}.`,
@@ -435,14 +446,12 @@
             wrong: '醒目的橋與唯一解不符——請移除或重算它們。',
             degree: (h) => {
                 const s = h.src;
-                if (!s) return `圈起來那座島的數字逼出：醒目的這條必須${actZh(h.value)}。`;
-                if (s.kind === 'only') return `圈起來的 ${s.need} 只有這一條連線，所以它必須${actZh(s.value)}。`;
-                if (s.kind === 'onlyLeft') return `圈起來的 ${s.need} 已接 ${s.have} 座，只剩這一條連線還沒連，所以剩下的 ${s.value} 座只能走這條。`;
-                if (s.kind === 'saturate') return `圈起來的 ${s.need} 只有 ${s.deg} 個鄰居，要湊滿 ${s.need} 就得每條都架兩座，所以這條架兩座。`;
-                if (s.kind === 'exact') return `圈起來的 ${s.need}：其他連線已被確定為共 ${s.detSum} 座（淡色顯示），所以這條只能是 ${s.value} 座（${s.need}−${s.detSum}）。`;
-                if (s.kind === 'rest') return `圈起來的 ${s.need}：其他還沒定的連線（圈起來的鄰居）最多只能再給 ${s.openMax} 座，剩下的只能走這條，所以必須${actZh(s.value)}。`;
-                if (s.value === 0) return `圈起來的 ${s.need} 其他連線即將接滿，所以這條必須留空。`;
-                return `圈起來的 ${s.need}：其他連線已占掉剩餘額度，所以這條必須${actZh(s.value)}。`;
+                if (!s) return `綜合鄰近幾座島的數字與已畫的橋，可推出醒目的這條必須${actZh(h.value)}。`;
+                if (s.kind === 'sole') return `圈起來的 ${s.need} 只有一個方向有鄰居，所以它的 ${s.need} 座橋只能全部連往這條。`;
+                if (s.kind === 'onlyLeft') return `圈起來的 ${s.need} 已接 ${s.have} 座，只剩一個方向還沒連，所以剩下的 ${s.remaining} 座只能走這條。`;
+                if (s.kind === 'saturate') return `圈起來的 ${s.need} 只有 ${s.open} 個方向可連，${s.open} × 2 = ${s.need}，所以每個方向都必須架滿兩座橋。`;
+                if (s.kind === 'saturateRest') return `圈起來的 ${s.need} 已接 ${s.have} 座，剩下的 ${s.remaining} 座要填滿 ${s.open} 個方向（${s.open} × 2 = ${s.remaining}），所以這些方向都必須各架兩座橋。`;
+                return `圈起來的 ${s.need} 已接 ${s.have} 座，剩 ${s.remaining} 座要分給 ${s.open} 個方向，推得這條必須${actZh(s.value)}。`;
             },
             cross: '圈起來的橋擋住了，所以醒目的這條必須留空。',
             cut: (h) => `少了醒目的這座橋，圈起來的島就連不進來，所以它必須${actZh(h.value)}。`,
@@ -479,9 +488,16 @@
         if (wrong.length) return { kind: 'wrong', edges: wrong };
         const cur = playerCur();
         const step = HS.nextStep(state.G, state.needs, cur);
-        if (step) return { kind: 'deduce', edge: step.edge, value: step.value, reason: step.reason, anchor: step.anchor, src: step.src };
         const deep = HS.nextStepDeep(state.G, state.needs, cur);
-        if (deep) return { kind: 'deep', edge: deep.edge, value: deep.value, assume: deep.assume, chain: deep.chain, bad: deep.bad };
+        const asDeduce = (s) => ({ kind: 'deduce', edge: s.edge, value: s.value, reason: s.reason, anchor: s.anchor, src: s.src });
+        const asDeep = (d) => ({ kind: 'deep', edge: d.edge, value: d.value, assume: d.assume, chain: d.chain, bad: d.bad });
+        // Prefer a move the player can actually make (lay ≥1 bridge). A forced
+        // EMPTY isn't actionable — crossings can't be placed anyway and a satisfied
+        // island needs nothing — so only fall back to one if nothing else is forced.
+        if (step && step.value >= 1) return asDeduce(step);
+        if (deep && deep.value >= 1) return asDeep(deep);
+        if (step) return asDeduce(step);
+        if (deep) return asDeep(deep);
         return null;
     }
 
@@ -587,12 +603,15 @@
             badMark(h.bad);
             return;
         }
-        // deduce: anchor the source, show the capping neighbours/connections that
-        // justify it (so "others can only hold N" is visible), then band + ghost
-        // the forced connection.
-        if (h.src && h.src.show) for (const s of h.src.show) ghostEdge(s.edge, s.value, 'hashi-bridge hashi-hint-determined');
-        if (h.src && h.src.edges) for (const k of h.src.edges) bandEdge(k, 'hashi-hint-source');
-        if (h.src && h.src.isles) for (const w of h.src.isles) ringIsland(w, 'hashi-hint-context');
+        // deduce. Saturate decides the whole fan at once: band + ghost every open
+        // connection of the circled island (each two bridges) and ring the
+        // neighbours it reaches. Otherwise just band + ghost the one forced edge.
+        if (h.src && h.src.fan) {
+            for (const f of h.src.fan) { bandEdge(f.edge, 'hashi-hint-band'); ghostEdge(f.edge, f.value); }
+            if (h.src.isles) for (const w of h.src.isles) ringIsland(w, 'hashi-hint-context');
+            if (h.anchor && h.anchor.islands) for (const v of h.anchor.islands) ringIsland(v, 'hashi-hint-anchor');
+            return;
+        }
         if (h.anchor) {
             if (h.anchor.islands) for (const v of h.anchor.islands) ringIsland(v, 'hashi-hint-anchor');
             if (h.anchor.edges) for (const e of h.anchor.edges) bandEdge(e, 'hashi-hint-source');

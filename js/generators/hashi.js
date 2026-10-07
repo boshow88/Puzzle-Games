@@ -383,10 +383,10 @@
         for (let e = 0; e < E; e++) if (cur[e] !== UNKNOWN) { lo[e] = cur[e]; hi[e] = cur[e]; }
         if (!propagate(G, needs, lo, hi, true)) return null;
         // Surface the EASIEST-to-follow forced move, not just the first by index:
-        // rank by how self-evident the reason is (only/saturate need no neighbour
-        // info; rest/cap/cross/cut do, cut most), and prefer an actionable (≥1)
-        // bridge over a forced-empty one.
-        const RANK = { only: 0, onlyLeft: 1, saturate: 2, cross: 3, rest: 4, cap: 5, degree: 4, cut: 6 };
+        // rank by how self-evident the reason is (a single island's own number +
+        // drawn bridges first), and prefer an actionable (≥1) bridge over a
+        // forced-empty one.
+        const RANK = { sole: 0, saturate: 1, onlyLeft: 1, saturateRest: 2, cut: 3, share: 4, degree: 5, cross: 6 };
         let best = null, bestScore = Infinity;
         for (let e = 0; e < E; e++) if (lo[e] === hi[e] && cur[e] !== lo[e]) {
             const step = annotateStep(G, needs, cur, e, lo[e], lo, hi);
@@ -413,37 +413,43 @@
             const hi2 = pHi.slice(); hi2[e] = 0;
             if (!possibleConnected(G, hi2)) return { edge: e, value: val, reason: 'cut', anchor: { islands: [a, b] } };
         }
-        // Degree: attribute to the endpoint island whose number pins e, using the
-        // PROPAGATED bounds of its OTHER connections, and say by how much ('rest'
-        // = others max out below the need, so e covers the leftover; 'cap' = others
-        // already take enough, so e is capped; 'only' = e is the sole connection).
-        const farOf = (v, k) => (G.edges[k].a === v ? G.edges[k].b : G.edges[k].a);
-        // Pass 1 — an endpoint that FULLY determines e: all its other links are
-        // already decided, so e = need − (their total) EXACTLY (not just a bound).
-        const exactAt = (v) => {
-            const inc = G.incident[v], others = inc.filter((k) => k !== e);
-            if (others.length === 0) return { island: v, need: needs[v], kind: 'only', value: val };
-            if (others.some((k) => pLo[k] < pHi[k])) return null; // some link still open
-            let detSum = 0; for (const k of others) detSum += pLo[k];
-            if (needs[v] === 2 * inc.length) return { island: v, need: needs[v], kind: 'saturate', deg: inc.length, value: val };
-            if (others.every((k) => cur[k] !== UNKNOWN)) return { island: v, need: needs[v], kind: 'onlyLeft', have: detSum, value: val };
-            const undrawn = others.filter((k) => cur[k] === UNKNOWN); // determined but not yet drawn → show them
-            return { island: v, need: needs[v], kind: 'exact', detSum, value: val, show: undrawn.map((k) => ({ edge: k, value: pLo[k] })), isles: undrawn.map((k) => farOf(v, k)) };
+        // Degree — grounded in the player's OWN drawn bridges + the island's number
+        // + the "≤2 per connection" cap, so every claim is checkable on the board:
+        //   drawnSum = bridges already drawn at v;
+        //   open     = v's still-empty connections that can still carry a bridge
+        //              (hi≥1 — a direction blocked by a crossing doesn't count);
+        //   remaining = need − drawnSum, to be spread over those open directions.
+        // e is pinned by v ALONE iff, treating each OTHER open direction as free
+        // (0..2), e's range collapses to a single value. We never cite another
+        // still-undrawn connection's value as if it were already known.
+        const far = (v, k) => (G.edges[k].a === v ? G.edges[k].b : G.edges[k].a);
+        const groundedAt = (v) => {
+            const inc = G.incident[v];
+            let drawnSum = 0; const open = [];
+            for (const k of inc) {
+                if (cur[k] !== UNKNOWN) drawnSum += cur[k];
+                else if (pHi[k] >= 1) open.push(k); // blocked directions (hi==0) aren't options
+            }
+            if (open.indexOf(e) < 0) return null;
+            const k = open.length, remaining = needs[v] - drawnSum;
+            const eLo = Math.max(0, remaining - 2 * (k - 1)); // others take at most 2 each
+            const eHi = Math.min(2, remaining);               // others can be 0
+            if (eLo !== eHi || eLo !== val) return null;      // not pinned by this island alone
+            let kind;
+            if (k === 1) kind = drawnSum === 0 ? 'sole' : 'onlyLeft';
+            else if (remaining === 2 * k) kind = drawnSum === 0 ? 'saturate' : 'saturateRest';
+            else kind = 'share';
+            const src = { island: v, need: needs[v], have: drawnSum, open: k, remaining, value: val, kind };
+            if (kind === 'saturate' || kind === 'saturateRest') {
+                // decide the whole fan at once: every open direction is two bridges.
+                src.fan = open.map((k2) => ({ edge: k2, value: 2 }));
+                src.isles = open.map((k2) => far(v, k2));
+            }
+            return src;
         };
-        for (const v of [a, b]) { const s = exactAt(v); if (s) return { edge: e, value: val, reason: 'degree', anchor: { islands: [v] }, src: s }; }
-        // Pass 2 — no endpoint fully pins it; fall back to an honest bound from an
-        // endpoint with still-open links (lower = 'rest', upper = 'cap').
-        const boundAt = (v) => {
-            const others = G.incident[v].filter((k) => k !== e);
-            const open = others.filter((k) => pLo[k] < pHi[k]);
-            if (open.length === 0) return null;
-            let detSum = 0; for (const k of others) if (pLo[k] === pHi[k]) detSum += pLo[k];
-            let openHi = 0, openLo = 0; for (const k of open) { openHi += pHi[k]; openLo += pLo[k]; }
-            if (val >= 1 && needs[v] - detSum - openHi === val) return { island: v, need: needs[v], kind: 'rest', value: val, openMax: openHi, edges: open, isles: open.map((k) => farOf(v, k)) };
-            if (needs[v] - detSum - openLo === val) { const used = open.filter((k) => pLo[k] >= 1); return { island: v, need: needs[v], kind: 'cap', value: val, edges: used, isles: used.map((k) => farOf(v, k)) }; }
-            return null;
-        };
-        for (const v of [a, b]) { const s = boundAt(v); if (s) return { edge: e, value: val, reason: 'degree', anchor: { islands: [v] }, src: s }; }
+        for (const v of [a, b]) { const s = groundedAt(v); if (s) return { edge: e, value: val, reason: 'degree', anchor: { islands: [v] }, src: s }; }
+        // Fallback — forced by the combined numbers, but not by any single island's
+        // drawn facts alone (it needs a chained argument). Stay honest and generic.
         return { edge: e, value: val, reason: 'degree', anchor: { islands: [a, b] } };
     }
 
@@ -469,7 +475,12 @@
                 const l = baseLo.slice(), h = baseHi.slice(); l[e] = badV; h[e] = badV;
                 const tr = propagateTraced(G, needs, l, h);
                 const len = tr.chain ? tr.chain.length : 0;
-                if (!best || len < best.len) best = { edge: e, value: feas[0], assume: { edge: e, value: badV }, chain: tr.chain || [], bad: tr.bad || null, len };
+                const cand = { edge: e, value: feas[0], assume: { edge: e, value: badV }, chain: tr.chain || [], bad: tr.bad || null, len };
+                // prefer an actionable (≥1) conclusion, then the shortest chain.
+                const better = !best
+                    || ((cand.value >= 1 ? 0 : 1) < (best.value >= 1 ? 0 : 1))
+                    || ((cand.value >= 1) === (best.value >= 1) && cand.len < best.len);
+                if (better) best = cand;
             }
         }
         return best ? { edge: best.edge, value: best.value, assume: best.assume, chain: best.chain, bad: best.bad } : null;

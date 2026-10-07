@@ -991,6 +991,7 @@
             hashiCardBody:
                 'Link the numbered islands with the right number of bridges — no crossings, all connected.',
             hashiBoardAria: 'Hashi puzzle board',
+            hashiCrossBlocked: 'A bridge there would cross an existing one.',
             hashiHelp1Html:
                 'A <strong>bridge</strong> is a straight line (horizontal or vertical) joining two <strong>islands</strong>. Each island\u2019s number is how many bridges connect to it. A pair of islands takes at most two bridges, and bridges can\u2019t cross another bridge or an island.',
             hashiHelp2Html:
@@ -1239,6 +1240,7 @@
             hashiCardBody:
                 '用正確數量的橋連接數字島——不可交叉，且全部連成一網。',
             hashiBoardAria: 'Hashi 盤面',
+            hashiCrossBlocked: '這裡會和現有的橋交叉，不能架。',
             hashiHelp1Html:
                 '<strong>橋</strong>是連接兩座島的直線 (上下或左右)。每座<strong>島</strong>上的數字，代表共有幾座橋連到它。一對島之間最多兩座橋，且不可跨過其他橋或島。',
             hashiHelp2Html:
