@@ -156,6 +156,10 @@
 
     function renderBoard() {
         computeLayout();
+        // Island ring thickness scales with cell size (capped at 2.5 for small
+        // boards), so big boards like 25×25 don't get chunky rings. State variants
+        // (e.g. .active) multiply this via calc().
+        board.style.setProperty('--hashi-isle-sw', Math.max(1.1, Math.min(2.5, state.cs * 0.08)).toFixed(2) + 'px');
         const svg = board;
         while (svg.firstChild) svg.removeChild(svg.firstChild);
         svg.appendChild(PC.svgEl('rect', { class: 'hashi-bg', x: 0, y: 0, width: BOARD, height: BOARD }));
