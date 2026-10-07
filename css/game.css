@@ -1365,7 +1365,8 @@
    island's bridge count matches its number; red when it's over; green on win. */
 .hashi-island .hashi-isle-disc { fill: #fffdf8; stroke: var(--game-color, #8a5a2c); stroke-width: var(--hashi-isle-sw, 2.5); }
 .hashi-island .hashi-isle-num { fill: #3a2a18; font-family: var(--font-body); font-weight: 700; user-select: none; }
-/* Assist mode, too many bridges: the −N reads red right away. */
+/* Assist mode: a met island shows a faint 0; too many shows −N in red. */
+.hashi-isle-num.met { opacity: 0.4; }
 .hashi-isle-num.over { fill: var(--accent-danger, #dc3545); }
 .hashi-island.done .hashi-isle-disc { fill: #eadbc4; }
 /* Player's "handled" annotation — a calm slate tint (green is reserved for the

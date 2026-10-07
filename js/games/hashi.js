@@ -326,13 +326,13 @@
                 + (active.has(v) ? ' active' : '');
             const g = PC.svgEl('g', { class: cls });
             const disc = PC.svgEl('circle', { class: 'hashi-isle-disc', cx: cx(is.c), cy: cy(is.r), r: rad });
-            // Assist mode shows how many bridges the island still needs: a ✓ when it
-            // is exactly met, the shortfall when more are needed, and −N (red) when
-            // it has too many. Off → the island's own number, always.
+            // Assist mode shows how many bridges the island still needs: a faint 0
+            // when it is exactly met, the shortfall when more are needed, and −N
+            // (red) when it has too many. Off → the island's own number, always.
             let glyph = String(state.needs[v]), numCls = 'hashi-isle-num';
             if (state.assist && !won) {
                 const rem = state.needs[v] - islandSum(v);
-                if (rem === 0) glyph = '\u2713';
+                if (rem === 0) { glyph = '0'; numCls += ' met'; }
                 else if (rem < 0) { glyph = '\u2212' + (-rem); numCls += ' over'; }
                 else glyph = String(rem);
             }
